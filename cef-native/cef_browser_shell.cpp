@@ -1,14 +1,26 @@
 #define CEF_ENABLE_SANDBOX 0
 
+#pragma once
+
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+
+#undef ERROR  // 💥 Avoid conflict with wingdi.h macro
+
 #include "cef_app.h"
 #include "cef_client.h"
 #include "cef_browser.h"
 #include "cef_command_line.h"
 #include "cef_life_span_handler.h"
 #include "wrapper/cef_helpers.h"
-#include <filesystem>
-
+#include <shellapi.h>
 #include <windows.h>
+#include <filesystem>
 #include <iostream>
 
 class SimpleHandler : public CefClient,
@@ -112,11 +124,11 @@ public:
         }
 
         // Disable GPU and related features
-        command_line->AppendSwitch("disable-gpu");
-        command_line->AppendSwitch("disable-gpu-compositing");
-        command_line->AppendSwitch("disable-gpu-shader-disk-cache");
-        command_line->AppendSwitchWithValue("use-gl", "disabled");
-        command_line->AppendSwitchWithValue("use-angle", "none");
+        // command_line->AppendSwitch("disable-gpu");
+        // command_line->AppendSwitch("disable-gpu-compositing");
+        // command_line->AppendSwitch("disable-gpu-shader-disk-cache");
+        // command_line->AppendSwitchWithValue("use-gl", "disabled");
+        // command_line->AppendSwitchWithValue("use-angle", "none");
 
     }
 

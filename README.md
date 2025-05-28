@@ -45,6 +45,20 @@ Instructions will be added for:
 - **Native control**: Full backend control over cookie, contract, and payment enforcement
 - **Web3 reimagined**: Built for real micropayments, not fake dApps
 
+## 🧬 Babbage Protocol Compatibility
+
+This project is being built to be compatible with apps written for Metanet Desktop and the Babbage Protocol ecosystem. The goal is to support seamless interaction with:
+
+- **Authrite authentication requests**
+- **Toolio-generated identities and WAB certificates**
+- **BSV Wallet Adapter signing and address resolution**
+- **MetanetDesktop-style storage and identity detection**: Identity and wallet information will be stored in AppData%/MetanetDesktop/identity.json
+- **JSON structure compatible with Metanet's identity format**
+- **Planning to inject a browser-side API for apps to access identity, e.g.**:
+    window.identity = { ... }
+    window.babbage.getPublicKey()
+    window.babbage.signMessage(...)
+
 ---
 
 This is an early-stage rewrite. Expect rapid changes and API evolution.

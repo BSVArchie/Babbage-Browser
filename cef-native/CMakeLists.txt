@@ -6,12 +6,15 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Paths
 set(CEF_ROOT "../cef-binaries")
-#set(WRAPPER_SRC "${CEF_ROOT}/libcef_dll/wrapper")
 set(WRAPPER_LIB_PATH "${CEF_ROOT}/libcef_dll/wrapper/build/Release")
-
 set(RELEASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../cef-binaries/Release")
 set(RESOURCES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../cef-binaries/Resources")
 set(OUTPUT_DIR "$<TARGET_FILE_DIR:BitcoinBrowserShell>")
+set(CMAKE_TOOLCHAIN_FILE "C:/Users/archb/Dev/vcpkg/scripts/buildsystems/vcpkg.cmake" CACHE STRING "")
+set(OPENSSL_USE_STATIC_LIBS TRUE)
+find_package(OpenSSL REQUIRED)
+
+message(STATUS "OpenSSL include dir: ${OPENSSL_INCLUDE_DIR}")
 
 # Output
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
@@ -26,12 +29,18 @@ set_target_properties(BitcoinBrowserShell PROPERTIES
     MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
 )
 
+target_sources(BitcoinBrowserShell PRIVATE
+    src/wallet/WalletManager.cpp
+)
+
 # Include CEF headers
 target_include_directories(BitcoinBrowserShell PRIVATE
     ${CEF_ROOT}
     ${CEF_ROOT}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/wallet
+    ${OpenSSL_INCLUDE_DIR}
 )
-
 
 # Link libs
 target_link_directories(BitcoinBrowserShell PRIVATE
@@ -56,6 +65,8 @@ target_link_libraries(BitcoinBrowserShell PRIVATE
     shell32
     advapi32
     version
+    OpenSSL::SSL
+    OpenSSL::Crypto
 )
 
 # Delay-load
@@ -81,3 +92,6 @@ add_custom_command(TARGET BitcoinBrowserShell POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E echo "CEF files copied."
     COMMENT "Copying all CEF binaries and resources"
 )
+
+add_subdirectory(src/wallet)
+add_subdirectory(tests)
