@@ -7,6 +7,7 @@ int main() {
         std::cout << "✅ Wallet found!" << std::endl;
         std::cout << "Address: " << wallet.getAddress() << std::endl;
         std::cout << "Public Key: " << wallet.getPublicKey() << std::endl;
+        std::cout << "Private Key: " << wallet.getPrivateKey() << std::endl;
         if (wallet.saveIdentityToFile()) {
             std::cout << "💾 Identity saved to AppData." << std::endl;
         } else {

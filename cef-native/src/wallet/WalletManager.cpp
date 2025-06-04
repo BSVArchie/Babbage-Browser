@@ -69,8 +69,8 @@ WalletManager::WalletManager() {
 
 bool WalletManager::walletExists() const {
     std::string appData = std::getenv("APPDATA");
-    std::filesystem::path path = std::filesystem::path(appData) / "BabbageBrowser" / "identity.json";
-    return std::filesystem::exists(path);
+    std::filesystem::path file = std::filesystem::path(appData) / "BabbageBrowser" / "identity.json";
+    return std::filesystem::exists(file);
 }
 
 void WalletManager::generateKeyPair() {
@@ -141,19 +141,26 @@ bool WalletManager::saveIdentityToFile() const {
 bool WalletManager::loadIdentityFromFile() {
     try {
         std::string appData = std::getenv("APPDATA");
-        std::filesystem::path path = std::filesystem::path(appData) / "BabbageBrowser" / "identity.json";
+        std::filesystem::path file = std::filesystem::path(appData) / "BabbageBrowser" / "identity.json";
 
-        std::ifstream file(path);
-        if (!file.is_open()) return false;
+        if (!std::filesystem::exists(file)) {
+            return false;
+        }
+
+        std::ifstream infile(file);
+        if (!infile.is_open()) {
+            return false;
+        }
 
         json identity;
-        file >> identity;
+        infile >> identity;
 
-        publicKeyHex = identity["publicKey"].get<std::string>();
-        address = identity["address"].get<std::string>();
-        privateKeyHex = identity["privateKey"].get<std::string>();
+        privateKeyHex = identity.value("privateKey", "");
+        publicKeyHex  = identity.value("publicKey", "");
+        address       = identity.value("address", "");
 
-        return true;
+        // Basic sanity check (optional)
+        return !privateKeyHex.empty() && !publicKeyHex.empty() && !address.empty();
     } catch (...) {
         return false;
     }
@@ -166,3 +173,8 @@ std::string WalletManager::getPublicKey() const {
 std::string WalletManager::getAddress() const {
     return address;
 }
+
+std::string WalletManager::getPrivateKey() const {
+    return privateKeyHex;
+}
+

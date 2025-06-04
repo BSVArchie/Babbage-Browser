@@ -13,6 +13,8 @@ public:
     bool saveIdentityToFile() const;
     bool loadIdentityFromFile();
 
+    std::string getPrivateKey() const;
+
 private:
     std::string privateKeyHex;
     std::string publicKeyHex;
