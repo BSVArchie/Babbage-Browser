@@ -10,17 +10,69 @@
 #include <filesystem>
 #include <fstream>
 #include <nlohmann/json.hpp>
+#include <openssl/evp.h>
+#include <openssl/rand.h>
+#include <cstring>
 
 using json = nlohmann::json;
 
 // === Utility Functions ===
-
 static std::string toHex(const unsigned char* data, size_t len) {
     std::ostringstream oss;
     for (size_t i = 0; i < len; ++i) {
         oss << std::hex << std::setw(2) << std::setfill('0') << (int)data[i];
     }
     return oss.str();
+}
+
+const unsigned char AES_KEY[32] = "0123456789012345678901234567890"; // Example 256-bit key
+const int AES_BLOCK_SIZE = 16;
+
+std::string encryptAES(const std::string& plaintext) {
+    unsigned char iv[AES_BLOCK_SIZE];
+    RAND_bytes(iv, sizeof(iv));
+
+    EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+    std::vector<unsigned char> ciphertext(plaintext.size() + AES_BLOCK_SIZE);
+    int len = 0, ciphertext_len = 0;
+
+    EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), nullptr, AES_KEY, iv);
+    EVP_EncryptUpdate(ctx, ciphertext.data(), &len, (const unsigned char*)plaintext.data(), plaintext.length());
+    ciphertext_len = len;
+    EVP_EncryptFinal_ex(ctx, ciphertext.data() + len, &len);
+    ciphertext_len += len;
+
+    EVP_CIPHER_CTX_free(ctx);
+
+    std::string result((char*)iv, AES_BLOCK_SIZE); // prepend IV
+    result.append((char*)ciphertext.data(), ciphertext_len);
+    return toHex((const unsigned char*)result.data(), result.size());
+}
+
+std::string decryptAES(const std::string& hexCiphertext) {
+    std::vector<unsigned char> raw;
+    for (size_t i = 0; i < hexCiphertext.length(); i += 2) {
+        std::string byteString = hexCiphertext.substr(i, 2);
+        raw.push_back((unsigned char)std::stoi(byteString, nullptr, 16));
+    }
+
+    const unsigned char* iv = raw.data();
+    const unsigned char* ciphertext = raw.data() + AES_BLOCK_SIZE;
+    int ciphertext_len = raw.size() - AES_BLOCK_SIZE;
+
+    EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+    std::vector<unsigned char> plaintext(ciphertext_len + AES_BLOCK_SIZE);
+    int len = 0, plaintext_len = 0;
+
+    EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), nullptr, AES_KEY, iv);
+    EVP_DecryptUpdate(ctx, plaintext.data(), &len, ciphertext, ciphertext_len);
+    plaintext_len = len;
+    EVP_DecryptFinal_ex(ctx, plaintext.data() + len, &len);
+    plaintext_len += len;
+
+    EVP_CIPHER_CTX_free(ctx);
+
+    return std::string((char*)plaintext.data(), plaintext_len);
 }
 
 static const char* BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
@@ -125,7 +177,7 @@ bool WalletManager::saveIdentityToFile() const {
         json identity = {
             {"publicKey", publicKeyHex},
             {"address", address},
-            {"privateKey", privateKeyHex}
+            {"privateKey", encryptAES(privateKeyHex)}
         };
 
         std::ofstream file(dir / "identity.json");
@@ -141,25 +193,20 @@ bool WalletManager::saveIdentityToFile() const {
 bool WalletManager::loadIdentityFromFile() {
     try {
         std::string appData = std::getenv("APPDATA");
-        std::filesystem::path path = std::filesystem::path(appData) / "BabbageBrowser" / "identity.json";
+        std::filesystem::path filePath = std::filesystem::path(appData) / "BabbageBrowser" / "identity.json";
 
-        if (!std::filesystem::exists(path)) {
-            std::cerr << "⚠️ Identity file not found at: " << path << std::endl;
-            return false;
-        }
+        std::ifstream file(filePath);
+        if (!file.is_open()) return false;
 
-        std::ifstream file(path);
         json identity;
         file >> identity;
 
-        privateKeyHex = identity.at("privateKey").get<std::string>();
-        publicKeyHex = identity.at("publicKey").get<std::string>();
-        address = identity.at("address").get<std::string>();
+        publicKeyHex = identity["publicKey"].get<std::string>();
+        address = identity["address"].get<std::string>();
+        privateKeyHex = decryptAES(identity["privateKey"].get<std::string>());
 
-        std::cout << "🔑 Identity loaded from file." << std::endl;
         return true;
-    } catch (const std::exception& ex) {
-        std::cerr << "❌ Failed to load identity: " << ex.what() << std::endl;
+    } catch (...) {
         return false;
     }
 }
