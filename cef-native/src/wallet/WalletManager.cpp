@@ -1,29 +1,162 @@
 #include "wallet/WalletManager.h"
 #include <openssl/ec.h>
-#include <openssl/bn.h>
 #include <openssl/obj_mac.h>
 #include <openssl/sha.h>
 #include <openssl/ripemd.h>
+#include <vector>
 #include <sstream>
 #include <iomanip>
+#include <iostream>
+#include <filesystem>
+#include <fstream>
+#include <nlohmann/json.hpp>
 
-// Helper: Convert bytes to hex string
-std::string toHex(const unsigned char* data, size_t len) {
-    std::stringstream ss;
-    for (size_t i = 0; i < len; ++i)
-        ss << std::hex << std::setw(2) << std::setfill('0') << (int)data[i];
-    return ss.str();
+using json = nlohmann::json;
+
+// === Utility Functions ===
+
+static std::string toHex(const unsigned char* data, size_t len) {
+    std::ostringstream oss;
+    for (size_t i = 0; i < len; ++i) {
+        oss << std::hex << std::setw(2) << std::setfill('0') << (int)data[i];
+    }
+    return oss.str();
 }
 
-// Helper: Base58Check (simplified, not full libbitcoin base58 impl)
-std::string base58Encode(const unsigned char* input, size_t len); // stub for now
+static const char* BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+static std::string base58Encode(const std::vector<unsigned char>& input) {
+    std::vector<unsigned char> digits((input.size() * 138 / 100) + 1);
+    size_t digits_len = 1;
+
+    for (unsigned char byte : input) {
+        int carry = byte;
+        for (size_t j = 0; j < digits_len; ++j) {
+            carry += digits[j] << 8;
+            digits[j] = carry % 58;
+            carry /= 58;
+        }
+        while (carry) {
+            digits[digits_len++] = carry % 58;
+            carry /= 58;
+        }
+    }
+
+    std::string result;
+    for (unsigned char byte : input) {
+        if (byte == 0x00) result += '1';
+        else break;
+    }
+    for (size_t i = 0; i < digits_len; ++i) {
+        result += BASE58_ALPHABET[digits[digits_len - 1 - i]];
+    }
+    return result;
+}
+
+// === WalletManager Methods ===
 
 WalletManager::WalletManager() {
-    generateKeyPair();
+    if (!walletExists()) {
+        std::cout << "🔐 No wallet found. Generating new key pair...\n";
+        generateKeyPair();
+        saveIdentityToFile();
+        std::cout << "💾 Identity saved to AppData.\n";
+    } else {
+        std::cout << "✅ Wallet found!\n";
+        loadIdentityFromFile();
+    }
 }
 
 bool WalletManager::walletExists() const {
-    return true;  // will add real file check later
+    std::string appData = std::getenv("APPDATA");
+    std::filesystem::path path = std::filesystem::path(appData) / "BabbageBrowser" / "identity.json";
+    return std::filesystem::exists(path);
+}
+
+void WalletManager::generateKeyPair() {
+    EC_KEY* key = EC_KEY_new_by_curve_name(NID_secp256k1);
+    if (!key || !EC_KEY_generate_key(key)) {
+        std::cerr << "Failed to generate ECC key.\n";
+        return;
+    }
+
+    // === Private Key (hex) ===
+    const BIGNUM* priv_key_bn = EC_KEY_get0_private_key(key);
+    if (priv_key_bn) {
+        std::vector<unsigned char> priv(BN_num_bytes(priv_key_bn));
+        BN_bn2bin(priv_key_bn, priv.data());
+        privateKeyHex = toHex(priv.data(), priv.size());
+    }
+
+    // === Public Key (hex) ===
+    int pub_len = i2o_ECPublicKey(key, nullptr);
+    std::vector<unsigned char> pub(pub_len);
+    unsigned char* pub_ptr = pub.data();
+    i2o_ECPublicKey(key, &pub_ptr);
+    publicKeyHex = toHex(pub.data(), pub.size());
+
+    // === Address ===
+    unsigned char sha256[SHA256_DIGEST_LENGTH];
+    SHA256(pub.data(), pub.size(), sha256);
+
+    unsigned char ripemd160[RIPEMD160_DIGEST_LENGTH];
+    RIPEMD160(sha256, SHA256_DIGEST_LENGTH, ripemd160);
+
+    std::vector<unsigned char> address_data;
+    address_data.push_back(0x00); // Mainnet version byte
+    address_data.insert(address_data.end(), ripemd160, ripemd160 + RIPEMD160_DIGEST_LENGTH);
+
+    unsigned char checksum[SHA256_DIGEST_LENGTH];
+    SHA256(address_data.data(), address_data.size(), checksum);
+    SHA256(checksum, SHA256_DIGEST_LENGTH, checksum);
+    address_data.insert(address_data.end(), checksum, checksum + 4);
+
+    address = base58Encode(address_data);
+
+    EC_KEY_free(key);
+}
+
+bool WalletManager::saveIdentityToFile() const {
+    try {
+        std::string appData = std::getenv("APPDATA");
+        std::filesystem::path dir = std::filesystem::path(appData) / "BabbageBrowser";
+        std::filesystem::create_directories(dir);
+
+        json identity = {
+            {"publicKey", publicKeyHex},
+            {"address", address},
+            {"privateKey", privateKeyHex}
+        };
+
+        std::ofstream file(dir / "identity.json");
+        file << identity.dump(4);
+        file.close();
+
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+bool WalletManager::loadIdentityFromFile() {
+    try {
+        std::string appData = std::getenv("APPDATA");
+        std::filesystem::path path = std::filesystem::path(appData) / "BabbageBrowser" / "identity.json";
+
+        std::ifstream file(path);
+        if (!file.is_open()) return false;
+
+        json identity;
+        file >> identity;
+
+        publicKeyHex = identity["publicKey"].get<std::string>();
+        address = identity["address"].get<std::string>();
+        privateKeyHex = identity["privateKey"].get<std::string>();
+
+        return true;
+    } catch (...) {
+        return false;
+    }
 }
 
 std::string WalletManager::getPublicKey() const {
@@ -32,38 +165,4 @@ std::string WalletManager::getPublicKey() const {
 
 std::string WalletManager::getAddress() const {
     return address;
-}
-
-void WalletManager::generateKeyPair() {
-    EC_KEY* key = EC_KEY_new_by_curve_name(NID_secp256k1);
-    EC_KEY_generate_key(key);
-
-    const BIGNUM* privKeyBN = EC_KEY_get0_private_key(key);
-    unsigned char privKeyBuf[32];
-    BN_bn2binpad(privKeyBN, privKeyBuf, 32);
-    privateKeyHex = toHex(privKeyBuf, 32);
-
-    const EC_POINT* pubKeyPoint = EC_KEY_get0_public_key(key);
-    EC_GROUP* group = EC_GROUP_new_by_curve_name(NID_secp256k1);
-    unsigned char pubKeyBuf[65];
-    size_t pubKeyLen = EC_POINT_point2oct(group, pubKeyPoint, POINT_CONVERSION_UNCOMPRESSED, pubKeyBuf, sizeof(pubKeyBuf), nullptr);
-    publicKeyHex = toHex(pubKeyBuf, pubKeyLen);
-
-    // SHA256 -> RIPEMD160 of public key
-    unsigned char sha256Digest[SHA256_DIGEST_LENGTH];
-    SHA256(pubKeyBuf, pubKeyLen, sha256Digest);
-
-    unsigned char ripemdDigest[RIPEMD160_DIGEST_LENGTH];
-    RIPEMD160(sha256Digest, SHA256_DIGEST_LENGTH, ripemdDigest);
-
-    // Prepend version byte (0x00 for P2PKH)
-    unsigned char addressBytes[21];
-    addressBytes[0] = 0x00;
-    memcpy(addressBytes + 1, ripemdDigest, RIPEMD160_DIGEST_LENGTH);
-
-    // Base58Check (TODO: add checksum and base58 encoding)
-    address = "1DummyBSVAddress"; // placeholder
-
-    EC_GROUP_free(group);
-    EC_KEY_free(key);
 }

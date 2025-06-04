@@ -10,6 +10,9 @@ public:
     std::string getAddress() const;
     bool walletExists() const;
 
+    bool saveIdentityToFile() const;
+    bool loadIdentityFromFile();
+
 private:
     std::string privateKeyHex;
     std::string publicKeyHex;

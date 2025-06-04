@@ -13,6 +13,7 @@ set(OUTPUT_DIR "$<TARGET_FILE_DIR:BitcoinBrowserShell>")
 set(CMAKE_TOOLCHAIN_FILE "C:/Users/archb/Dev/vcpkg/scripts/buildsystems/vcpkg.cmake" CACHE STRING "")
 set(OPENSSL_USE_STATIC_LIBS TRUE)
 find_package(OpenSSL REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
 
 message(STATUS "OpenSSL include dir: ${OPENSSL_INCLUDE_DIR}")
 
@@ -67,6 +68,7 @@ target_link_libraries(BitcoinBrowserShell PRIVATE
     version
     OpenSSL::SSL
     OpenSSL::Crypto
+    nlohmann_json::nlohmann_json
 )
 
 # Delay-load
