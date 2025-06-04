@@ -141,27 +141,25 @@ bool WalletManager::saveIdentityToFile() const {
 bool WalletManager::loadIdentityFromFile() {
     try {
         std::string appData = std::getenv("APPDATA");
-        std::filesystem::path file = std::filesystem::path(appData) / "BabbageBrowser" / "identity.json";
+        std::filesystem::path path = std::filesystem::path(appData) / "BabbageBrowser" / "identity.json";
 
-        if (!std::filesystem::exists(file)) {
+        if (!std::filesystem::exists(path)) {
+            std::cerr << "⚠️ Identity file not found at: " << path << std::endl;
             return false;
         }
 
-        std::ifstream infile(file);
-        if (!infile.is_open()) {
-            return false;
-        }
-
+        std::ifstream file(path);
         json identity;
-        infile >> identity;
+        file >> identity;
 
-        privateKeyHex = identity.value("privateKey", "");
-        publicKeyHex  = identity.value("publicKey", "");
-        address       = identity.value("address", "");
+        privateKeyHex = identity.at("privateKey").get<std::string>();
+        publicKeyHex = identity.at("publicKey").get<std::string>();
+        address = identity.at("address").get<std::string>();
 
-        // Basic sanity check (optional)
-        return !privateKeyHex.empty() && !publicKeyHex.empty() && !address.empty();
-    } catch (...) {
+        std::cout << "🔑 Identity loaded from file." << std::endl;
+        return true;
+    } catch (const std::exception& ex) {
+        std::cerr << "❌ Failed to load identity: " << ex.what() << std::endl;
         return false;
     }
 }
@@ -177,4 +175,3 @@ std::string WalletManager::getAddress() const {
 std::string WalletManager::getPrivateKey() const {
     return privateKeyHex;
 }
-
