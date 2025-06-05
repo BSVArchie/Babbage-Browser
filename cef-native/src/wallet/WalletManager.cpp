@@ -109,12 +109,16 @@ static std::string base58Encode(const std::vector<unsigned char>& input) {
 
 WalletManager::WalletManager() {
     if (!walletExists()) {
-        std::cout << "🔐 No wallet found. Generating new key pair...\n";
+        std::cout << "🔐 No wallet found. Generating new key pair..." << std::endl;
         generateKeyPair();
         saveIdentityToFile();
-        std::cout << "💾 Identity saved to AppData.\n";
+        std::cout << "💾 Identity saved to AppData." << std::endl;
+
+        std::cout << "⚠️  IMPORTANT: Back up your private key now!" << std::endl;
+        std::cout << "⚠️  If you lose this key, your funds will be permanently inaccessible." << std::endl;
+        std::cout << "⚠️  You can find it in: %APPDATA%/BabbageBrowser/identity.json" << std::endl;
     } else {
-        std::cout << "✅ Wallet found!\n";
+        std::cout << "✅ Wallet found!" << std::endl;
         loadIdentityFromFile();
     }
 }
@@ -221,4 +225,25 @@ std::string WalletManager::getAddress() const {
 
 std::string WalletManager::getPrivateKey() const {
     return privateKeyHex;
+}
+
+std::string WalletManager::getDecryptedIdentityJSON() {
+    try {
+        std::string appData = std::getenv("APPDATA");
+        std::filesystem::path filePath = std::filesystem::path(appData) / "BabbageBrowser" / "identity.json";
+
+        std::ifstream file(filePath);
+        if (!file.is_open()) return "{}";
+
+        nlohmann::json j;
+        file >> j;
+        file.close();
+
+        std::string decryptedPrivateKey = decryptAES(j["privateKey"]);
+        j["privateKey"] = decryptedPrivateKey;
+
+        return j.dump();  // Return full JSON with decrypted key
+    } catch (...) {
+        return "{}";
+    }
 }

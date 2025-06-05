@@ -18,6 +18,9 @@
 #include "cef_command_line.h"
 #include "cef_life_span_handler.h"
 #include "wrapper/cef_helpers.h"
+#include "include/cef_render_process_handler.h"
+#include "include/cef_v8.h"
+#include "include/wallet/IdentityHandler.h"
 #include <shellapi.h>
 #include <windows.h>
 #include <filesystem>
@@ -103,13 +106,34 @@ private:
     IMPLEMENT_REFCOUNTING(SimpleHandler);
 };
 
+class SimpleRenderProcessHandler : public CefRenderProcessHandler {
+public:
+    void OnContextCreated(CefRefPtr<CefBrowser> browser,
+                          CefRefPtr<CefFrame> frame,
+                          CefRefPtr<CefV8Context> context) override {
+        // Create the function
+        CefRefPtr<CefV8Value> identityObj = CefV8Value::CreateObject(nullptr, nullptr);
+        CefRefPtr<CefV8Handler> handler = new IdentityHandler();
 
+        identityObj->SetValue("get", CefV8Value::CreateFunction("get", handler), V8_PROPERTY_ATTRIBUTE_NONE);
+
+        // Bind to window.identity
+        context->GetGlobal()->SetValue("identity", identityObj, V8_PROPERTY_ATTRIBUTE_NONE);
+    }
+
+    IMPLEMENT_REFCOUNTING(SimpleRenderProcessHandler);
+};
 
 class SimpleApp : public CefApp,
-                  public CefBrowserProcessHandler {
+                  public CefBrowserProcessHandler,
+                  public CefRenderProcessHandler {
 public:
     CefRefPtr<CefBrowserProcessHandler> GetBrowserProcessHandler() override {
         return this;
+    }
+
+    CefRefPtr<CefRenderProcessHandler> GetRenderProcessHandler() override {
+        return new SimpleRenderProcessHandler();
     }
 
     void OnBeforeCommandLineProcessing(const CefString& process_type,
@@ -124,11 +148,11 @@ public:
         }
 
         // Disable GPU and related features
-        // command_line->AppendSwitch("disable-gpu");
-        // command_line->AppendSwitch("disable-gpu-compositing");
-        // command_line->AppendSwitch("disable-gpu-shader-disk-cache");
-        // command_line->AppendSwitchWithValue("use-gl", "disabled");
-        // command_line->AppendSwitchWithValue("use-angle", "none");
+        command_line->AppendSwitch("disable-gpu");
+        command_line->AppendSwitch("disable-gpu-compositing");
+        command_line->AppendSwitch("disable-gpu-shader-disk-cache");
+        command_line->AppendSwitchWithValue("use-gl", "disabled");
+        command_line->AppendSwitchWithValue("use-angle", "none");
 
     }
 

@@ -14,6 +14,7 @@ public:
     bool loadIdentityFromFile();
 
     std::string getPrivateKey() const;
+    static std::string getDecryptedIdentityJSON();
 
 private:
     std::string privateKeyHex;

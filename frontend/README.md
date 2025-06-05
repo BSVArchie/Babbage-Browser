@@ -1,3 +1,19 @@
+# Bitcoin Browser: BSV-Powered Web3 Browser
+
+This is a custom Web3-enabled browser shell built using CEF (Chromium Embedded Framework) and React + Vite. It includes:
+
+- ✅ Native BSV wallet integration (private key management, AES encryption, and identity handling)
+- ✅ Frontend backup UI for local wallet export
+- 🚧 Planned: Smart contract integration (sCrypt)
+- 🚧 Planned: Miner API integration for querying balance and broadcasting transactions
+- 🛡️ Security: Keys stay encrypted on disk and will not be exposed to frontend in production
+
+## Structure
+
+- `cef-native/`: C++ browser shell using CEF
+- `frontend/`: React + Vite UI
+- `wallet_test.cpp`: CLI tool for verifying wallet identity creation
+
 # React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
