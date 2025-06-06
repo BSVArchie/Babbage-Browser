@@ -111,29 +111,32 @@ public:
     void OnContextCreated(CefRefPtr<CefBrowser> browser,
                           CefRefPtr<CefFrame> frame,
                           CefRefPtr<CefV8Context> context) override {
-        // Create the function
+        
+        CefRefPtr<CefV8Value> global = context->GetGlobal();
+
         CefRefPtr<CefV8Value> identityObj = CefV8Value::CreateObject(nullptr, nullptr);
-        CefRefPtr<CefV8Handler> handler = new IdentityHandler();
+        identityObj->SetValue("get", CefV8Value::CreateFunction("get", new IdentityHandler()), V8_PROPERTY_ATTRIBUTE_NONE);
 
-        identityObj->SetValue("get", CefV8Value::CreateFunction("get", handler), V8_PROPERTY_ATTRIBUTE_NONE);
-
-        // Bind to window.identity
-        context->GetGlobal()->SetValue("identity", identityObj, V8_PROPERTY_ATTRIBUTE_NONE);
+        global->SetValue("identity", identityObj, V8_PROPERTY_ATTRIBUTE_NONE);
     }
 
+private:
     IMPLEMENT_REFCOUNTING(SimpleRenderProcessHandler);
 };
+
 
 class SimpleApp : public CefApp,
                   public CefBrowserProcessHandler,
                   public CefRenderProcessHandler {
 public:
+    SimpleApp() : render_process_handler_(new SimpleRenderProcessHandler()) {}
+
     CefRefPtr<CefBrowserProcessHandler> GetBrowserProcessHandler() override {
         return this;
     }
 
     CefRefPtr<CefRenderProcessHandler> GetRenderProcessHandler() override {
-        return new SimpleRenderProcessHandler();
+        return render_process_handler_;
     }
 
     void OnBeforeCommandLineProcessing(const CefString& process_type,
@@ -203,7 +206,11 @@ public:
         std::cout << "CreateBrowser returned: " << (result ? "true" : "false") << std::endl;
     }
 
+
+
 private:
+    CefRefPtr<SimpleRenderProcessHandler> render_process_handler_;
+
     IMPLEMENT_REFCOUNTING(SimpleApp);
 };
 

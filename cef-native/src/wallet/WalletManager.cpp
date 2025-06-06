@@ -181,7 +181,8 @@ bool WalletManager::saveIdentityToFile() const {
         json identity = {
             {"publicKey", publicKeyHex},
             {"address", address},
-            {"privateKey", encryptAES(privateKeyHex)}
+            {"privateKey", encryptAES(privateKeyHex)},
+            {"backedUp", false}
         };
 
         std::ofstream file(dir / "identity.json");
@@ -227,7 +228,7 @@ std::string WalletManager::getPrivateKey() const {
     return privateKeyHex;
 }
 
-std::string WalletManager::getDecryptedIdentityJSON() {
+nlohmann::json WalletManager::getDecryptedIdentityJSON() {
     try {
         std::string appData = std::getenv("APPDATA");
         std::filesystem::path filePath = std::filesystem::path(appData) / "BabbageBrowser" / "identity.json";
@@ -242,7 +243,7 @@ std::string WalletManager::getDecryptedIdentityJSON() {
         std::string decryptedPrivateKey = decryptAES(j["privateKey"]);
         j["privateKey"] = decryptedPrivateKey;
 
-        return j.dump();  // Return full JSON with decrypted key
+        return j;  // Return full JSON with decrypted key
     } catch (...) {
         return "{}";
     }

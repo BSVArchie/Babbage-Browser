@@ -5,59 +5,82 @@ import Dashboard from './pages/Dashboard';
 import SidebarLayout from './components/SidebarLayout';
 import BackupModal from './components/BackupModal';
 
-declare global {
-  interface Window {
-    identity?: {
-      get: () => string;
-    };
+interface IdentityObject {
+    publicKey: string;
+    privateKey: string;
+    address: string;
+    backedUp: boolean;
   }
-}
 
 const App = () => {
   const [walletExists, setWalletExists] = useState(false);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const [showBackupModal, setShowBackupModal] = useState(false);
-  const [identity, setIdentity] = useState({ address: '', publicKey: '', privateKey: '' });
+  const [identity, setIdentity] = useState<IdentityObject | null>(null);
 
   useEffect(() => {
-    const exists = localStorage.getItem('wallet_exists') === 'true';
-    setWalletExists(exists);
-    setLoading(false);
+    const loadIdentity = async () => {
 
-    if (exists) {
-      // Simulate identity JSON load
-      const storedIdentity = localStorage.getItem('identity');
-      if (storedIdentity) {
-        setIdentity(JSON.parse(storedIdentity));
-      } else {
-        // TEMP: This would be replaced with the real identity load from native backend
-        setIdentity({
-          address: 'mock-address',
-          publicKey: 'mock-public-key',
-          privateKey: 'mock-private-key'
-        });
+      console.log("window.identity", window.identity);
+      typeof window.identity?.get;
+
+      console.log("🚀 useEffect started on", window.location.href);
+
+
+
+
+
+      for (let i = 0; i < 40; i++) {
+        if (typeof window.identity?.get === 'function') break;
+        await new Promise((r) => setTimeout(r, 50));
       }
 
-      // Simulate logic: if they haven’t backed up, prompt them
-      const backedUp = localStorage.getItem('identity_backed_up') === 'true';
-      if (!backedUp) setShowBackupModal(true);
+      if (typeof window.identity?.get !== 'function') {
+        console.warn("⚠️ identity.get is not a function.");
+        return;
+      }
 
-      navigate('/dashboard');
-    }
+      try {
+        const result = await window.identity.get();
+
+        if (result.backedUp === true) {
+          console.log("✅ Wallet is backed up.");
+          setWalletExists(true);
+          setLoading(false);
+          return;
+        }
+
+        console.log("🧾 Identity JSON:", result);
+        setIdentity(result); // TS now knows result is full IdentityData
+        setWalletExists(true);
+        setShowBackupModal(true);
+        setLoading(false);
+
+      } catch (err) {
+        console.error("💥 Error in identity.get():", err);
+      }
+    };
+
+    loadIdentity();
   }, []);
 
-  useEffect(() => {
-    if (window.identity?.get) {
-      const result = window.identity.get();  // Should be JSON string
-      const json = JSON.parse(result);
-      console.log("✅ Identity JSON loaded:", json);
-    } else {
-      console.warn("⚠️ identity.get() not available");
-    }
-  }, []);
 
-  if (loading) return <div>Loading...</div>;
+  // if (loading) return <div>Loading...</div>;
+
+  // useEffect(() => {
+  // if (typeof window.identity?.get !== 'function') {
+  //   console.warn("⚠️ identity.get is not a function");
+  //   return;
+  // }
+
+  // // Then call identity.get()
+  // window.identity.get().then((jsonString) => {
+  //   const parsed = JSON.parse(jsonString);
+  //   setIdentity(parsed);
+  // });
+// }, []);
+
 
   return (
     <>
@@ -67,14 +90,16 @@ const App = () => {
         <Route path="/dashboard" element={<SidebarLayout><Dashboard /></SidebarLayout>} />
       </Routes>
 
-        <BackupModal
-        open={showBackupModal}
-        onClose={() => {
-          setShowBackupModal(false);
-          localStorage.setItem('identity_backed_up', 'true'); // Mark as backed up
-        }}
-        identity={identity}
-      />
+        {identity && (
+          <BackupModal
+            open={showBackupModal}
+            onClose={() => {
+              setShowBackupModal(false);
+              localStorage.setItem('identity_backed_up', 'true'); // Mark as backed up
+            }}
+            identity={identity}
+          />
+        )}
     </>
   );
 };

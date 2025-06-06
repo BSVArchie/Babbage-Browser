@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <nlohmann/json.hpp>
 
 class WalletManager {
 public:
@@ -14,7 +15,7 @@ public:
     bool loadIdentityFromFile();
 
     std::string getPrivateKey() const;
-    static std::string getDecryptedIdentityJSON();
+    static nlohmann::json getDecryptedIdentityJSON();
 
 private:
     std::string privateKeyHex;
