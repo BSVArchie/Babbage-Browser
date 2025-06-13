@@ -27,10 +27,6 @@ const App = () => {
 
       console.log("🚀 useEffect started on", window.location.href);
 
-
-
-
-
       for (let i = 0; i < 40; i++) {
         if (typeof window.identity?.get === 'function') break;
         await new Promise((r) => setTimeout(r, 50));
@@ -64,23 +60,6 @@ const App = () => {
 
     loadIdentity();
   }, []);
-
-
-  // if (loading) return <div>Loading...</div>;
-
-  // useEffect(() => {
-  // if (typeof window.identity?.get !== 'function') {
-  //   console.warn("⚠️ identity.get is not a function");
-  //   return;
-  // }
-
-  // // Then call identity.get()
-  // window.identity.get().then((jsonString) => {
-  //   const parsed = JSON.parse(jsonString);
-  //   setIdentity(parsed);
-  // });
-// }, []);
-
 
   return (
     <>

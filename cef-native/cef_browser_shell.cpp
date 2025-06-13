@@ -111,11 +111,12 @@ public:
     void OnContextCreated(CefRefPtr<CefBrowser> browser,
                           CefRefPtr<CefFrame> frame,
                           CefRefPtr<CefV8Context> context) override {
-        
+
         CefRefPtr<CefV8Value> global = context->GetGlobal();
 
         CefRefPtr<CefV8Value> identityObj = CefV8Value::CreateObject(nullptr, nullptr);
         identityObj->SetValue("get", CefV8Value::CreateFunction("get", new IdentityHandler()), V8_PROPERTY_ATTRIBUTE_NONE);
+        identityObj->SetValue("markBackedUp", CefV8Value::CreateFunction("markBackedUp", new IdentityHandler()), V8_PROPERTY_ATTRIBUTE_NONE);
 
         global->SetValue("identity", identityObj, V8_PROPERTY_ATTRIBUTE_NONE);
     }

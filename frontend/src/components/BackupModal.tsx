@@ -6,7 +6,9 @@ import {
   Button,
   IconButton,
   Collapse,
-  TextField
+  TextField,
+  Checkbox,
+  FormControlLabel
 } from '@mui/material';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
@@ -36,6 +38,7 @@ type Props = {
 const BackupModal: React.FC<Props> = ({ open, onClose, identity }) => {
   const [showPrivate, setShowPrivate] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [confirmedBackup, setConfirmedBackup] = useState(false);
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -44,7 +47,17 @@ const BackupModal: React.FC<Props> = ({ open, onClose, identity }) => {
   };
 
   return (
-    <Modal open={open} onClose={onClose}>
+    <Modal
+    open={open}
+    onClose={(event, reason) => {
+        if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
+          // Do nothing, prevent closing
+          return;
+        }
+        onClose();
+      }}
+      disableEscapeKeyDown
+    >
       <Box sx={style}>
         <Typography variant="h6" gutterBottom>
           <WarningAmberIcon sx={{ verticalAlign: 'middle', mr: 1, color: 'orange' }} />
@@ -101,11 +114,43 @@ const BackupModal: React.FC<Props> = ({ open, onClose, identity }) => {
           />
         </Collapse>
 
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={confirmedBackup}
+              onChange={(e) => setConfirmedBackup(e.target.checked)}
+              name="confirmBackup"
+              color="primary"
+            />
+          }
+          label="I have securely backed up my wallet information."
+          sx={{ mt: 2 }}
+        />
+
         <Box mt={2} display="flex" justifyContent="space-between">
           <Button onClick={() => setShowPrivate((prev) => !prev)} color="warning">
             {showPrivate ? 'Hide Private Key' : 'Show Private Key'}
           </Button>
-          <Button onClick={onClose} variant="contained" color="primary">
+          <Button
+            onClick={async () => {
+              try {
+                if (typeof window.identity?.markBackedUp === 'function') {
+                  const result = await window.identity.markBackedUp();
+                  console.log("📝 Backend update result:", result);
+                } else {
+                  console.warn("❌ markBackedUp is not a function.");
+                }
+              } catch (err) {
+                console.error("💥 Error marking wallet as backed up:", err);
+              }
+
+              localStorage.setItem('identity_backed_up', 'true');
+              onClose();
+            }}
+            variant="contained"
+            color="primary"
+            disabled={!confirmedBackup}
+          >
             Done
           </Button>
         </Box>

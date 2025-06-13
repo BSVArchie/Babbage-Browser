@@ -195,6 +195,7 @@ bool WalletManager::saveIdentityToFile() const {
     }
 }
 
+
 bool WalletManager::loadIdentityFromFile() {
     try {
         std::string appData = std::getenv("APPDATA");
@@ -248,3 +249,28 @@ nlohmann::json WalletManager::getDecryptedIdentityJSON() {
         return "{}";
     }
 }
+
+bool WalletManager::markWalletAsBackedUp() {
+    try {
+        std::string appData = std::getenv("APPDATA");
+        std::filesystem::path path = std::filesystem::path(appData) / "BabbageBrowser" / "identity.json";
+
+        std::ifstream in(path);
+        if (!in.is_open()) return false;
+
+        nlohmann::json j;
+        in >> j;
+        in.close();
+
+        j["backedUp"] = true;
+
+        std::ofstream out(path);
+        out << j.dump(4);
+        out.close();
+
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+

@@ -10,9 +10,9 @@ public:
     std::string getPublicKey() const;
     std::string getAddress() const;
     bool walletExists() const;
-
     bool saveIdentityToFile() const;
     bool loadIdentityFromFile();
+    bool markWalletAsBackedUp();
 
     std::string getPrivateKey() const;
     static nlohmann::json getDecryptedIdentityJSON();

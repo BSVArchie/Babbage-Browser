@@ -6,6 +6,7 @@ declare global {
   interface Window {
     identity?: {
       get?: () => Promise<IdentityResult>;
+      markBackedUp: () => Promise<void>;
     };
   }
 }
