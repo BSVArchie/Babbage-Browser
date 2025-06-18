@@ -1,6 +1,6 @@
 
 
-const Dashboard = () => {
+const WalletPanel = () => {
   return (
     <div className="p-4">
       <h2 className="text-lg font-semibold">Dashboard</h2>
@@ -9,4 +9,4 @@ const Dashboard = () => {
   );
 };
 
-export default Dashboard;
+export default WalletPanel;

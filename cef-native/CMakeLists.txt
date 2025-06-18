@@ -21,7 +21,14 @@ message(STATUS "OpenSSL include dir: ${OPENSSL_INCLUDE_DIR}")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # Shell source
-set(SOURCES cef_browser_shell.cpp)
+set(SOURCES
+    cef_browser_shell.cpp
+    src/simple_handler.cpp
+    src/simple_render_process_handler.cpp
+    src/wallet/WalletManager.cpp
+    src/wallet/IdentityHandler.cpp
+    # Add other source files here
+)
 
 # Create executable
 add_executable(BitcoinBrowserShell WIN32 ${SOURCES})

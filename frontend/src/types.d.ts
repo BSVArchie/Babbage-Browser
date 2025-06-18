@@ -2,14 +2,20 @@
 
 export {};
 
+export {};
+
 declare global {
   interface Window {
-    identity?: {
-      get?: () => Promise<IdentityResult>;
-      markBackedUp: () => Promise<void>;
+    bitcoinBrowser: {
+      identity: {
+        get: () => Promise<any>;
+        markBackedUp: () => Promise<any>;
+        // add other functions as you expose them
+      };
     };
   }
 }
+
 
 type IdentityData = {
   publicKey: string;

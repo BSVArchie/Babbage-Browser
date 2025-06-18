@@ -134,8 +134,8 @@ const BackupModal: React.FC<Props> = ({ open, onClose, identity }) => {
           <Button
             onClick={async () => {
               try {
-                if (typeof window.identity?.markBackedUp === 'function') {
-                  const result = await window.identity.markBackedUp();
+                if (typeof window.bitcoinBrowser.identity?.markBackedUp === 'function') {
+                  const result = await window.bitcoinBrowser.identity.markBackedUp();
                   console.log("📝 Backend update result:", result);
                 } else {
                   console.warn("❌ markBackedUp is not a function.");

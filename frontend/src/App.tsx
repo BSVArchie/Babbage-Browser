@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import Welcome from './pages/Welcome';
-import Dashboard from './pages/Dashboard';
-import SidebarLayout from './components/SidebarLayout';
-import BackupModal from './components/BackupModal';
+import BackupModal from './components/panels/BackupModal';
+import MainBrowserView from './pages/MainBrowserView';
 
 interface IdentityObject {
     publicKey: string;
@@ -22,23 +21,23 @@ const App = () => {
   useEffect(() => {
     const loadIdentity = async () => {
 
-      console.log("window.identity", window.identity);
-      typeof window.identity?.get;
+      console.log("window.identity", window.bitcoinBrowser.identity);
+      typeof window.bitcoinBrowser.identity?.get;
 
       console.log("🚀 useEffect started on", window.location.href);
 
       for (let i = 0; i < 40; i++) {
-        if (typeof window.identity?.get === 'function') break;
+        if (typeof window.bitcoinBrowser.identity?.get === 'function') break;
         await new Promise((r) => setTimeout(r, 50));
       }
 
-      if (typeof window.identity?.get !== 'function') {
+      if (typeof window.bitcoinBrowser.identity?.get !== 'function') {
         console.warn("⚠️ identity.get is not a function.");
         return;
       }
 
       try {
-        const result = await window.identity.get();
+        const result = await window.bitcoinBrowser.identity.get();
 
         if (result.backedUp === true) {
           console.log("✅ Wallet is backed up.");
@@ -64,9 +63,8 @@ const App = () => {
   return (
     <>
       <Routes>
-        <Route path="/" element={<Navigate to={walletExists ? "/dashboard" : "/welcome"} />} />
+        <Route path="/" element={walletExists ? <MainBrowserView /> : <Welcome />} />
         <Route path="/welcome" element={<Welcome />} />
-        <Route path="/dashboard" element={<SidebarLayout><Dashboard /></SidebarLayout>} />
       </Routes>
 
         {identity && (
