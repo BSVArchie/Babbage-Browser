@@ -1,4 +1,4 @@
-#include "../../include/wallet/IdentityHandler.h"
+#include "../../include/core/IdentityHandler.h"
 
 CefRefPtr<CefV8Value> jsonToV8(const nlohmann::json& j) {
     if (j.is_object()) {

@@ -1,4 +1,4 @@
-#include "wallet/WalletManager.h"
+#include "../include/core/WalletManager.h"
 #include <iostream>
 
 int main() {

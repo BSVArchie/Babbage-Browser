@@ -14,6 +14,7 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 
 import WalletPanelLayout from '../components/panels/WalletPanelLayout';
 import SettingsPanelLayout from '../components/panels/SettingsPanelLayout';
+import { useBitcoinBrowser } from '../hooks/useBitcoinBrowser';
 
 
 const MainBrowserView: React.FC = () => {
@@ -22,9 +23,11 @@ const MainBrowserView: React.FC = () => {
     const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
     const [address, setAddress] = useState('https://example.com');
 
+    const { navigate } = useBitcoinBrowser();
+
     const handleNavigate = () => {
-        console.log('Navigate to:', address);
-        // This is where we'll call backend.navigate(address) later.
+        console.log('🧭 Navigating to:', address);
+        navigate(address);
     };
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -46,8 +49,6 @@ const MainBrowserView: React.FC = () => {
 
                 {/* Address Bar */}
                 <Paper
-                    component="form"
-                    onSubmit={(e) => { e.preventDefault(); handleNavigate(); }}
                     sx={{
                         display: 'flex',
                         alignItems: 'center',

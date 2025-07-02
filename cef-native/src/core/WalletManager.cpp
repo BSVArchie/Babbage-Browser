@@ -1,4 +1,4 @@
-#include "wallet/WalletManager.h"
+#include "../../include/core/WalletManager.h"
 #include <openssl/ec.h>
 #include <openssl/obj_mac.h>
 #include <openssl/sha.h>
@@ -273,4 +273,3 @@ bool WalletManager::markWalletAsBackedUp() {
         return false;
     }
 }
-

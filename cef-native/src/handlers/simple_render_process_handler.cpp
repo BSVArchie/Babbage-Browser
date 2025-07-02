@@ -1,6 +1,7 @@
 // cef_native/src/simple_render_process_handler.cpp
-#include "../include/simple_render_process_handler.h"
-#include "../include/wallet/IdentityHandler.h"
+#include "../../include/handlers/simple_render_process_handler.h"
+#include "../../include/core/IdentityHandler.h"
+#include "../../include/core/NavigationHandler.h"
 #include "wrapper/cef_helpers.h"
 #include "include/cef_v8.h"
 #include <iostream>
@@ -34,4 +35,16 @@ void SimpleRenderProcessHandler::OnContextCreated(
     identityObject->SetValue("markBackedUp",
         CefV8Value::CreateFunction("markBackedUp", identityHandler),
         V8_PROPERTY_ATTRIBUTE_NONE);
+
+    // Create the navigation object inside bitcoinBrowser
+    CefRefPtr<CefV8Value> navigationObject = CefV8Value::CreateObject(nullptr, nullptr);
+    bitcoinBrowser->SetValue("navigation", navigationObject, V8_PROPERTY_ATTRIBUTE_READONLY);
+
+    // Bind the NavigationHandler instance
+    CefRefPtr<NavigationHandler> navigationHandler = new NavigationHandler();
+
+    navigationObject->SetValue("navigate",
+        CefV8Value::CreateFunction("navigate", navigationHandler),
+        V8_PROPERTY_ATTRIBUTE_NONE);
+
 }

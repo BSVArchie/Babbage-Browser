@@ -1,11 +1,12 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 5137, // make sure this matches your CEF config
+    host: '127.0.0.1',  // 👈 Bind to loopback explicitly
+    port: 5137,
     cors: true
   }
 })
+

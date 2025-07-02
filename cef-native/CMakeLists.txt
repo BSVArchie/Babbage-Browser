@@ -23,10 +23,12 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 # Shell source
 set(SOURCES
     cef_browser_shell.cpp
-    src/simple_handler.cpp
-    src/simple_render_process_handler.cpp
-    src/wallet/WalletManager.cpp
-    src/wallet/IdentityHandler.cpp
+    src/handlers/simple_handler.cpp
+    src/handlers/simple_render_process_handler.cpp
+    src/handlers/simple_app.cpp
+    src/core/WalletManager.cpp
+    src/core/IdentityHandler.cpp
+    src/core/NavigationHandler.cpp
     # Add other source files here
 )
 
@@ -38,15 +40,19 @@ set_target_properties(BitcoinBrowserShell PROPERTIES
 )
 
 target_sources(BitcoinBrowserShell PRIVATE
-    src/wallet/WalletManager.cpp
+    src/core/WalletManager.cpp
 )
 
 # Include CEF headers
 target_include_directories(BitcoinBrowserShell PRIVATE
     ${CEF_ROOT}
     ${CEF_ROOT}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/wallet
+    ${CEF_ROOT}/include/base
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/core
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/handlers
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/handlers
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests
     ${OpenSSL_INCLUDE_DIR}
 )
 
@@ -102,5 +108,5 @@ add_custom_command(TARGET BitcoinBrowserShell POST_BUILD
     COMMENT "Copying all CEF binaries and resources"
 )
 
-add_subdirectory(src/wallet)
+add_subdirectory(src/core)
 add_subdirectory(tests)
