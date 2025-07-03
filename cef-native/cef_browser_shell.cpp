@@ -1,4 +1,4 @@
-#define CEF_ENABLE_SANDBOX 0
+// #define CEF_ENABLE_SANDBOX 0
 
 #pragma once
 
@@ -52,7 +52,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
 
     // CEF global settings
     CefSettings settings;
-    settings.no_sandbox = true;
+    // settings.no_sandbox = true;
     settings.command_line_args_disabled = false;
     CefString(&settings.log_file).FromASCII("debug.log");
     settings.log_severity = LOGSEVERITY_INFO;
