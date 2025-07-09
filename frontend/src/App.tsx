@@ -14,7 +14,7 @@ interface IdentityObject {
 const App = () => {
   const [walletExists, setWalletExists] = useState(false);
   const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
+  // const navigate = useNavigate();
   const [showBackupModal, setShowBackupModal] = useState(false);
   const [identity, setIdentity] = useState<IdentityObject | null>(null);
 

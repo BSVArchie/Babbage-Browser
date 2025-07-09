@@ -11,7 +11,9 @@
 #include <iostream>
 #include <string>
 
-SimpleHandler::SimpleHandler() {}
+SimpleHandler::SimpleHandler(const std::string& role) : role_(role) {}
+
+// SimpleHandler::SimpleHandler() {}
 
 CefRefPtr<CefLifeSpanHandler> SimpleHandler::GetLifeSpanHandler() {
     return this;
@@ -24,6 +26,8 @@ CefRefPtr<CefDisplayHandler> SimpleHandler::GetDisplayHandler() {
 CefRefPtr<CefLoadHandler> SimpleHandler::GetLoadHandler() {
     return this;
 }
+
+CefRefPtr<CefBrowser> SimpleHandler::webview_browser_ = nullptr;
 
 void SimpleHandler::OnTitleChange(CefRefPtr<CefBrowser> browser, const CefString& title) {
 #if defined(OS_WIN)
@@ -68,14 +72,26 @@ void SimpleHandler::OnLoadingStateChange(CefRefPtr<CefBrowser> browser,
 }
 
 void SimpleHandler::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
-    std::cout << "≡ƒ¢á∩╕Å Browser created..." << std::endl;
+    CEF_REQUIRE_UI_THREAD();
+
+    std::cout << "✅ OnAfterCreated for role: " << role_ << std::endl;
+
+    if (role_ == "webview") {
+        webview_browser_ = browser;
+        std::cout << "📡 WebView browser reference stored." << std::endl;
+    } else if (role_ == "shell") {
+        std::cout << "🧭 Shell browser initialized." << std::endl;
+        // Optional: store shell_browser_ if you need to send messages to it later
+    }
 }
 
-// bool SimpleHandler::OnProcessMessageReceived(CefRefPtr<CefBrowser> browser,
-//                                              CefRefPtr<CefFrame> frame,
-//                                              CefProcessId source_process,
-//                                              CefRefPtr<CefProcessMessage> message) {
-//     CEF_REQUIRE_UI_THREAD();
+// bool SimpleHandler::OnProcessMessageReceived(
+//     CefRefPtr<CefBrowser> browser,
+//     CefRefPtr<CefFrame> frame,
+//     CefProcessId source_process,
+//     CefRefPtr<CefProcessMessage> message) {
+
+//     CEF_REQUIRE_UI_THREAD();  // Ensure this is running on the UI thread
 
 //     std::string msg_name = message->GetName();
 //     std::cout << "📨 Browser received message: " << msg_name << std::endl;
@@ -83,57 +99,65 @@ void SimpleHandler::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
 //     if (msg_name == "navigate") {
 //         std::string path = message->GetArgumentList()->GetString(0);
 
+//         static int counter = 0;
+//         std::cout << "🚀 JS-triggered navigate #" << ++counter << " to: " << path << std::endl;
+
+//         // Prepend "http://" if necessary
 //         if (!(path.rfind("http://", 0) == 0 || path.rfind("https://", 0) == 0)) {
 //             path = "http://" + path;
 //         }
 
 //         std::cout << "🌐 Loading URL from SimpleHandler: " << path << std::endl;
-//         browser->GetMainFrame()->LoadURL(path);
-//         return true;
+
+//         // Post the navigation task to the UI thread using CefPostTask
+//         CefPostTask(TID_UI, base::BindOnce([](CefRefPtr<CefBrowser> browser, std::string path) {
+//             // Ensure browser and frame are valid
+//             if (!browser || !browser->GetMainFrame()) {
+//                 std::cout << "⚠️ Error: Invalid browser or frame!" << std::endl;
+//                 return;
+//             }
+
+//             std::cout << "🌐 Navigating to: " << path << std::endl;  // This is already added
+//             browser->GetMainFrame()->LoadURL(path);  // Perform the actual navigation
+//             std::cout << "🌐 Navigation command executed for: " << path << std::endl;
+//         }, browser, path));
+
+//         return true;  // Message handled
 //     }
 
-//     return false;
+//     return false;  // Message not handled
 // }
 
 bool SimpleHandler::OnProcessMessageReceived(
     CefRefPtr<CefBrowser> browser,
     CefRefPtr<CefFrame> frame,
     CefProcessId source_process,
-    CefRefPtr<CefProcessMessage> message) {
+    CefRefPtr<CefProcessMessage> message
+) {
+    CEF_REQUIRE_UI_THREAD();
 
-    CEF_REQUIRE_UI_THREAD();  // Ensure this is running on the UI thread
+    std::string message_name = message->GetName();
+    std::cout << "📨 Message received: " << message_name << std::endl;
 
-    std::string msg_name = message->GetName();
-    std::cout << "📨 Browser received message: " << msg_name << std::endl;
+    if (message_name == "navigate") {
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        std::string path = args->GetString(0);
 
-    if (msg_name == "navigate") {
-        std::string path = message->GetArgumentList()->GetString(0);
-
-        static int counter = 0;
-        std::cout << "🚀 JS-triggered navigate #" << ++counter << " to: " << path << std::endl;
-
-        // Prepend "http://" if necessary
+        // Normalize protocol
         if (!(path.rfind("http://", 0) == 0 || path.rfind("https://", 0) == 0)) {
             path = "http://" + path;
         }
 
-        std::cout << "🌐 Loading URL from SimpleHandler: " << path << std::endl;
+        std::cout << "🔁 Forwarding navigation to webview: " << path << std::endl;
 
-        // Post the navigation task to the UI thread using CefPostTask
-        CefPostTask(TID_UI, base::BindOnce([](CefRefPtr<CefBrowser> browser, std::string path) {
-            // Ensure browser and frame are valid
-            if (!browser || !browser->GetMainFrame()) {
-                std::cout << "⚠️ Error: Invalid browser or frame!" << std::endl;
-                return;
-            }
+        if (SimpleHandler::webview_browser_ && SimpleHandler::webview_browser_->GetMainFrame()) {
+            SimpleHandler::webview_browser_->GetMainFrame()->LoadURL(path);
+        } else {
+            std::cout << "⚠️ WebView browser not available or not fully initialized." << std::endl;
+        }
 
-            std::cout << "🌐 Navigating to: " << path << std::endl;  // This is already added
-            browser->GetMainFrame()->LoadURL(path);  // Perform the actual navigation
-            std::cout << "🌐 Navigation command executed for: " << path << std::endl;
-        }, browser, path));
-
-        return true;  // Message handled
+        return true;
     }
 
-    return false;  // Message not handled
+    return false;
 }

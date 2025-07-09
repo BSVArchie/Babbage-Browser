@@ -110,43 +110,67 @@ void SimpleApp::OnContextInitialized() {
     ShowWindow(webview_hwnd, SW_SHOW);
     UpdateWindow(webview_hwnd);
 
-    // ⚙️ Create CEF browser for the React UI shell
-    CefWindowInfo shell_window_info;
-
+   // ⚙️ Create CEF browser for the React UI shell
     RECT clientRect;
     GetClientRect(shell_hwnd, &clientRect);  // safe to call after ShowWindow
 
     int clientWidth = clientRect.right - clientRect.left;
     int clientHeight = clientRect.bottom - clientRect.top;
 
+    CefWindowInfo shell_window_info;
     shell_window_info.SetAsChild(shell_hwnd, CefRect(0, 0, clientWidth, clientHeight));
 
-    CefRefPtr<SimpleHandler> shell_handler = new SimpleHandler();
-    // std::string shell_url = "http://localhost:5137";
+    // 🔧 Create handler with shell role
+    CefRefPtr<SimpleHandler> shell_handler = new SimpleHandler("shell");
+
+    // 🌐 Set initial shell URL
     std::string shell_url = "http://127.0.0.1:5137";
     std::cout << "Loading React shell at: " << shell_url << std::endl;
+
+    // 📋 Browser settings and context
+    CefBrowserSettings shell_settings;
+    CefRefPtr<CefRequestContext> shell_context = CefRequestContext::GetGlobalContext();
+
+    // 🌍 Launch the shell browser
     bool shell_result = CefBrowserHost::CreateBrowser(
-        shell_window_info, shell_handler, shell_url, CefBrowserSettings(), nullptr, nullptr
+        shell_window_info,
+        shell_handler,
+        shell_url,
+        shell_settings,
+        nullptr,
+        CefRequestContext::GetGlobalContext()
     );
+
     std::cout << "Shell browser created: " << (shell_result ? "true" : "false") << std::endl;
 
     // ⚙️ Create CEF browser for the WebView (site renderer)
-    CefWindowInfo webview_window_info;
-
+    // Setup child window size
     RECT webviewRect;
     GetClientRect(webview_hwnd, &webviewRect);
-
     int webviewClientWidth = webviewRect.right - webviewRect.left;
     int webviewClientHeight = webviewRect.bottom - webviewRect.top;
 
+    CefWindowInfo webview_window_info;
     webview_window_info.SetAsChild(webview_hwnd, CefRect(0, 0, webviewClientWidth, webviewClientHeight));
 
-    CefRefPtr<SimpleHandler> webview_handler = new SimpleHandler();
-    // Placeholder external site (use blank or real page)
-    std::string external_url = "https://www.coingeek.com";
-    std::cout << "Initializing WebView surface at: " << external_url << std::endl;
+    // Create handler with role
+    CefRefPtr<SimpleHandler> webview_handler = new SimpleHandler("webview");
+
+    // Setup browser settings
+    CefBrowserSettings webview_settings;
+
+    // (Optional but safe) use global context
+    CefRefPtr<CefRequestContext> webview_context = CefRequestContext::GetGlobalContext();
+
+    // Create the browser (5 parameters only)
     bool webview_result = CefBrowserHost::CreateBrowser(
-        webview_window_info, webview_handler, external_url, CefBrowserSettings(), nullptr, nullptr
+        webview_window_info,
+        webview_handler,
+        "https://www.coingeek.com",
+        webview_settings,
+        nullptr,              // extra_info (you can use this if needed later)
+        CefRequestContext::GetGlobalContext() // request_context
     );
+
     std::cout << "WebView browser created: " << (webview_result ? "true" : "false") << std::endl;
 }

@@ -11,12 +11,14 @@ class SimpleHandler : public CefClient,
                       public CefDisplayHandler,
                       public CefLoadHandler {
 public:
-    SimpleHandler();
+    explicit SimpleHandler(const std::string& role);
 
     // CefClient methods
     CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override;
     CefRefPtr<CefDisplayHandler> GetDisplayHandler() override;
     CefRefPtr<CefLoadHandler> GetLoadHandler() override;
+    static CefRefPtr<CefBrowser> webview_browser_;
+
 
     // CefDisplayHandler methods
     void OnTitleChange(CefRefPtr<CefBrowser> browser, const CefString& title) override;
@@ -41,5 +43,6 @@ public:
                               CefRefPtr<CefProcessMessage> message) override;
 
 private:
+    std::string role_;
     IMPLEMENT_REFCOUNTING(SimpleHandler);
 };

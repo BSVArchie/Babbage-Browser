@@ -11,6 +11,9 @@ declare global {
         navigate: (path: string) => void;
       };
     };
+    cefMessage?: {
+      send: (channel: string, args: any[]) => void;
+    };
   }
 }
 
