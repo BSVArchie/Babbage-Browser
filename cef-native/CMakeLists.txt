@@ -26,6 +26,7 @@ set(SOURCES
     src/handlers/simple_handler.cpp
     src/handlers/simple_render_process_handler.cpp
     src/handlers/simple_app.cpp
+    src/handlers/my_overlay_render_handler.cpp
     src/core/WalletManager.cpp
     src/core/IdentityHandler.cpp
     src/core/NavigationHandler.cpp
@@ -78,6 +79,7 @@ target_link_libraries(BitcoinBrowserShell PRIVATE
     delayimp
     shell32
     advapi32
+    dwmapi
     version
     OpenSSL::SSL
     OpenSSL::Crypto

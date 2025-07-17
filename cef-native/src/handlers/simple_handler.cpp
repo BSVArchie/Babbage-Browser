@@ -81,52 +81,17 @@ void SimpleHandler::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
         std::cout << "📡 WebView browser reference stored." << std::endl;
     } else if (role_ == "shell") {
         std::cout << "🧭 Shell browser initialized." << std::endl;
-        // Optional: store shell_browser_ if you need to send messages to it later
+    }else if (role_ == "overlay") {
+        std::cout << "🪟 Overlay browser initialized." << std::endl;
+        // Optional: store overlay_browser_ if you want dynamic control later
     }
+
+    std::cout << "🧭 Browser Created → role: " << role_
+          << ", ID: " << browser->GetIdentifier()
+          << ", IsPopup: " << browser->IsPopup()
+          << ", MainFrame URL: " << browser->GetMainFrame()->GetURL().ToString()
+          << std::endl;
 }
-
-// bool SimpleHandler::OnProcessMessageReceived(
-//     CefRefPtr<CefBrowser> browser,
-//     CefRefPtr<CefFrame> frame,
-//     CefProcessId source_process,
-//     CefRefPtr<CefProcessMessage> message) {
-
-//     CEF_REQUIRE_UI_THREAD();  // Ensure this is running on the UI thread
-
-//     std::string msg_name = message->GetName();
-//     std::cout << "📨 Browser received message: " << msg_name << std::endl;
-
-//     if (msg_name == "navigate") {
-//         std::string path = message->GetArgumentList()->GetString(0);
-
-//         static int counter = 0;
-//         std::cout << "🚀 JS-triggered navigate #" << ++counter << " to: " << path << std::endl;
-
-//         // Prepend "http://" if necessary
-//         if (!(path.rfind("http://", 0) == 0 || path.rfind("https://", 0) == 0)) {
-//             path = "http://" + path;
-//         }
-
-//         std::cout << "🌐 Loading URL from SimpleHandler: " << path << std::endl;
-
-//         // Post the navigation task to the UI thread using CefPostTask
-//         CefPostTask(TID_UI, base::BindOnce([](CefRefPtr<CefBrowser> browser, std::string path) {
-//             // Ensure browser and frame are valid
-//             if (!browser || !browser->GetMainFrame()) {
-//                 std::cout << "⚠️ Error: Invalid browser or frame!" << std::endl;
-//                 return;
-//             }
-
-//             std::cout << "🌐 Navigating to: " << path << std::endl;  // This is already added
-//             browser->GetMainFrame()->LoadURL(path);  // Perform the actual navigation
-//             std::cout << "🌐 Navigation command executed for: " << path << std::endl;
-//         }, browser, path));
-
-//         return true;  // Message handled
-//     }
-
-//     return false;  // Message not handled
-// }
 
 bool SimpleHandler::OnProcessMessageReceived(
     CefRefPtr<CefBrowser> browser,
@@ -160,4 +125,12 @@ bool SimpleHandler::OnProcessMessageReceived(
     }
 
     return false;
+}
+
+void SimpleHandler::SetRenderHandler(CefRefPtr<CefRenderHandler> handler) {
+    render_handler_ = handler;
+}
+
+CefRefPtr<CefRenderHandler> SimpleHandler::GetRenderHandler() {
+    return render_handler_;
 }

@@ -42,7 +42,11 @@ public:
                               CefProcessId source_process,
                               CefRefPtr<CefProcessMessage> message) override;
 
+    void SetRenderHandler(CefRefPtr<CefRenderHandler> handler);
+    CefRefPtr<CefRenderHandler> GetRenderHandler() override;
+
 private:
     std::string role_;
+    CefRefPtr<CefRenderHandler> render_handler_;
     IMPLEMENT_REFCOUNTING(SimpleHandler);
 };

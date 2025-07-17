@@ -1,10 +1,12 @@
 // src/simple_app.cpp
 #include "../../include/handlers/simple_app.h"
+#include "../../include/handlers/my_overlay_render_handler.h"
 #include "include/wrapper/cef_helpers.h"
 #include "include/cef_browser.h"
 #include "include/cef_frame.h"
 #include "include/cef_process_message.h"
 #include <iostream>
+#include <fstream>
 
 SimpleApp::SimpleApp()
     : render_process_handler_(new SimpleRenderProcessHandler()) {}
@@ -29,8 +31,10 @@ void SimpleApp::OnBeforeCommandLineProcessing(const CefString& process_type,
         std::wcout << L"--lang already present" << std::endl;
     }
 
-    // command_line->AppendSwitch("disable-gpu");
-    // command_line->AppendSwitch("disable-gpu-compositing");
+    command_line->AppendSwitchWithValue("remote-allow-origins", "*");
+
+    command_line->AppendSwitch("disable-gpu");
+    command_line->AppendSwitch("disable-gpu-compositing");
     // command_line->AppendSwitch("disable-gpu-shader-disk-cache");
     // command_line->AppendSwitchWithValue("use-gl", "disabled");
     // command_line->AppendSwitchWithValue("use-angle", "none");
@@ -43,134 +47,133 @@ void SimpleApp::OnBeforeCommandLineProcessing(const CefString& process_type,
 
 }
 
+void SimpleApp::SetWindowHandles(HWND hwnd, HWND header, HWND webview, HWND overlay) {
+    hwnd_ = hwnd;
+    header_hwnd_ = header;
+    webview_hwnd_ = webview;
+    overlay_hwnd_ = overlay;
+}
+
 void SimpleApp::OnContextInitialized() {
     CEF_REQUIRE_UI_THREAD();
-    std::cout << "✅ OnAfterCreated CALLED for Shell Browser" << std::endl;
+    std::cout << "✅ OnContextInitialized CALLED" << std::endl;
+    Sleep(500);
 
-    HINSTANCE instance = GetModuleHandle(nullptr);
+    std::ofstream log("startup_log.txt", std::ios::app);
+    log << "🚀 OnContextInitialized entered\n";
+    log << "→ header_hwnd_: " << header_hwnd_ << "\n";
+    log << "→ IsWindow(header_hwnd_): " << IsWindow(header_hwnd_) << "\n";
+    log << "→ webview_hwnd_: " << webview_hwnd_ << "\n";
+    log << "→ IsWindow(webview_hwnd_): " << IsWindow(webview_hwnd_) << "\n";
+    log << "→ overlay_hwnd_: " << overlay_hwnd_ << "\n";
+    log << "→ IsWindow(overlay_hwnd_): " << IsWindow(overlay_hwnd_) << "\n";
+    log.close();
 
-    WNDCLASS wc = {};
-    wc.lpfnWndProc = DefWindowProc;
-    wc.hInstance = instance;
-    wc.lpszClassName = L"BitcoinBrowserWndClass";
-    RegisterClass(&wc);
+    // ───── header Browser Setup ─────
+    RECT headerRect;
+    GetClientRect(g_header_hwnd, &headerRect);
+    int headerWidth = headerRect.right - headerRect.left;
+    int headerHeight = headerRect.bottom - headerRect.top;
 
-    WNDCLASS browserClass = {};
-    browserClass.lpfnWndProc = DefWindowProc;
-    browserClass.hInstance = instance;
-    browserClass.lpszClassName = L"CEFHostWindow";
-    RegisterClass(&browserClass);
+    CefWindowInfo header_window_info;
+    header_window_info.SetAsChild(g_header_hwnd, CefRect(0, 0, headerWidth, headerHeight));
 
-    RECT rect;
-    SystemParametersInfo(SPI_GETWORKAREA, 0, &rect, 0);
+    CefRefPtr<SimpleHandler> header_handler = new SimpleHandler("header");
+    CefBrowserSettings header_settings;
+    std::string header_url = "http://127.0.0.1:5137";
+    std::cout << "Loading React header at: " << header_url << std::endl;
 
-    // Create main application window (parent HWND)
-    HWND hwnd = CreateWindow(
-        L"BitcoinBrowserWndClass",
-        L"Bitcoin Browser / Babbage Browser",
-        WS_OVERLAPPEDWINDOW | WS_VISIBLE | WS_CLIPCHILDREN,
-        rect.left,
-        rect.top,
-        rect.right - rect.left,
-        rect.bottom - rect.top,
-        nullptr,
-        nullptr,
-        instance,
-        nullptr
-    );
-
-    ShowWindow(hwnd, SW_SHOW);
-    UpdateWindow(hwnd);
-
-    // Layout config
-    const int shellHeight = 100;  // Space for React-based browser shell UI
-    int width  = rect.right - rect.left;
-    int height = rect.bottom - rect.top;
-    int webviewHeight = height - shellHeight;
-
-    HWND shell_hwnd = CreateWindow(
-        L"CEFHostWindow",
-        nullptr,
-        WS_CHILD | WS_VISIBLE,
-        0, 0, width, shellHeight,
-        hwnd, nullptr, instance, nullptr
-    );
-
-    ShowWindow(shell_hwnd, SW_SHOW);
-    UpdateWindow(shell_hwnd);
-
-    // 2️⃣ Create bottom child window for external site view (WebView browser)
-    HWND webview_hwnd = CreateWindow(
-        L"CEFHostWindow", nullptr,
-        WS_CHILD | WS_VISIBLE,
-        0, shellHeight, width, webviewHeight,
-        hwnd, nullptr, instance, nullptr
-    );
-
-    ShowWindow(webview_hwnd, SW_SHOW);
-    UpdateWindow(webview_hwnd);
-
-   // ⚙️ Create CEF browser for the React UI shell
-    RECT clientRect;
-    GetClientRect(shell_hwnd, &clientRect);  // safe to call after ShowWindow
-
-    int clientWidth = clientRect.right - clientRect.left;
-    int clientHeight = clientRect.bottom - clientRect.top;
-
-    CefWindowInfo shell_window_info;
-    shell_window_info.SetAsChild(shell_hwnd, CefRect(0, 0, clientWidth, clientHeight));
-
-    // 🔧 Create handler with shell role
-    CefRefPtr<SimpleHandler> shell_handler = new SimpleHandler("shell");
-
-    // 🌐 Set initial shell URL
-    std::string shell_url = "http://127.0.0.1:5137";
-    std::cout << "Loading React shell at: " << shell_url << std::endl;
-
-    // 📋 Browser settings and context
-    CefBrowserSettings shell_settings;
-    CefRefPtr<CefRequestContext> shell_context = CefRequestContext::GetGlobalContext();
-
-    // 🌍 Launch the shell browser
-    bool shell_result = CefBrowserHost::CreateBrowser(
-        shell_window_info,
-        shell_handler,
-        shell_url,
-        shell_settings,
+    try{
+        bool header_result = CefBrowserHost::CreateBrowser(
+        header_window_info,
+        header_handler,
+        header_url,
+        header_settings,
         nullptr,
         CefRequestContext::GetGlobalContext()
     );
+    std::cout << "header browser created: " << (header_result ? "true" : "false") << std::endl;
+    } catch (...) {
+        log << "❌ header browser creation threw an exception!\n";
+    }
 
-    std::cout << "Shell browser created: " << (shell_result ? "true" : "false") << std::endl;
-
-    // ⚙️ Create CEF browser for the WebView (site renderer)
-    // Setup child window size
+    // ───── WebView Browser Setup ─────
     RECT webviewRect;
-    GetClientRect(webview_hwnd, &webviewRect);
-    int webviewClientWidth = webviewRect.right - webviewRect.left;
-    int webviewClientHeight = webviewRect.bottom - webviewRect.top;
+    GetClientRect(g_webview_hwnd, &webviewRect);
+    int webviewWidth = webviewRect.right - webviewRect.left;
+    int webviewHeight = webviewRect.bottom - webviewRect.top;
 
     CefWindowInfo webview_window_info;
-    webview_window_info.SetAsChild(webview_hwnd, CefRect(0, 0, webviewClientWidth, webviewClientHeight));
+    webview_window_info.SetAsChild(g_webview_hwnd, CefRect(0, 0, webviewWidth, webviewHeight));
 
-    // Create handler with role
     CefRefPtr<SimpleHandler> webview_handler = new SimpleHandler("webview");
-
-    // Setup browser settings
     CefBrowserSettings webview_settings;
 
-    // (Optional but safe) use global context
-    CefRefPtr<CefRequestContext> webview_context = CefRequestContext::GetGlobalContext();
-
-    // Create the browser (5 parameters only)
-    bool webview_result = CefBrowserHost::CreateBrowser(
+    try {
+        bool webview_result = CefBrowserHost::CreateBrowser(
         webview_window_info,
         webview_handler,
         "https://www.coingeek.com",
         webview_settings,
-        nullptr,              // extra_info (you can use this if needed later)
-        CefRequestContext::GetGlobalContext() // request_context
+        nullptr,
+        CefRequestContext::GetGlobalContext()
     );
-
     std::cout << "WebView browser created: " << (webview_result ? "true" : "false") << std::endl;
+    } catch (...) {
+        log << "❌ webview browser creation threw an exception!\n";
+    }
+
+    // ───── Overlay Browser Setup ─────
+    RECT overlayRect;
+
+    SystemParametersInfo(SPI_GETWORKAREA, 0, &overlayRect, 0);
+    int prepWidth  = overlayRect.right - overlayRect.left;
+    int prepHeight = overlayRect.bottom - overlayRect.top;
+
+    std::cout << "[Overlay Setup] g_overlay_hwnd BEFORE passing to render handler: " << g_overlay_hwnd << std::endl;
+
+    SetWindowPos(g_overlay_hwnd, HWND_TOPMOST, 0, 0, prepWidth, prepHeight,
+             SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW);
+    UpdateWindow(g_overlay_hwnd);
+
+    // GetClientRect(g_overlay_hwnd, &overlayRect);
+    // int overlayWidth = overlayRect.right - overlayRect.left;
+    // int overlayHeight = overlayRect.bottom - overlayRect.top;
+
+    int overlayWidth = prepWidth;
+    int overlayHeight = prepHeight;
+
+    CefWindowInfo overlay_window_info;
+    overlay_window_info.windowless_rendering_enabled = true;
+    overlay_window_info.SetAsPopup(g_overlay_hwnd, "OverlayWindow");
+    // overlay_window_info.SetAsChild(g_overlay_hwnd, CefRect(0, 0, overlayWidth, overlayHeight));
+
+    CefRefPtr<MyOverlayRenderHandler> render_handler =
+        new MyOverlayRenderHandler(g_overlay_hwnd, overlayWidth, overlayHeight);
+
+
+    CefRefPtr<SimpleHandler> overlay_handler = new SimpleHandler("overlay");
+    overlay_handler->SetRenderHandler(render_handler);
+
+    std::cout << "[OverlayRenderHandler] HWND: " << g_overlay_hwnd << ", Width: " << overlayWidth << ", Height: " << overlayHeight << std::endl;
+
+    CefBrowserSettings overlay_settings;
+    overlay_settings.windowless_frame_rate = 30;
+    overlay_settings.background_color = CefColorSetARGB(0, 0, 0, 0); // fully transparent
+
+    try {
+        bool overlay_result = CefBrowserHost::CreateBrowser(
+        overlay_window_info,
+        overlay_handler,
+        "http://127.0.0.1:5137/overlay.html",
+        overlay_settings,
+        nullptr,
+        CefRequestContext::GetGlobalContext()
+    );
+    std::cout << "Overlay browser created: " << (overlay_result ? "true" : "false") << std::endl;
+    } catch (...) {
+        log << "❌ overlay browser creation threw an exception!\n";
+    }
+
 }
+

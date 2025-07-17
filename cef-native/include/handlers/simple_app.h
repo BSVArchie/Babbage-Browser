@@ -8,6 +8,13 @@
 #include "simple_render_process_handler.h"
 #include "simple_handler.h"
 
+// 🧭 Temporary global HWNDs for startup wiring
+extern HWND g_hwnd;
+extern HWND g_header_hwnd;
+extern HWND g_webview_hwnd;
+extern HWND g_overlay_hwnd;
+
+
 class SimpleApp : public CefApp,
                   public CefBrowserProcessHandler,
                   public CefRenderProcessHandler {
@@ -21,6 +28,12 @@ public:
                                        CefRefPtr<CefCommandLine> command_line) override;
 
     void OnContextInitialized() override;
+
+    void SetWindowHandles(HWND hwnd, HWND shell, HWND webview, HWND overlay);
+    HWND hwnd_ = nullptr;
+    HWND header_hwnd_ = nullptr;
+    HWND webview_hwnd_ = nullptr;
+    HWND overlay_hwnd_ = nullptr;
 
 private:
     CefRefPtr<SimpleRenderProcessHandler> render_process_handler_;
