@@ -10,10 +10,20 @@ declare global {
       navigation: {
         navigate: (path: string) => void;
       };
+      overlay: {
+        show: () => void;
+        hide: () => void;
+        toggleInput: (enable: boolean) => void;
+      };
+      overlayPanel: {
+        open: (panelName: string) => void;
+      };
     };
     cefMessage?: {
       send: (channel: string, args: any[]) => void;
     };
+    triggerPanel?: (panelName: string) => void;
+     __overlayReady?: boolean;
   }
 }
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import Welcome from './pages/Welcome';
+import OverlayRoot from './pages/OverlayRoot';
 import BackupModal from './components/panels/BackupModal';
 import MainBrowserView from './pages/MainBrowserView';
 
@@ -65,6 +66,7 @@ const App = () => {
       <Routes>
         <Route path="/" element={walletExists ? <MainBrowserView /> : <Welcome />} />
         <Route path="/welcome" element={<Welcome />} />
+        <Route path="/overlay" element={<OverlayRoot />} />
       </Routes>
 
         {identity && (

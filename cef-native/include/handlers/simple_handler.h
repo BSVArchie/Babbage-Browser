@@ -18,7 +18,8 @@ public:
     CefRefPtr<CefDisplayHandler> GetDisplayHandler() override;
     CefRefPtr<CefLoadHandler> GetLoadHandler() override;
     static CefRefPtr<CefBrowser> webview_browser_;
-
+    static CefRefPtr<CefBrowser> GetOverlayBrowser();
+    static std::string pending_panel_;
 
     // CefDisplayHandler methods
     void OnTitleChange(CefRefPtr<CefBrowser> browser, const CefString& title) override;
@@ -48,5 +49,6 @@ public:
 private:
     std::string role_;
     CefRefPtr<CefRenderHandler> render_handler_;
+    static CefRefPtr<CefBrowser> overlay_browser_;
     IMPLEMENT_REFCOUNTING(SimpleHandler);
 };

@@ -10,6 +10,7 @@ import {
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
+import WalletPanel from './WalletPanelContent';
 
 type Props = {
   onClose: () => void;
@@ -44,7 +45,7 @@ const WalletPanelLayout: React.FC<Props> = ({ onClose, open }) => {
 
       {/* Add wallet UI content here */}
       <Box p={2}>
-        <Typography>Wallet details will go here.</Typography>
+        <WalletPanel />
       </Box>
     </Drawer>
   );

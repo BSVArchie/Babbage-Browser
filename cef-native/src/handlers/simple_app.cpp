@@ -1,5 +1,6 @@
 // src/simple_app.cpp
 #include "../../include/handlers/simple_app.h"
+#include "../../include/handlers/simple_handler.h"
 #include "../../include/handlers/my_overlay_render_handler.h"
 #include "include/wrapper/cef_helpers.h"
 #include "include/cef_browser.h"
@@ -33,8 +34,8 @@ void SimpleApp::OnBeforeCommandLineProcessing(const CefString& process_type,
 
     command_line->AppendSwitchWithValue("remote-allow-origins", "*");
 
-    command_line->AppendSwitch("disable-gpu");
-    command_line->AppendSwitch("disable-gpu-compositing");
+    // command_line->AppendSwitch("disable-gpu");
+    // command_line->AppendSwitch("disable-gpu-compositing");
     // command_line->AppendSwitch("disable-gpu-shader-disk-cache");
     // command_line->AppendSwitchWithValue("use-gl", "disabled");
     // command_line->AppendSwitchWithValue("use-angle", "none");
@@ -47,17 +48,16 @@ void SimpleApp::OnBeforeCommandLineProcessing(const CefString& process_type,
 
 }
 
-void SimpleApp::SetWindowHandles(HWND hwnd, HWND header, HWND webview, HWND overlay) {
+void SimpleApp::SetWindowHandles(HWND hwnd, HWND header, HWND webview) {
     hwnd_ = hwnd;
     header_hwnd_ = header;
     webview_hwnd_ = webview;
-    overlay_hwnd_ = overlay;
 }
 
 void SimpleApp::OnContextInitialized() {
     CEF_REQUIRE_UI_THREAD();
     std::cout << "✅ OnContextInitialized CALLED" << std::endl;
-    Sleep(500);
+    // Sleep(500);
 
     std::ofstream log("startup_log.txt", std::ios::app);
     log << "🚀 OnContextInitialized entered\n";
@@ -65,8 +65,7 @@ void SimpleApp::OnContextInitialized() {
     log << "→ IsWindow(header_hwnd_): " << IsWindow(header_hwnd_) << "\n";
     log << "→ webview_hwnd_: " << webview_hwnd_ << "\n";
     log << "→ IsWindow(webview_hwnd_): " << IsWindow(webview_hwnd_) << "\n";
-    log << "→ overlay_hwnd_: " << overlay_hwnd_ << "\n";
-    log << "→ IsWindow(overlay_hwnd_): " << IsWindow(overlay_hwnd_) << "\n";
+
     log.close();
 
     // ───── header Browser Setup ─────
@@ -122,8 +121,26 @@ void SimpleApp::OnContextInitialized() {
     } catch (...) {
         log << "❌ webview browser creation threw an exception!\n";
     }
+}
 
-    // ───── Overlay Browser Setup ─────
+void CreateOverlayBrowserIfNeeded(HINSTANCE hInstance) {
+    std::cout << "🚀 Called CreateOverlayBrowserIfNeeded()" << std::endl;
+
+    RECT rect;
+    SystemParametersInfo(SPI_GETWORKAREA, 0, &rect, 0);
+    int width  = rect.right - rect.left;
+    int height = rect.bottom - rect.top;
+
+    HWND overlay_hwnd = CreateWindowEx(
+        WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
+        L"CEFOverlayWindow", nullptr, WS_POPUP | WS_VISIBLE,
+        0, 0, width, height, g_hwnd, nullptr, hInstance, nullptr);
+
+    LONG exStyle = GetWindowLong(overlay_hwnd, GWL_EXSTYLE);
+    std::cout << "🧠 HWND EXSTYLE AFTER CREATE: " << std::hex << exStyle << std::endl;
+
+    g_overlay_hwnd = overlay_hwnd;
+
     RECT overlayRect;
 
     SystemParametersInfo(SPI_GETWORKAREA, 0, &overlayRect, 0);
@@ -132,9 +149,12 @@ void SimpleApp::OnContextInitialized() {
 
     std::cout << "[Overlay Setup] g_overlay_hwnd BEFORE passing to render handler: " << g_overlay_hwnd << std::endl;
 
-    SetWindowPos(g_overlay_hwnd, HWND_TOPMOST, 0, 0, prepWidth, prepHeight,
-             SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW);
+    SetWindowPos(g_overlay_hwnd, HWND_TOPMOST, 0, 0, width, height, SWP_SHOWWINDOW);
     UpdateWindow(g_overlay_hwnd);
+
+    SetForegroundWindow(g_overlay_hwnd);
+    SetFocus(g_overlay_hwnd);
+    SetActiveWindow(g_overlay_hwnd); 
 
     // GetClientRect(g_overlay_hwnd, &overlayRect);
     // int overlayWidth = overlayRect.right - overlayRect.left;
@@ -161,19 +181,12 @@ void SimpleApp::OnContextInitialized() {
     overlay_settings.windowless_frame_rate = 30;
     overlay_settings.background_color = CefColorSetARGB(0, 0, 0, 0); // fully transparent
 
-    try {
-        bool overlay_result = CefBrowserHost::CreateBrowser(
+    bool overlay_result = CefBrowserHost::CreateBrowser(
         overlay_window_info,
         overlay_handler,
-        "http://127.0.0.1:5137/overlay.html",
+        "http://127.0.0.1:5137/overlay",
         overlay_settings,
         nullptr,
         CefRequestContext::GetGlobalContext()
     );
-    std::cout << "Overlay browser created: " << (overlay_result ? "true" : "false") << std::endl;
-    } catch (...) {
-        log << "❌ overlay browser creation threw an exception!\n";
-    }
-
 }
-

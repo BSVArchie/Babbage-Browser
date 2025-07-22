@@ -19,7 +19,6 @@ import { useBitcoinBrowser } from '../hooks/useBitcoinBrowser';
 
 const MainBrowserView: React.FC = () => {
 
-    const [walletPanelOpen, setWalletPanelOpen] = useState(false);
     const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
     const [address, setAddress] = useState('https://example.com');
 
@@ -75,7 +74,12 @@ const MainBrowserView: React.FC = () => {
 
                 {/* Wallet Button */}
                 <IconButton
-                    onClick={() => setWalletPanelOpen(true)}
+                    onClick={() => {
+                        console.log("🟢 Wallet button clicked");
+                        window.bitcoinBrowser.overlay.show();
+                        window.bitcoinBrowser.overlay.toggleInput(true);
+                        window.bitcoinBrowser.overlayPanel.open('wallet');
+                    }}
                     sx={{
                         ml: 1,
                         bgcolor: 'grey.200',
@@ -88,7 +92,11 @@ const MainBrowserView: React.FC = () => {
 
                 {/* Settings Button */}
                 <IconButton
-                    onClick={() => setSettingsPanelOpen(true)}
+                    onClick={() => {
+                        window.bitcoinBrowser.overlay.show();
+                        window.bitcoinBrowser.overlay.toggleInput(true);
+                        setSettingsPanelOpen(true);
+                    }}
                     sx={{
                         ml: 1,
                         bgcolor: 'grey.200',
@@ -108,11 +116,25 @@ const MainBrowserView: React.FC = () => {
             </Typography>
             </Box>
 
-            {/* Wallet Panel Drawer */}
-            <WalletPanelLayout open={walletPanelOpen} onClose={() => setWalletPanelOpen(false)} />
+            {/* Wallet Panel Drawer
+            <WalletPanelLayout
+                open={walletPanelOpen}
+                onClose={() => {
+                    window.bitcoinBrowser.overlay.hide();
+                    window.bitcoinBrowser.overlay.toggleInput(false);
+                    setWalletPanelOpen(false);
+                }}
+                /> */}
 
             {/* Settings Panel Drawer */}
-            <SettingsPanelLayout open={settingsPanelOpen} onClose={() => setSettingsPanelOpen(false)} />
+            <SettingsPanelLayout
+                open={settingsPanelOpen}
+                onClose={() => {
+                    window.bitcoinBrowser.overlay.hide();
+                    window.bitcoinBrowser.overlay.toggleInput(false);
+                    setSettingsPanelOpen(false);
+                }}
+            />
         </Box>
     );
 };

@@ -1,5 +1,6 @@
 // cef_native/src/simple_handler.cpp
 #include "../../include/handlers/simple_handler.h"
+#include "../../include/handlers/simple_app.h"
 #include "include/wrapper/cef_helpers.h"
 #include "include/base/cef_bind.h"
 #include "include/cef_v8.h"
@@ -11,9 +12,11 @@
 #include <iostream>
 #include <string>
 
-SimpleHandler::SimpleHandler(const std::string& role) : role_(role) {}
+extern void CreateOverlayBrowserIfNeeded(HINSTANCE hInstance);
 
-// SimpleHandler::SimpleHandler() {}
+std::string SimpleHandler::pending_panel_;
+
+SimpleHandler::SimpleHandler(const std::string& role) : role_(role) {}
 
 CefRefPtr<CefLifeSpanHandler> SimpleHandler::GetLifeSpanHandler() {
     return this;
@@ -28,6 +31,11 @@ CefRefPtr<CefLoadHandler> SimpleHandler::GetLoadHandler() {
 }
 
 CefRefPtr<CefBrowser> SimpleHandler::webview_browser_ = nullptr;
+CefRefPtr<CefBrowser> SimpleHandler::overlay_browser_ = nullptr;
+CefRefPtr<CefBrowser> SimpleHandler::GetOverlayBrowser() {
+    return overlay_browser_;
+}
+
 
 void SimpleHandler::OnTitleChange(CefRefPtr<CefBrowser> browser, const CefString& title) {
 #if defined(OS_WIN)
@@ -69,6 +77,23 @@ void SimpleHandler::OnLoadingStateChange(CefRefPtr<CefBrowser> browser,
                                          bool canGoBack,
                                          bool canGoForward) {
     std::cout << "📡 Loading state: " << (isLoading ? "loading..." : "done") << std::endl;
+
+    if (!isLoading && role_ == "overlay" && !pending_panel_.empty()) {
+        std::string panel = pending_panel_;
+
+        // Delay JS execution slightly to ensure React is mounted
+        CefPostDelayedTask(TID_UI, base::BindOnce([]() {
+            CefRefPtr<CefBrowser> overlay = SimpleHandler::GetOverlayBrowser();
+            if (overlay && overlay->GetMainFrame()) {
+                std::string js = "window.triggerPanel('" + SimpleHandler::pending_panel_ + "')";
+                overlay->GetMainFrame()->ExecuteJavaScript(js, overlay->GetMainFrame()->GetURL(), 0);
+                std::cout << "🧠 Deferred panel triggered after delay: " << SimpleHandler::pending_panel_ << std::endl;
+                SimpleHandler::pending_panel_.clear();
+            } else {
+                std::cout << "⚠️ Overlay browser still not ready. Skipping panel trigger." << std::endl;
+            }
+        }), 100); // delay in milliseconds
+    }
 }
 
 void SimpleHandler::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
@@ -79,11 +104,17 @@ void SimpleHandler::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
     if (role_ == "webview") {
         webview_browser_ = browser;
         std::cout << "📡 WebView browser reference stored." << std::endl;
-    } else if (role_ == "shell") {
-        std::cout << "🧭 Shell browser initialized." << std::endl;
+    } else if (role_ == "header") {
+        std::cout << "🧭 header browser initialized." << std::endl;
     }else if (role_ == "overlay") {
+        overlay_browser_ = browser;
         std::cout << "🪟 Overlay browser initialized." << std::endl;
-        // Optional: store overlay_browser_ if you want dynamic control later
+
+        // CefRefPtr<CefBrowser> overlay = SimpleHandler::GetOverlayBrowser();
+        // if (overlay) {
+        //     overlay->GetHost()->ShowDevTools(CefWindowInfo(), CefRefPtr<CefClient>(), CefBrowserSettings(), CefPoint());
+        //     std::cout << "🧪 DevTools opened for overlay HWND" << std::endl;
+        // }
     }
 
     std::cout << "🧭 Browser Created → role: " << role_
@@ -102,7 +133,8 @@ bool SimpleHandler::OnProcessMessageReceived(
     CEF_REQUIRE_UI_THREAD();
 
     std::string message_name = message->GetName();
-    std::cout << "📨 Message received: " << message_name << std::endl;
+    std::cout << "📨 Message received: " << message_name
+          << ", Browser ID: " << browser->GetIdentifier() << std::endl;
 
     if (message_name == "navigate") {
         CefRefPtr<CefListValue> args = message->GetArgumentList();
@@ -119,6 +151,31 @@ bool SimpleHandler::OnProcessMessageReceived(
             SimpleHandler::webview_browser_->GetMainFrame()->LoadURL(path);
         } else {
             std::cout << "⚠️ WebView browser not available or not fully initialized." << std::endl;
+        }
+
+        return true;
+    }
+
+    if (message->GetName() == "overlay_open_panel") {
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        std::string panel = args->GetString(0);
+
+        // Create if needed, show HWND, make it interactive
+        extern HINSTANCE g_hInstance;
+        CreateOverlayBrowserIfNeeded(g_hInstance);
+        ShowWindow(g_overlay_hwnd, SW_SHOW);
+        LONG exStyle = GetWindowLong(g_overlay_hwnd, GWL_EXSTYLE);
+        SetWindowLong(g_overlay_hwnd, GWL_EXSTYLE, exStyle & ~WS_EX_TRANSPARENT);
+
+        // Trigger React panel inside overlay
+        CefRefPtr<CefBrowser> overlay = SimpleHandler::GetOverlayBrowser();
+        if (overlay && overlay->GetMainFrame()) {
+            std::string js = "window.triggerPanel('" + panel + "')";
+            overlay->GetMainFrame()->ExecuteJavaScript(js, overlay->GetMainFrame()->GetURL(), 0);
+            std::cout << "🧠 Triggering overlay panel immediately: " << panel << std::endl;
+        } else {
+            std::cout << "🕒 Deferring overlay panel trigger until browser is ready: " << panel << std::endl;
+            SimpleHandler::pending_panel_ = panel;
         }
 
         return true;

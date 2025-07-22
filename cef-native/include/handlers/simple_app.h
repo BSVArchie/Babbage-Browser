@@ -14,6 +14,9 @@ extern HWND g_header_hwnd;
 extern HWND g_webview_hwnd;
 extern HWND g_overlay_hwnd;
 
+// globals.h
+extern HINSTANCE g_hInstance;
+
 
 class SimpleApp : public CefApp,
                   public CefBrowserProcessHandler,
@@ -29,11 +32,13 @@ public:
 
     void OnContextInitialized() override;
 
-    void SetWindowHandles(HWND hwnd, HWND shell, HWND webview, HWND overlay);
+    void SetWindowHandles(HWND hwnd, HWND shell, HWND webview);
     HWND hwnd_ = nullptr;
     HWND header_hwnd_ = nullptr;
     HWND webview_hwnd_ = nullptr;
-    HWND overlay_hwnd_ = nullptr;
+    // HWND overlay_hwnd_ = nullptr;
+
+    void CreateOverlayBrowserIfNeeded(HINSTANCE hInstance);
 
 private:
     CefRefPtr<SimpleRenderProcessHandler> render_process_handler_;

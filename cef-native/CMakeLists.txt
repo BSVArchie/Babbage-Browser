@@ -30,6 +30,7 @@ set(SOURCES
     src/core/WalletManager.cpp
     src/core/IdentityHandler.cpp
     src/core/NavigationHandler.cpp
+    src/core/PanelHandler.cpp
     # Add other source files here
 )
 

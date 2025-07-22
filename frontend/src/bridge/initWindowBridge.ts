@@ -13,3 +13,18 @@ if (!window.bitcoinBrowser.navigation) {
     }
   };
 }
+
+if (!window.bitcoinBrowser.overlay) {
+  window.bitcoinBrowser.overlay = {
+    // show: () => window.cefMessage?.send?.('overlay_show', []),
+    show: () => {
+      console.log("🧠 JS: Sending overlay_show to native");
+      console.log("Bridge is executing from URL:", window.location.href);
+      window.cefMessage?.send('overlay_show', []);
+    },
+    hide: () => window.cefMessage?.send?.('overlay_hide', []),
+    toggleInput: (enable: boolean) =>
+      window.cefMessage?.send?.('overlay_input', [enable]),
+  };
+}
+
