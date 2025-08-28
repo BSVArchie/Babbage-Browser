@@ -12,8 +12,14 @@ set(RESOURCES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../cef-binaries/Resources")
 set(OUTPUT_DIR "$<TARGET_FILE_DIR:BitcoinBrowserShell>")
 set(CMAKE_TOOLCHAIN_FILE "C:/Users/archb/Dev/vcpkg/scripts/buildsystems/vcpkg.cmake" CACHE STRING "")
 set(OPENSSL_USE_STATIC_LIBS TRUE)
+# set(OPENSSL_MSVC_STATIC_RT TRUE)
 find_package(OpenSSL REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
+
+
+# Use the correct include path
+include_directories(${OpenSSL_INCLUDE_DIR} "C:/Users/archb/Dev/vcpkg/installed/x64-windows-static/include")
+
 
 message(STATUS "OpenSSL include dir: ${OPENSSL_INCLUDE_DIR}")
 
@@ -56,6 +62,7 @@ target_include_directories(BitcoinBrowserShell PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/handlers
     ${CMAKE_CURRENT_SOURCE_DIR}/tests
     ${OpenSSL_INCLUDE_DIR}
+    ${nlohmann_json_INCLUDE_DIRS}
 )
 
 # Link libs

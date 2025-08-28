@@ -134,7 +134,20 @@ void CreateOverlayBrowserIfNeeded(HINSTANCE hInstance) {
     HWND overlay_hwnd = CreateWindowEx(
         WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
         L"CEFOverlayWindow", nullptr, WS_POPUP | WS_VISIBLE,
-        0, 0, width, height, g_hwnd, nullptr, hInstance, nullptr);
+        0, 0, width, height, nullptr, nullptr, hInstance, nullptr);
+
+    if (overlay_hwnd) {
+        // Force it to be truly topmost
+        SetWindowPos(overlay_hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+
+        // Bring to front and activate
+        BringWindowToTop(overlay_hwnd);
+        SetForegroundWindow(overlay_hwnd);
+
+        // Force redraw
+        UpdateWindow(overlay_hwnd);
+    }
 
     LONG exStyle = GetWindowLong(overlay_hwnd, GWL_EXSTYLE);
     std::cout << "🧠 HWND EXSTYLE AFTER CREATE: " << std::hex << exStyle << std::endl;
@@ -154,11 +167,7 @@ void CreateOverlayBrowserIfNeeded(HINSTANCE hInstance) {
 
     SetForegroundWindow(g_overlay_hwnd);
     SetFocus(g_overlay_hwnd);
-    SetActiveWindow(g_overlay_hwnd); 
-
-    // GetClientRect(g_overlay_hwnd, &overlayRect);
-    // int overlayWidth = overlayRect.right - overlayRect.left;
-    // int overlayHeight = overlayRect.bottom - overlayRect.top;
+    SetActiveWindow(g_overlay_hwnd);
 
     int overlayWidth = prepWidth;
     int overlayHeight = prepHeight;
@@ -166,8 +175,7 @@ void CreateOverlayBrowserIfNeeded(HINSTANCE hInstance) {
     CefWindowInfo overlay_window_info;
     overlay_window_info.windowless_rendering_enabled = true;
     overlay_window_info.SetAsPopup(g_overlay_hwnd, "OverlayWindow");
-    // overlay_window_info.SetAsChild(g_overlay_hwnd, CefRect(0, 0, overlayWidth, overlayHeight));
-
+ 
     CefRefPtr<MyOverlayRenderHandler> render_handler =
         new MyOverlayRenderHandler(g_overlay_hwnd, overlayWidth, overlayHeight);
 

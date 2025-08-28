@@ -11,8 +11,6 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
-
-import WalletPanelLayout from '../components/panels/WalletPanelLayout';
 import SettingsPanelLayout from '../components/panels/SettingsPanelLayout';
 import { useBitcoinBrowser } from '../hooks/useBitcoinBrowser';
 
@@ -116,17 +114,6 @@ const MainBrowserView: React.FC = () => {
             </Typography>
             </Box>
 
-            {/* Wallet Panel Drawer
-            <WalletPanelLayout
-                open={walletPanelOpen}
-                onClose={() => {
-                    window.bitcoinBrowser.overlay.hide();
-                    window.bitcoinBrowser.overlay.toggleInput(false);
-                    setWalletPanelOpen(false);
-                }}
-                /> */}
-
-            {/* Settings Panel Drawer */}
             <SettingsPanelLayout
                 open={settingsPanelOpen}
                 onClose={() => {

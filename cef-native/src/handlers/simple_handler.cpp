@@ -109,12 +109,6 @@ void SimpleHandler::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
     }else if (role_ == "overlay") {
         overlay_browser_ = browser;
         std::cout << "🪟 Overlay browser initialized." << std::endl;
-
-        // CefRefPtr<CefBrowser> overlay = SimpleHandler::GetOverlayBrowser();
-        // if (overlay) {
-        //     overlay->GetHost()->ShowDevTools(CefWindowInfo(), CefRefPtr<CefClient>(), CefBrowserSettings(), CefPoint());
-        //     std::cout << "🧪 DevTools opened for overlay HWND" << std::endl;
-        // }
     }
 
     std::cout << "🧭 Browser Created → role: " << role_

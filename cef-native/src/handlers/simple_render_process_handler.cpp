@@ -52,14 +52,6 @@ void SimpleRenderProcessHandler::OnContextCreated(
     // Create the overlayPanel object
     std::cout << "🚀 V8: Starting overlayPanel setup" << std::endl;
 
-    // CefRefPtr<CefV8Value> overlayPanelObject = CefV8Value::CreateObject(nullptr, nullptr);
-    // if (!overlayPanelObject) {
-    // std::cout << "❌ V8: overlayPanelObject creation failed" << std::endl;
-    // } else {
-    // std::cout << "✅ V8: overlayPanelObject created" << std::endl;
-    // bitcoinBrowser->SetValue("overlayPanel", overlayPanelObject, V8_PROPERTY_ATTRIBUTE_READONLY);
-    // std::cout << "✅ V8: overlayPanel attached to bitcoinBrowser" << std::endl;
-    // }
     CefRefPtr<CefV8Value> overlayPanelObject = CefV8Value::CreateObject(nullptr, nullptr);
     bitcoinBrowser->SetValue("overlayPanel", overlayPanelObject, V8_PROPERTY_ATTRIBUTE_READONLY);
 

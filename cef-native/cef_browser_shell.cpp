@@ -22,7 +22,6 @@
 #include "include/cef_v8.h"
 #include "include/cef_browser.h"
 #include "include/internal/cef_types.h"
-// #include "include/core/IdentityHandler.h"
 #include "include/handlers/simple_handler.h"
 #include "include/handlers/simple_render_process_handler.h"
 #include "include/handlers/simple_app.h"
@@ -38,8 +37,6 @@ HWND g_webview_hwnd = nullptr;
 HWND g_overlay_hwnd = nullptr;
 HINSTANCE g_hInstance = nullptr;
 
-
-
 LRESULT CALLBACK ShellWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
         case WM_MOVE:
@@ -54,6 +51,10 @@ LRESULT CALLBACK ShellWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                              shellRect.left, shellRect.top,
                              width, height,
                              SWP_NOOWNERZORDER);
+
+                BringWindowToTop(g_overlay_hwnd);
+                SetForegroundWindow(g_overlay_hwnd);
+                UpdateWindow(g_overlay_hwnd);
             }
             break;
 
@@ -69,6 +70,9 @@ LRESULT CALLBACK OverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
     switch (msg) {
         case WM_MOUSEACTIVATE:
             std::cout << "👆 Overlay HWND received WM_MOUSEACTIVATE\n";
+            // Force overlay to stay on top when activated
+            SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
             return MA_ACTIVATE;
 
         case WM_LBUTTONDOWN: {
@@ -96,6 +100,16 @@ LRESULT CALLBACK OverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 
         case WM_ACTIVATE:
             std::cout << "⚡ HWND activated with state: " << LOWORD(wParam) << "\n";
+            if (LOWORD(wParam) == WA_INACTIVE) {
+                // When losing focus, bring back to top
+                SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            }
+            break;
+
+        case WM_WINDOWPOSCHANGING:
+            // Prevent other windows from covering us
+            ((WINDOWPOS*)lParam)->flags |= SWP_NOZORDER;
             break;
     }
     return DefWindowProc(hwnd, msg, wParam, lParam);
@@ -152,24 +166,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
         std::cout << "❌ Failed to register overlay window class. Error: " << GetLastError() << std::endl;
     }
 
-    // WNDCLASS overlayClass = {}; overlayClass.lpfnWndProc = [](HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) -> LRESULT {
-    //     switch (msg) {
-    //         case WM_MOUSEACTIVATE:
-    //             std::cout << "👆 Overlay HWND received WM_MOUSEACTIVATE\n";
-    //             return MA_ACTIVATE;
-
-    //         case WM_LBUTTONDOWN:
-    //             std::cout << "🖱️ Overlay received WM_LBUTTONDOWN\n";
-    //             SetFocus(hwnd);  // Optional: give focus
-    //             return 0;
-
-    //         case WM_ACTIVATE:
-    //             std::cout << "⚡ HWND activated with state: " << LOWORD(wParam) << "\n";
-    //             break;
-    //     }
-    //     return DefWindowProc(hwnd, msg, wParam, lParam);
-    // };
-
     HWND hwnd = CreateWindow(L"BitcoinBrowserWndClass", L"Bitcoin Browser / Babbage Browser",
         WS_OVERLAPPEDWINDOW | WS_VISIBLE | WS_CLIPCHILDREN,
         rect.left, rect.top, width, height, nullptr, nullptr, hInstance, nullptr);
@@ -180,25 +176,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     HWND webview_hwnd = CreateWindow(L"CEFHostWindow", nullptr,
         WS_CHILD | WS_VISIBLE, 0, shellHeight, width, webviewHeight, hwnd, nullptr, hInstance, nullptr);
 
-    // HWND overlay_hwnd = CreateWindowEx(
-    //     WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
-    //     L"CEFOverlayWindow", nullptr, WS_POPUP | WS_VISIBLE,
-    //     0, 0, width, height, hwnd, nullptr, hInstance, nullptr);
-
-    // LONG exStyle = GetWindowLong(overlay_hwnd, GWL_EXSTYLE);
-    // std::cout << "🧠 HWND EXSTYLE AFTER CREATE: " << std::hex << exStyle << std::endl;
-
     // 🌍 Assign to globals
     g_hwnd = hwnd;
     g_header_hwnd = header_hwnd;
     g_webview_hwnd = webview_hwnd;
-    // g_overlay_hwnd = overlay_hwnd;
 
     ShowWindow(hwnd, SW_SHOW);        UpdateWindow(hwnd);
     ShowWindow(header_hwnd, SW_SHOW); UpdateWindow(header_hwnd);
     ShowWindow(webview_hwnd, SW_SHOW); UpdateWindow(webview_hwnd);
-    // ShowWindow(overlay_hwnd, SW_SHOW); UpdateWindow(overlay_hwnd);
-
+   
     std::cout << "Initializing CEF..." << std::endl;
     bool success = CefInitialize(main_args, settings, app, nullptr);
     std::cout << "CefInitialize success: " << (success ? "true" : "false") << std::endl;
