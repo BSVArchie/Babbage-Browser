@@ -12,7 +12,7 @@ A custom Web3 browser built on the Chromium Embedded Framework (CEF) with native
 - ✅ CEF shell with secure wallet backend
 - 🧱 Build the UI from scratch using React + Vite
 - 🔐 Enforce native, secure signing (not in JavaScript)
-- ⚙️ Smart contract integration with sCrypt (or custom) and Authrite
+- ⚙️ Smart contract integration with sCrypt (or custom) and BRC-100/Authrite
 - 🎯 Support micropayments, token gating, and identity-bound access
 
 ## 📦 Tech Stack
@@ -23,7 +23,7 @@ A custom Web3 browser built on the Chromium Embedded Framework (CEF) with native
 | UI | React + Vite (TypeScript) |
 | Smart Contracts | sCrypt (BSV) |
 | Native Wallet | C++ or Rust backend |
-| Identity / Auth | Authrite Protocol (Babbage) |
+| Identity / Auth | BRC-100 (Authrite Protocol (Babbage)) |
 
 ## 🛠️ Setup (Coming Soon)
 
@@ -77,23 +77,26 @@ Instructions need be added for:
 ## 💡 Project Philosophy
 
 - **Security-first**: Private keys and signing logic never exposed to JS
-- **Native control**: Full backend control over cookie, contract, and payment enforcement
+- **Native control**: Full backend control over cookie, adds, contract, InterPlanetary File System, and payment enforcement
 - **Web3 reimagined**: Built for real micropayments, not fake dApps
 - **Prioritize user experience**: Clean easy to use and understand
 
-## 🧬 Babbage Protocol Compatibility
+## 🧬 BRC-100 Protocol Compatibility
 
-This project is being built to be compatible with apps written for Metanet Desktop and the Babbage Protocol ecosystem. The goal is to support seamless interaction with:
+This project is being built to support apps that follow the **BRC-100 authentication and identity standards**, enabling secure, privacy-preserving interaction between wallets and applications. The goal is to ensure seamless compatibility with:
 
-- **Authrite authentication requests**
 - **Toolio-generated identities and WAB certificates**
-- **BSV Wallet Adapter signing and address resolution**
 - **MetanetDesktop-style storage and identity detection**: Identity and wallet information will be stored in AppData%/MetanetDesktop/identity.json
-- **JSON structure compatible with Metanet's identity format**
-- **Planning to inject a browser-side API for apps to access identity, e.g.**:
-    window.identity = { ... }
-    window.babbage.getPublicKey()
-    window.babbage.signMessage(...)
+- **BRC-52/103 identity certificates** with selective disclosure
+- **Type-42 key derivation** for encrypted P2P channels
+- **BEEF-formatted atomic transactions** for identity-bound actions
+- **SPV-based identity and transaction verification**
+- **Browser-side API injection for identity access**, e.g.:
+  ```js
+  window.identity = { ... }
+  window.brc100.getPublicKey()
+  window.brc100.signMessage(...)
+  window.brc100.getCertificate()
 
 ---
 

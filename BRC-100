@@ -1,0 +1,67 @@
+# 🔐 BRC-100 Authentication Overview
+
+This document outlines the authentication process between BRC-100-compliant wallets and applications, emphasizing mutual trust, secure communication, and privacy-preserving identity management.
+
+---
+
+## 🧩 Key Components
+
+### 1. Mutual Authentication
+- Both wallet and application verify each other's identity certificates.
+- Identity certificates follow **BRC-52/103** standards, enabling **selective disclosure** — users reveal only necessary identity data.
+- Ensures both parties are trusted before initiating sensitive operations.
+
+### 2. Type-42 Key Derivation (P2P Authentication)
+- Wallet and app derive shared child keys using the **Type-42 scheme**.
+- Enables secure, encrypted peer-to-peer channels.
+- Shared secrets are used to encrypt messages and sign transactions.
+
+### 3. BEEF Format & Atomic Transactions
+- Transactions are constructed using **BEEF (Background Evaluation Extended Format)**.
+- Ensures atomicity, integrity, and efficient data packaging.
+- Wallet signs BEEF actions only after successful authentication.
+
+### 4. SPV (Simplified Payment Verification)
+- Verifies relevant blockchain data without downloading the full chain.
+- Enables real-time validation of payments and identity proofs.
+- Enhances speed and scalability for lightweight clients.
+
+### 5. Authentication API Calls
+- Wallet exposes APIs such as:
+  - `isAuthenticated()` — checks user’s authentication status.
+  - `waitForAuthentication()` — blocks until authentication is complete.
+- Applications request identity certificates and validate them before proceeding.
+
+### 6. Privacy & Security Enhancements
+- Selective disclosure minimizes unnecessary data exposure.
+- Certificate revocation and validation mechanisms maintain trust.
+- Digital signatures and encryption protect message and transaction integrity.
+
+---
+
+## 🔄 Simplified Workflow
+
+1. App requests the user’s identity certificate from the wallet.
+2. Wallet provides a verifiable certificate with selective disclosure.
+3. Both app and wallet derive shared keys using Type-42.
+4. App constructs an atomic transaction (BEEF format) with identity context.
+5. Wallet signs and returns the transaction.
+6. App (or backend) verifies transaction and identity via SPV, then broadcasts.
+7. Both parties confirm authenticated and secure session state.
+
+---
+
+## ✅ Optional Enhancements
+
+- **Session Expiry & Re-authentication**: Implement timeouts and re-auth triggers for long-lived sessions.
+- **Certificate Pinning**: Cache trusted certificates to prevent MITM attacks.
+- **Audit Trails**: Log authentication events for compliance and debugging.
+- **Protocol Versioning**: Include protocol IDs (e.g., BRC-44/45/46) to support future upgrades.
+
+---
+
+## 📚 References
+
+- [BSV Wallet Toolbox – GitHub](https://github.com/bsv-blockchain/wallet-toolbox)
+- [BRC-100 Wallet-to-App Interface – bsv.brc.dev](https://bsv.brc.dev/wallet/0100)
+- [BSV TypeScript SDK Security Best Practices](https://bsv-blockchain.github.io/ts-sdk/guides/security-best-practices/)
