@@ -112,7 +112,7 @@ const MainBrowserView: React.FC = () => {
             <Box p={3}>
             <Typography variant="h5">Welcome to Bitcoin Browser</Typography>
             <Typography variant="body1" mt={2}>
-                Address bar, tabs, and dApps will go here.
+                Address bar, tabs, and stuff will go here.
             </Typography>
             </Box>
 

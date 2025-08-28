@@ -1,6 +1,6 @@
 # Babbage-Browser/BitcoinBrowser
 
-A custom Web3 browser built on the Chromium Embedded Framework (CEF) with native integration for BitcoinSV smart contracts, secure wallets, and micropayments.
+A custom Web3 browser built on the Chromium Embedded Framework (CEF) with native BitcoinSV wallet for secure authentication, micropayments, and Electronic Data Interchange (EDI- smart contracts).
 
 ## 🔧 Project Structure
 
@@ -21,9 +21,9 @@ A custom Web3 browser built on the Chromium Embedded Framework (CEF) with native
 |-------|------------|
 | Browser Shell | C++ / Chromium Embedded Framework |
 | UI | React + Vite (TypeScript) |
-| Smart Contracts | sCrypt (BSV) |
 | Native Wallet | C++ or Rust backend |
 | Identity / Auth | BRC-100 (Authrite Protocol (Babbage)) |
+| Smart Contracts | sCrypt (BSV) |
 
 ## 🛠️ Setup (Coming Soon)
 
