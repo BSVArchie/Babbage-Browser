@@ -81,6 +81,27 @@ Instructions need be added for:
 - **Web3 reimagined**: Built for real micropayments, not fake dApps
 - **Prioritize user experience**: Clean easy to use and understand
 
+## 🔒 Security Architecture
+
+### Why Native Wallet Backend?
+
+**JavaScript Security Vulnerabilities:**
+- **Process Isolation**: JavaScript runs in the browser's render process, which is inherently less secure than native processes
+- **XSS Attack Surface**: Malicious websites could potentially access wallet functions through cross-site scripting attacks
+- **Extension Interference**: Browser extensions or injected scripts could intercept wallet operations
+- **Memory Exposure**: Private keys stored in JavaScript variables are accessible through console inspection, memory dumps, and developer tools
+
+**Native Backend Benefits:**
+- **Process Separation**: Wallet operations happen in isolated browser processes, completely separate from web content
+- **Memory Protection**: Native code provides stronger memory protection and can use hardware security features
+- **Cryptographic Libraries**: Direct access to system-level cryptographic libraries (OpenSSL) and potential HSM integration
+- **Attack Surface Reduction**: Even if a website compromises the render process, it cannot access the wallet backend
+
+**Architecture Security:**
+- **Controlled Bridge API**: Only safe, high-level functions are exposed through `window.nativeWallet`
+- **Multi-Process CEF**: Leverages Chromium's natural security boundaries between processes
+- **Real Financial Security**: Built for production use where real money is at stake, not just development/testing
+
 ## 🧬 BRC-100 Protocol Compatibility
 
 This project is being built to support apps that follow the **BRC-100 authentication and identity standards**, enabling secure, privacy-preserving interaction between wallets and applications. The goal is to ensure seamless compatibility with:
