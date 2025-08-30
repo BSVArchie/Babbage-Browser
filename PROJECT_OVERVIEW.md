@@ -419,3 +419,164 @@ Identity Check → Show backup modal → User confirms → Call markBackedUp() �
 - Frontend tracks overlay open/close state
 - Backend manages HWND creation/destruction
 - Both sides coordinate through message passing
+
+## 🔧 Backend Implementation & Core Handlers
+
+### Core Handler Architecture
+
+The backend implements a modular handler system that exposes native functionality to the frontend through V8 JavaScript bindings:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    V8 JavaScript Context                   │
+│              (Frontend React Application)                  │
+└─────────────────────┬───────────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────────────┐
+│                Handler Execution Layer                      │
+│              • IdentityHandler                             │
+│              • PanelHandler                                │
+│              • NavigationHandler                           │
+└─────────────────────┬───────────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────────────┐
+│                Core Business Logic                         │
+│              • WalletManager                               │
+│              • File I/O Operations                         │
+│              • Cryptographic Functions                     │
+└─────────────────────┬───────────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────────────┐
+│                System Integration                          │
+│              • Process Message Passing                     │
+│              • HWND Management                             │
+│              • CEF Browser Control                         │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Identity Management System
+
+**WalletManager Class**
+- **File Location**: `%APPDATA%/BabbageBrowser/identity.json`
+- **Encryption**: AES-256-CBC with hardcoded key (temporary implementation)
+- **Key Generation**: ECDSA secp256k1 key pairs
+- **Address Format**: Bitcoin-style Base58Check encoding
+
+**Identity File Structure**
+```json
+{
+  "publicKey": "hex_encoded_public_key",
+  "address": "base58_encoded_address",
+  "privateKey": "aes_encrypted_private_key",
+  "backedUp": false
+}
+```
+
+**Key Operations**
+1. **Wallet Creation**: Automatically generates new key pair if none exists
+2. **File Persistence**: Saves encrypted identity to AppData directory
+3. **Backup Status**: Tracks whether user has acknowledged backup
+4. **Key Retrieval**: Decrypts and returns private key when needed
+
+### Handler Implementation Details
+
+**IdentityHandler**
+- **Primary Function**: Manages wallet identity operations
+- **Methods Exposed**:
+  - `get()` - Returns decrypted identity JSON
+  - `markBackedUp()` - Updates backup status to true
+- **Auto-Creation**: Creates new wallet if none exists
+
+**PanelHandler**
+- **Primary Function**: Manages overlay panel display
+- **Methods Exposed**:
+  - `open(panelName)` - Triggers overlay panel creation
+- **Message Flow**: Sends `overlay_open_panel` to browser process
+
+**NavigationHandler**
+- **Primary Function**: Handles web navigation requests
+- **Methods Exposed**:
+  - `navigate(path)` - Forwards navigation to webview browser
+- **Message Flow**: Sends `navigate` message to browser process
+
+### Cryptographic Implementation
+
+**Current Implementation (Temporary)**
+- **Key Derivation**: ECDSA secp256k1 for Bitcoin compatibility
+- **Encryption**: AES-256-CBC with hardcoded key
+- **Hashing**: SHA256 + RIPEMD160 for address generation
+- **Encoding**: Base58Check for address format
+
+**Security Notes**
+- Hardcoded AES key is temporary and will be replaced
+- Private keys are encrypted at rest but decrypted in memory
+- Key generation uses OpenSSL cryptographic libraries
+
+### File System Integration
+
+**AppData Directory Structure**
+```
+%APPDATA%/BabbageBrowser/
+└── identity.json          # Encrypted wallet identity
+```
+
+**File Operations**
+- **Creation**: Automatic on first run
+- **Reading**: Decryption and JSON parsing
+- **Writing**: Encryption and JSON serialization
+- **Backup Status**: Persistent boolean flag
+
+### Message Passing Architecture
+
+**Frontend → Backend**
+1. **V8 Function Calls**: Direct handler execution
+2. **Parameter Validation**: Type checking and error handling
+3. **Business Logic**: Core functionality execution
+
+**Backend → Frontend**
+1. **Process Messages**: Cross-process communication
+2. **JavaScript Execution**: Dynamic code injection
+3. **State Updates**: Real-time UI synchronization
+
+### Current Implementation Status
+
+**✅ Fully Implemented**
+- Wallet key generation and management
+- Identity file creation and persistence
+- AES encryption/decryption of private keys
+- Base58 address generation
+- Basic handler execution framework
+- Process message passing system
+
+**🧱 Partially Implemented**
+- Backup modal integration with overlay system
+- Startup identity check automation
+- Error handling and validation
+
+**❌ Missing/Incomplete**
+- Secure key storage (replacing hardcoded AES key)
+- Hardware security module integration
+- Comprehensive error handling
+- Backup modal automatic display on first launch
+
+### Technical Debt & Future Improvements
+
+**Immediate Concerns**
+- Hardcoded AES encryption key (security risk)
+- Limited error handling and validation
+- No hardware security integration
+
+**Planned Refactoring**
+- Replace C++ implementation with alternative language
+- Implement proper key derivation and storage
+- Add comprehensive security auditing
+- Integrate with hardware security modules
+
+**Current Priority**
+- Get backup modal flow working with existing implementation
+- Establish proper overlay integration
+- Complete the user experience flow
+- Address security improvements in subsequent iterations
