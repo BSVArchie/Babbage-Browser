@@ -126,6 +126,12 @@ void SimpleApp::OnContextInitialized() {
 void CreateOverlayBrowserIfNeeded(HINSTANCE hInstance) {
     std::cout << "🚀 Called CreateOverlayBrowserIfNeeded()" << std::endl;
 
+    // Check if overlay already exists and is valid
+    if (g_overlay_hwnd && IsWindow(g_overlay_hwnd)) {
+        std::cout << "🔄 Reusing existing overlay HWND: " << g_overlay_hwnd << std::endl;
+        return; // Exit early, don't create new one
+    }
+
     RECT rect;
     SystemParametersInfo(SPI_GETWORKAREA, 0, &rect, 0);
     int width  = rect.right - rect.left;

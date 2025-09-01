@@ -163,13 +163,19 @@ bool SimpleHandler::OnProcessMessageReceived(
 
         // Trigger React panel inside overlay
         CefRefPtr<CefBrowser> overlay = SimpleHandler::GetOverlayBrowser();
-        if (overlay && overlay->GetMainFrame()) {
+        if (overlay && overlay->GetMainFrame() && !overlay->IsLoading()) {
+            std::cout << "🔍 Browser state - ID: " << overlay->GetIdentifier()
+                      << ", URL: " << overlay->GetMainFrame()->GetURL().ToString()
+                      << ", IsLoading: " << overlay->IsLoading() << std::endl;
             std::string js = "window.triggerPanel('" + panel + "')";
             overlay->GetMainFrame()->ExecuteJavaScript(js, overlay->GetMainFrame()->GetURL(), 0);
             std::cout << "🧠 Triggering overlay panel immediately: " << panel << std::endl;
         } else {
             std::cout << "🕒 Deferring overlay panel trigger until browser is ready: " << panel << std::endl;
-            SimpleHandler::pending_panel_ = panel;
+            // Only set pending_panel_ if it's empty (prevent overwrites)
+            if (SimpleHandler::pending_panel_.empty()) {
+                SimpleHandler::pending_panel_ = panel;
+            }
         }
 
         return true;
@@ -177,7 +183,9 @@ bool SimpleHandler::OnProcessMessageReceived(
 
     if (message_name == "overlay_hide") {
         std::cout << "🪟 Hiding overlay HWND" << std::endl;
+        std::cout << "�� Before hide - EXSTYLE: 0x" << std::hex << GetWindowLong(g_overlay_hwnd, GWL_EXSTYLE) << std::endl;
         ShowWindow(g_overlay_hwnd, SW_HIDE);
+        std::cout << "🪟 After hide - EXSTYLE: 0x" << std::hex << GetWindowLong(g_overlay_hwnd, GWL_EXSTYLE) << std::endl;
         return true;
     }
 

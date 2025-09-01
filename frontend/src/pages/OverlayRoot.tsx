@@ -51,18 +51,23 @@ const OverlayRoot: React.FC = () => {
     };
   }, []);
 
-  useEffect(() => {
-    if (!walletOpen && !showBackupModal) {
-      window.cefMessage?.send?.('overlay_hide', []);
-      console.log("🧹 Overlay HWND requested to hide.");
-    }
-  }, [walletOpen, showBackupModal]);
+  // useEffect(() => {
+  //   if (!walletOpen && !showBackupModal) {
+  //     window.cefMessage?.send?.('overlay_hide', []);
+  //     console.log("🧹 Overlay HWND requested to hide.");
+  //   }
+  // }, [walletOpen, showBackupModal]);
 
   return (
     <>
       <WalletPanelLayout
         open={walletOpen}
-        onClose={() => setWalletOpen(false)}
+        onClose={() => {
+          console.log("🔍 Wallet closing - before:", { walletOpen, showBackupModal });
+          setWalletOpen(false);
+          console.log("🔍 Wallet closing - after:", { walletOpen: false, showBackupModal });
+          window.cefMessage?.send?.('overlay_hide', []);
+        }}
       />
 
       {identity && (

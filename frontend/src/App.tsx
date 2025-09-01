@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import OverlayRoot from './pages/OverlayRoot';
 import MainBrowserView from './pages/MainBrowserView';
@@ -8,6 +8,7 @@ import type { IdentityResult } from './types/identity';
 const App = () => {
   console.log("🔍 App component rendering, pathname:", window.location.pathname);
   const [identityFileExists, setIdentityFileExists] = useState(false);
+
 
   useEffect(() => {
     console.log("🔍 useEffect started");
