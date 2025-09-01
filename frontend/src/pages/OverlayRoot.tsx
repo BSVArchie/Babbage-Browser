@@ -9,35 +9,45 @@ const OverlayRoot: React.FC = () => {
   const [identity, setIdentity] = useState<IdentityData | null>(null);  // Change to IdentityData
 
   // Check for identity on mount
-  useEffect(() => {
-    const checkIdentity = async () => {
-      if (window.bitcoinBrowser?.identity?.get) {
-        try {
-          const result: IdentityResult = await window.bitcoinBrowser.identity.get();
-          // Check if it's IdentityData (not BackupCheck)
-          if (result && !result.backedUp && 'address' in result) {
-            setIdentity(result as IdentityData);  // Type assertion to IdentityData
-            setShowBackupModal(true);
-          }
-        } catch (err) {
-          console.error("Error checking identity:", err);
-        }
-      }
-    };
+  // useEffect(() => {
+  //   const checkIdentity = async () => {
+  //     if (window.bitcoinBrowser?.identity?.get) {
+  //       try {
+  //         const result: IdentityResult = await window.bitcoinBrowser.identity.get();
+  //         // Check if it's IdentityData (not BackupCheck)
+  //         if (result && !result.backedUp && 'address' in result) {
+  //           setIdentity(result as IdentityData);  // Type assertion to IdentityData
+  //           setShowBackupModal(true);
+  //         }
+  //       } catch (err) {
+  //         console.error("Error checking identity:", err);
+  //       }
+  //     }
+  //   };
 
-    checkIdentity();
-  }, []);
+  //   checkIdentity();
+  // }, []);
 
   useEffect(() => {
     window.triggerPanel = (panelName: string) => {
       console.log("🔁 Panel trigger received:", panelName);
       if (panelName === 'wallet') {
         setWalletOpen(true);
+      } else if (panelName === 'backup') {
+        console.log("🔁 Backup panel triggered - getting identity...");
+        const getIdentity = async () => {
+          try {
+            const result = await window.bitcoinBrowser.identity.get();
+            console.log("🔁 Identity received:", result);
+            setIdentity(result as IdentityData);
+            setShowBackupModal(true);
+            console.log("�� Modal state set to true");
+          } catch (err) {
+            console.error("🔁 Error getting identity:", err);
+          }
+        };
+        getIdentity();
       }
-    };
-
-    return () => {
-      delete window.triggerPanel;
     };
   }, []);
 

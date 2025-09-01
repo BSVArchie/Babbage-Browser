@@ -66,7 +66,7 @@ void MyOverlayRenderHandler::OnPaint(CefRefPtr<CefBrowser> browser,
                                      int width, int height) {
     CEF_REQUIRE_UI_THREAD();  // ✅ Confirm we're on the UI thread
 
-    std::cout << "🧪 OnPaint — minimal test using constructor DC and bitmap\n";
+    // std::cout << "🧪 OnPaint — minimal test using constructor DC and bitmap\n";
 
     bool isMostlyTransparent = true;
     const uint8_t* alpha = reinterpret_cast<const uint8_t*>(buffer);
@@ -78,20 +78,7 @@ void MyOverlayRenderHandler::OnPaint(CefRefPtr<CefBrowser> browser,
         }
     }
 
-    if (isMostlyTransparent && dib_data_) {
-        uint8_t* pixels = reinterpret_cast<uint8_t*>(dib_data_);
-        int patchSize = 50;
-        for (int y = 0; y < patchSize; ++y) {
-            for (int x = 0; x < patchSize; ++x) {
-                int i = (y * width + x) * 4;
-                pixels[i + 0] = 50;  // B
-                pixels[i + 1] = 50;  // G
-                pixels[i + 2] = 50;  // R
-                pixels[i + 3] = 200; // A — semi-opaque
-            }
-        }
-        std::cout << "🩹 Patch applied for early input hit-test." << std::endl;
-    } else if (buffer && dib_data_) {
+    if (buffer && dib_data_) {
         std::memcpy(dib_data_, buffer, width * height * 4);
     }
 
@@ -116,11 +103,31 @@ void MyOverlayRenderHandler::OnPaint(CefRefPtr<CefBrowser> browser,
     HDC screenDC = GetDC(NULL);
 
     BOOL result = UpdateLayeredWindow(hwnd_, screenDC, &ptWinPos, &sizeWin,
-                                      hdc_mem_, &ptSrc, 0, &blend, ULW_ALPHA);
+        hdc_mem_, &ptSrc, 0, &blend, ULW_ALPHA);
+
+    if (result) {
+        // Ensure window can receive input
+        LONG exStyle = GetWindowLong(hwnd_, GWL_EXSTYLE);
+        if (exStyle & WS_EX_TRANSPARENT) {
+        SetWindowLong(hwnd_, GWL_EXSTYLE, exStyle & ~WS_EX_TRANSPARENT);
+        std::cout << "🖱️ Removed WS_EX_TRANSPARENT for input handling" << std::endl;
+        }
+
+        // Set window focus
+        SetForegroundWindow(hwnd_);
+        SetFocus(hwnd_);
+        std::cout << "🎯 Set window focus and input" << std::endl;
+    }
+
     ReleaseDC(NULL, screenDC);
 
     DWORD err = GetLastError();
     std::cout << "→ UpdateLayeredWindow result: " << (result ? "success" : "fail")
-              << ", error: " << err << std::endl;
+            << ", error: " << err << std::endl;
     std::cout << "→ IsWindowVisible(hwnd_): " << IsWindowVisible(hwnd_) << std::endl;
+
+    // Add the diagnostic logs here:
+    std::cout << "🖱️ Window handle: " << hwnd_ << std::endl;
+    std::cout << "🖱️ Window enabled: " << IsWindowEnabled(hwnd_) << std::endl;
+    std::cout << "🖱️ Window visible: " << IsWindowVisible(hwnd_) << std::endl;
 }

@@ -5,8 +5,9 @@ import {
   IconButton,
   InputBase,
   Paper,
-  Typography
+  Typography,
 } from '@mui/material';
+import DataObjectIcon from '@mui/icons-material/DataObject';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
@@ -16,6 +17,13 @@ import { useBitcoinBrowser } from '../hooks/useBitcoinBrowser';
 
 
 const MainBrowserView: React.FC = () => {
+    console.log("🔍 MainBrowserView rendering");
+    console.warn("⚠️ Console warn test");
+    console.error("❌ Console error test");
+
+    // Test alert
+    // alert("MainBrowserView is working!");
+
 
     const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
     const [address, setAddress] = useState('https://example.com');

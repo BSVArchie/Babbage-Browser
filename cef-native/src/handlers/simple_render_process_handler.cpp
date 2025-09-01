@@ -2,6 +2,7 @@
 #include "../../include/handlers/simple_render_process_handler.h"
 #include "../../include/core/IdentityHandler.h"
 #include "../../include/core/NavigationHandler.h"
+#include "../../include/core/PanelHandler.h"
 #include "wrapper/cef_helpers.h"
 #include "include/cef_v8.h"
 #include <iostream>
@@ -12,8 +13,6 @@ void SimpleRenderProcessHandler::OnContextCreated(
     CefRefPtr<CefBrowser> browser,
     CefRefPtr<CefFrame> frame,
     CefRefPtr<CefV8Context> context) {
-
-    std::cout << "🚀 [V8] OnContextCreated START" << std::endl;
 
     CEF_REQUIRE_RENDERER_THREAD();
 
@@ -50,7 +49,6 @@ void SimpleRenderProcessHandler::OnContextCreated(
         V8_PROPERTY_ATTRIBUTE_NONE);
 
     // Create the overlayPanel object
-    std::cout << "🚀 V8: Starting overlayPanel setup" << std::endl;
 
     CefRefPtr<CefV8Value> overlayPanelObject = CefV8Value::CreateObject(nullptr, nullptr);
     bitcoinBrowser->SetValue("overlayPanel", overlayPanelObject, V8_PROPERTY_ATTRIBUTE_READONLY);

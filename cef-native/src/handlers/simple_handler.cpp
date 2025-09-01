@@ -175,6 +175,32 @@ bool SimpleHandler::OnProcessMessageReceived(
         return true;
     }
 
+    if (message_name == "overlay_hide") {
+        std::cout << "🪟 Hiding overlay HWND" << std::endl;
+        ShowWindow(g_overlay_hwnd, SW_HIDE);
+        return true;
+    }
+
+    if (message_name == "overlay_show") {
+        std::cout << "🪟 Showing overlay HWND" << std::endl;
+        ShowWindow(g_overlay_hwnd, SW_SHOW);
+        return true;
+    }
+
+    if (message_name == "overlay_input") {
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        bool enable = args->GetBool(0);
+        std::cout << "🪟 Setting overlay input: " << (enable ? "enabled" : "disabled") << std::endl;
+
+        LONG exStyle = GetWindowLong(g_overlay_hwnd, GWL_EXSTYLE);
+        if (enable) {
+            SetWindowLong(g_overlay_hwnd, GWL_EXSTYLE, exStyle & ~WS_EX_TRANSPARENT);
+        } else {
+            SetWindowLong(g_overlay_hwnd, GWL_EXSTYLE, exStyle | WS_EX_TRANSPARENT);
+        }
+        return true;
+    }
+
     return false;
 }
 

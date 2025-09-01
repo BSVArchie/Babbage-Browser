@@ -175,7 +175,7 @@ void CreateOverlayBrowserIfNeeded(HINSTANCE hInstance) {
     CefWindowInfo overlay_window_info;
     overlay_window_info.windowless_rendering_enabled = true;
     overlay_window_info.SetAsPopup(g_overlay_hwnd, "OverlayWindow");
- 
+
     CefRefPtr<MyOverlayRenderHandler> render_handler =
         new MyOverlayRenderHandler(g_overlay_hwnd, overlayWidth, overlayHeight);
 
