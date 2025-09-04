@@ -129,6 +129,49 @@ void CreateOverlayBrowserIfNeeded(HINSTANCE hInstance) {
     // Check if overlay already exists and is valid
     if (g_overlay_hwnd && IsWindow(g_overlay_hwnd)) {
         std::cout << "🔄 Reusing existing overlay HWND: " << g_overlay_hwnd << std::endl;
+
+        // Ensure React app is loaded in the existing overlay
+        CefRefPtr<CefBrowser> existing_overlay = SimpleHandler::GetOverlayBrowser();
+        if (existing_overlay && existing_overlay->GetMainFrame()) {
+            std::string current_url = existing_overlay->GetMainFrame()->GetURL().ToString();
+            std::cout << "🔄 Current overlay URL: '" << current_url << "'" << std::endl;
+            std::cout << "🔄 Overlay browser ID: " << existing_overlay->GetIdentifier() << std::endl;
+            std::cout << "🔄 Overlay browser loading state: " << (existing_overlay->IsLoading() ? "loading" : "not loading") << std::endl;
+
+            // Check if browser is ready to accept new URLs
+            if (existing_overlay->IsLoading()) {
+                std::cout << "⚠️ Overlay browser is still loading, cannot load new URL yet" << std::endl;
+                std::cout << "⚠️ Will retry loading after browser finishes loading" << std::endl;
+                // Set flag to reload when browser finishes loading
+                SimpleHandler::needs_overlay_reload_ = true;
+                return;
+            }
+
+            // Always reload to ensure clean state, especially if URL looks corrupted or empty
+            if (current_url.empty() ||
+                current_url.find("data:text/html") != std::string::npos ||
+                current_url.find("Failed to load") != std::string::npos ||
+                current_url != "http://127.0.0.1:5137/overlay") {
+                std::cout << "🔄 Loading fresh React app in existing overlay (URL was: '" << current_url << "')" << std::endl;
+                std::cout << "🔄 Calling LoadURL on overlay browser..." << std::endl;
+                existing_overlay->GetMainFrame()->LoadURL("http://127.0.0.1:5137/overlay");
+                std::cout << "🔄 LoadURL called, new URL should be: http://127.0.0.1:5137/overlay" << std::endl;
+                std::cout << "🔄 Browser loading state after LoadURL: " << (existing_overlay->IsLoading() ? "loading" : "not loading") << std::endl;
+            } else {
+                std::cout << "🔄 React app already loaded, reloading for fresh state" << std::endl;
+                std::cout << "🔄 Calling LoadURL on overlay browser..." << std::endl;
+                existing_overlay->GetMainFrame()->LoadURL("http://127.0.0.1:5137/overlay");
+                std::cout << "🔄 LoadURL called, new URL should be: http://127.0.0.1:5137/overlay" << std::endl;
+                std::cout << "🔄 Browser loading state after LoadURL: " << (existing_overlay->IsLoading() ? "loading" : "not loading") << std::endl;
+            }
+        } else {
+            std::cout << "⚠️ Overlay browser not available, cannot reload React app" << std::endl;
+            if (!existing_overlay) {
+                std::cout << "⚠️ existing_overlay is null" << std::endl;
+            } else if (!existing_overlay->GetMainFrame()) {
+                std::cout << "⚠️ existing_overlay->GetMainFrame() is null" << std::endl;
+            }
+        }
         return; // Exit early, don't create new one
     }
 
@@ -203,4 +246,6 @@ void CreateOverlayBrowserIfNeeded(HINSTANCE hInstance) {
         nullptr,
         CefRequestContext::GetGlobalContext()
     );
+
+    std::cout << "🪟 Overlay browser creation result: " << (overlay_result ? "SUCCESS" : "FAILED") << std::endl;
 }

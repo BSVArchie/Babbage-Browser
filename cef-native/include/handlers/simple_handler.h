@@ -20,6 +20,8 @@ public:
     static CefRefPtr<CefBrowser> webview_browser_;
     static CefRefPtr<CefBrowser> GetOverlayBrowser();
     static std::string pending_panel_;
+    static bool needs_overlay_reload_;
+    static void TriggerDeferredPanel(const std::string& panel);
 
     // CefDisplayHandler methods
     void OnTitleChange(CefRefPtr<CefBrowser> browser, const CefString& title) override;

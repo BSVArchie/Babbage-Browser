@@ -15,6 +15,7 @@
 extern void CreateOverlayBrowserIfNeeded(HINSTANCE hInstance);
 
 std::string SimpleHandler::pending_panel_;
+bool SimpleHandler::needs_overlay_reload_ = false;
 
 SimpleHandler::SimpleHandler(const std::string& role) : role_(role) {}
 
@@ -36,6 +37,17 @@ CefRefPtr<CefBrowser> SimpleHandler::GetOverlayBrowser() {
     return overlay_browser_;
 }
 
+void SimpleHandler::TriggerDeferredPanel(const std::string& panel) {
+    CefRefPtr<CefBrowser> overlay = SimpleHandler::GetOverlayBrowser();
+    if (overlay && overlay->GetMainFrame()) {
+        std::string js = "window.triggerPanel('" + panel + "')";
+        overlay->GetMainFrame()->ExecuteJavaScript(js, overlay->GetMainFrame()->GetURL(), 0);
+        std::cout << "🧠 Deferred panel triggered after delay: " << panel << std::endl;
+    } else {
+        std::cout << "⚠️ Overlay browser still not ready. Skipping panel trigger." << std::endl;
+    }
+}
+
 
 void SimpleHandler::OnTitleChange(CefRefPtr<CefBrowser> browser, const CefString& title) {
 #if defined(OS_WIN)
@@ -48,8 +60,10 @@ void SimpleHandler::OnLoadError(CefRefPtr<CefBrowser> browser,
                                 ErrorCode errorCode,
                                 const CefString& errorText,
                                 const CefString& failedUrl) {
+    std::cout << "❌ Load error for role: " << role_ << std::endl;
     std::wcout << L"❌ Load error: " << std::wstring(failedUrl)
                << L" - " << std::wstring(errorText) << std::endl;
+    std::cout << "❌ Error code: " << errorCode << std::endl;
 
     if (frame->IsMain()) {
         std::string html = "<html><body><h1>Failed to load</h1><p>URL: " +
@@ -76,23 +90,33 @@ void SimpleHandler::OnLoadingStateChange(CefRefPtr<CefBrowser> browser,
                                          bool isLoading,
                                          bool canGoBack,
                                          bool canGoForward) {
-    std::cout << "📡 Loading state: " << (isLoading ? "loading..." : "done") << std::endl;
+    std::cout << "📡 Loading state for role " << role_ << ": " << (isLoading ? "loading..." : "done") << std::endl;
+    if (role_ == "overlay") {
+        std::cout << "📡 Overlay URL: " << browser->GetMainFrame()->GetURL().ToString() << std::endl;
+    }
 
-    if (!isLoading && role_ == "overlay" && !pending_panel_.empty()) {
-        std::string panel = pending_panel_;
+    if (!isLoading && role_ == "overlay") {
+        // Check if we need to reload the overlay
+        if (needs_overlay_reload_) {
+            std::cout << "🔄 Overlay finished loading, now reloading React app" << std::endl;
+            needs_overlay_reload_ = false;
+            browser->GetMainFrame()->LoadURL("http://127.0.0.1:5137/overlay");
+            std::cout << "🔄 LoadURL called for overlay reload" << std::endl;
+            return; // Don't process pending panels yet, wait for reload to complete
+        }
 
-        // Delay JS execution slightly to ensure React is mounted
-        CefPostDelayedTask(TID_UI, base::BindOnce([]() {
-            CefRefPtr<CefBrowser> overlay = SimpleHandler::GetOverlayBrowser();
-            if (overlay && overlay->GetMainFrame()) {
-                std::string js = "window.triggerPanel('" + SimpleHandler::pending_panel_ + "')";
-                overlay->GetMainFrame()->ExecuteJavaScript(js, overlay->GetMainFrame()->GetURL(), 0);
-                std::cout << "🧠 Deferred panel triggered after delay: " << SimpleHandler::pending_panel_ << std::endl;
-                SimpleHandler::pending_panel_.clear();
-            } else {
-                std::cout << "⚠️ Overlay browser still not ready. Skipping panel trigger." << std::endl;
-            }
-        }), 100); // delay in milliseconds
+        // Handle pending panel triggers
+        if (!pending_panel_.empty()) {
+            std::string panel = pending_panel_;
+            std::cout << "🕒 OnLoadingStateChange: Creating deferred trigger for panel: " << panel << std::endl;
+
+            // Clear pending_panel_ immediately to prevent duplicate deferred triggers
+            SimpleHandler::pending_panel_.clear();
+
+            // Delay JS execution slightly to ensure React is mounted
+            // Use a simple function call instead of lambda to avoid CEF bind issues
+            CefPostDelayedTask(TID_UI, base::BindOnce(&SimpleHandler::TriggerDeferredPanel, panel), 100);
+        }
     }
 }
 
@@ -172,10 +196,9 @@ bool SimpleHandler::OnProcessMessageReceived(
             std::cout << "🧠 Triggering overlay panel immediately: " << panel << std::endl;
         } else {
             std::cout << "🕒 Deferring overlay panel trigger until browser is ready: " << panel << std::endl;
-            // Only set pending_panel_ if it's empty (prevent overwrites)
-            if (SimpleHandler::pending_panel_.empty()) {
-                SimpleHandler::pending_panel_ = panel;
-            }
+            // Always update pending_panel_ to the latest request
+            SimpleHandler::pending_panel_ = panel;
+            std::cout << "🕒 Set pending_panel_ to: " << panel << std::endl;
         }
 
         return true;
