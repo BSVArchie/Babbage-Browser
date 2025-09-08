@@ -1,8 +1,8 @@
-# Babbage-Browser Project Overview
+# Bitcoin-Browser Project Overview
 
 ## 🎯 Project Mission
 
-Babbage-Browser is a custom Web3 browser built on Chromium Embedded Framework (CEF) that prioritizes security and native control over cryptocurrency operations. Unlike traditional browser-based wallets, this project implements a native C++ backend for all sensitive wallet operations, ensuring maximum security for real financial transactions.
+Bitcoin-Browser is a custom Web3 browser built on Chromium Embedded Framework (CEF) that prioritizes security and native control over blockchain operations. Unlike traditional browser-based wallets, this project implements a **Python-based wallet backend** (with future Rust migration planned) for all sensitive wallet operations, ensuring maximum security for real financial transactions.
 
 ## 🔒 Security Architecture & Design Philosophy
 
@@ -30,27 +30,27 @@ Traditional browser wallets face significant security challenges because they op
    - Browser extensions could inject code that accesses wallet data
    - The JavaScript environment is sandboxed but still accessible to web content
 
-**Our Solution: Native C++ Backend**
+**Our Solution: Python Wallet Backend with Process Isolation**
 
 1. **Process Separation**
-   - Wallet operations happen in isolated browser processes, completely separate from web content
+   - Wallet operations happen in isolated Python daemon processes, completely separate from web content
    - CEF's multi-process architecture provides natural security boundaries
    - Even if a website compromises the render process, it cannot access the wallet backend
 
 2. **Enhanced Memory Protection**
-   - Native code provides stronger memory protection mechanisms
-   - Can leverage hardware security features and modules (HSM)
+   - Python daemon provides stronger memory protection than JavaScript
+   - Can leverage hardware security features and modules (HSM) in future Rust implementation
    - Memory isolation between processes prevents cross-process data access
 
 3. **Cryptographic Library Integration**
-   - Direct access to system-level cryptographic libraries (OpenSSL)
-   - Hardware security module (HSM) integration capabilities
-   - Signing operations happen in isolated, controlled environments
+   - Direct access to Bitcoin SV Python SDK (bsv-sdk) with BEEF and SPV support
+   - Hardware security module (HSM) integration capabilities planned for production
+   - Signing operations happen in isolated, controlled Python daemon environments
 
 4. **Controlled API Exposure**
-   - Only safe, high-level functions are exposed through `window.nativeWallet`
+   - Only safe, high-level functions are exposed through `window.bitcoinBrowser`
    - The bridge API is carefully designed to prevent sensitive data leakage
-   - All cryptographic operations remain in the native backend
+   - All cryptographic operations remain in the isolated Python backend
 
 ### Security Architecture Benefits
 
@@ -70,12 +70,13 @@ Traditional browser wallets face significant security challenges because they op
 │              • Wallet UI Components                        │
 │              • Settings & Configuration                    │
 │              • Navigation Interface                        │
+│              🟡 Future: React Native for mobile            │
 └─────────────────────┬───────────────────────────────────────┘
                       │
                       ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                JS ↔ Native Bridge Layer                    │
-│              • window.nativeWallet API                     │
+│              • window.bitcoinBrowser API                   │
 │              • Controlled Function Exposure                │
 │              • No Sensitive Data Transfer                  │
 └─────────────────────┬───────────────────────────────────────┘
@@ -84,26 +85,19 @@ Traditional browser wallets face significant security challenges because they op
 ┌─────────────────────────────────────────────────────────────┐
 │                Native CEF Shell                            │
 │              • C++ / Chromium Engine                       │
-│              • Wallet & Identity Core                      │
 │              • CEF Event Handlers                          │
 │              • Process Isolation                           │
+│              🟡 Future: Consider full Chromium build       │
 └─────────────────────┬───────────────────────────────────────┘
                       │
                       ▼
 ┌─────────────────────────────────────────────────────────────┐
-│              Smart Contract Layer                          │
-│              • sCrypt / Authrite Integration               │
-│              • Token Gating & Access Control               │
-│              • Native Contract Execution                   │
-└─────────────────────┬───────────────────────────────────────┘
-                      │
-                      ▼
-┌─────────────────────────────────────────────────────────────┐
-│              Wallet Backend Layer                          │
-│              • C++ Native Implementation                   │
+│              Python Wallet Backend                         │
+│              • bsv-sdk Integration                         │
+│              • BEEF Transaction Support                    │
+│              • SPV Verification                            │
 │              • Secure Key Management                       │
-│              • Cryptographic Operations                    │
-│              • Hardware Security Integration               │
+│              🟡 PoC: Will migrate to Rust for production   │
 └─────────────────────┬───────────────────────────────────────┘
                       │
                       ▼
@@ -113,6 +107,15 @@ Traditional browser wallets face significant security challenges because they op
 │              • BRC-52/103 Certificates                    │
 │              • Type-42 Key Derivation                     │
 │              • SPV Identity Validation                     │
+└─────────────────────┬───────────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────────────┐
+│              Bitcoin SV Blockchain                        │
+│              • TAAL, GorillaPool Miners                   │
+│              • Terranode, ARC Formats                     │
+│              • Multi-platform Support                     │
+│              🟡 Windows, Mac, Mobile builds planned        │
 └─────────────────────────────────────────────────────────────┘
 ```
 

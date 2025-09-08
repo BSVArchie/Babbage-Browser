@@ -2,31 +2,30 @@
 |        React UI Layer     |
 |  - Panels / Pages / Hooks |
 |  - TypeScript + Vite      |
+|  🟡 Future: React Native   |
 +----------------------------+
             ↓
 +----------------------------+
 |   JS ↔ Native Bridge Layer |
-|  - window.nativeWallet     |
+|  - window.bitcoinBrowser   |
 |  - window.identity         |
 +----------------------------+
             ↓
 +----------------------------+
 |     Native CEF Shell       |
 |  - C++ / Chromium          |
-|  - Wallet / Identity Core  |
 |  - CEF Handlers            |
+|  🟡 Future: Full Chromium  |
 +----------------------------+
             ↓
 +----------------------------+
-|   Smart Contract Layer     |
-|  - sCrypt / Authrite       |
-|  - Token Gating / Access   |
-+----------------------------+
-            ↓
-+----------------------------+
-|     Wallet Backend Layer   |
-|  - C++ or Rust             |
-|  - Secure Signing / Keys   |
+|   Python Wallet Backend    |
+|  - bsv-sdk Integration     |
+|  - BEEF Transaction Support|
+|  - SPV Verification        |
+|  - Secure Key Management   |
+|  🟡 PoC: Will migrate to   |
+|     Rust for production    |
 +----------------------------+
             ↓
 +----------------------------+
@@ -37,6 +36,13 @@
 |  - Selective Disclosure    |
 |  - SPV Identity Validation |
 |  - BEEF Atomic Transactions|
++----------------------------+
+            ↓
++----------------------------+
+| Bitcoin SV Blockchain      |
+|  - TAAL, GorillaPool       |
+|  - Terranode, ARC Formats  |
+|  🟡 Multi-platform builds  |
 +----------------------------+
 
 

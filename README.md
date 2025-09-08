@@ -4,7 +4,6 @@ A custom Web3 browser built on the Chromium Embedded Framework (CEF) with native
 
 ## 🔧 Project Structure
 
-
 > Note: `cef-binaries/` is excluded from Git using `.gitignore`.
 
 ## 🚀 Goals
@@ -17,21 +16,24 @@ A custom Web3 browser built on the Chromium Embedded Framework (CEF) with native
 
 ## 📦 Tech Stack
 
-| Layer | Technology |
-|-------|------------|
-| Browser Shell | C++ / Chromium Embedded Framework |
-| UI | React + Vite (TypeScript) |
-| Native Wallet | C++ or Rust backend |
-| Identity / Auth | BRC-100 (Authrite Protocol (Babbage)) |
-| Smart Contracts | sCrypt (BSV) |
+| Layer | Technology | Notes |
+|-------|------------|-------|
+| Browser Shell | C++ / Chromium Embedded Framework | 🟡 *Future: Consider full Chromium build* |
+| UI | React + Vite (TypeScript) | 🟡 *Future: Consider React Native for mobile* |
+| Native Wallet | **Python** (bsv-sdk) | 🟡 *PoC: Will migrate to Rust for production* |
+| Identity / Auth | BRC-100 (Authrite Protocol (Babbage)) | |
+| Smart Contracts | sCrypt (BSV) | |
+| Blockchain Integration | Bitcoin SV (TAAL, GorillaPool) | 🟡 *Multi-platform: Windows, Mac, Mobile* |
 
 ## 🛠️ Setup (Coming Soon)
 
 Instructions need be added for:
 
 - Building the native CEF shell
+- Setting up Python wallet backend (bsv-sdk)
 - Running the React frontend in development
-- Integrating `window.nativeWallet` bridge for UI ↔ native communication
+- Integrating `window.bitcoinBrowser` bridge for UI ↔ native communication
+- CEF binaries download and wrapper compilation
 
 ## 📁 Repository Notes
 
@@ -92,14 +94,16 @@ Instructions need be added for:
 - **Memory Exposure**: Private keys stored in JavaScript variables are accessible through console inspection, memory dumps, and developer tools
 
 **Native Backend Benefits:**
-- **Process Separation**: Wallet operations happen in isolated browser processes, completely separate from web content
-- **Memory Protection**: Native code provides stronger memory protection and can use hardware security features
-- **Cryptographic Libraries**: Direct access to system-level cryptographic libraries (OpenSSL) and potential HSM integration
+- **Process Separation**: Wallet operations happen in isolated Python daemon processes, completely separate from web content
+- **Memory Protection**: Python daemon provides stronger memory protection than JavaScript
+- **Cryptographic Libraries**: Direct access to Bitcoin SV Python SDK (bsv-sdk) with BEEF and SPV support
 - **Attack Surface Reduction**: Even if a website compromises the render process, it cannot access the wallet backend
+| 🟡 *PoC: Will migrate to Rust for production* |
 
 **Architecture Security:**
-- **Controlled Bridge API**: Only safe, high-level functions are exposed through `window.nativeWallet`
+- **Controlled Bridge API**: Only safe, high-level functions are exposed through `window.bitcoinBrowser`
 - **Multi-Process CEF**: Leverages Chromium's natural security boundaries between processes
+- **Python Daemon Isolation**: Private keys never leave the isolated Python wallet process
 - **Real Financial Security**: Built for production use where real money is at stake, not just development/testing
 
 ## 🧬 BRC-100 Protocol Compatibility
@@ -114,10 +118,10 @@ This project is being built to support apps that follow the **BRC-100 authentica
 - **SPV-based identity and transaction verification**
 - **Browser-side API injection for identity access**, e.g.:
   ```js
-  window.identity = { ... }
-  window.brc100.getPublicKey()
-  window.brc100.signMessage(...)
-  window.brc100.getCertificate()
+  window.bitcoinBrowser.identity.get()
+  window.bitcoinBrowser.brc100.getPublicKey()
+  window.bitcoinBrowser.brc100.signMessage(...)
+  window.bitcoinBrowser.brc100.getCertificate()
 
 ---
 

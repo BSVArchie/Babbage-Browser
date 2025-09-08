@@ -8,26 +8,6 @@ const OverlayRoot: React.FC = () => {
   const [showBackupModal, setShowBackupModal] = useState(false);
   const [identity, setIdentity] = useState<IdentityData | null>(null);  // Change to IdentityData
 
-  // Check for identity on mount
-  // useEffect(() => {
-  //   const checkIdentity = async () => {
-  //     if (window.bitcoinBrowser?.identity?.get) {
-  //       try {
-  //         const result: IdentityResult = await window.bitcoinBrowser.identity.get();
-  //         // Check if it's IdentityData (not BackupCheck)
-  //         if (result && !result.backedUp && 'address' in result) {
-  //           setIdentity(result as IdentityData);  // Type assertion to IdentityData
-  //           setShowBackupModal(true);
-  //         }
-  //       } catch (err) {
-  //         console.error("Error checking identity:", err);
-  //       }
-  //     }
-  //   };
-
-  //   checkIdentity();
-  // }, []);
-
   useEffect(() => {
     window.triggerPanel = (panelName: string) => {
       console.log("🔁 Panel trigger received:", panelName);
@@ -50,13 +30,6 @@ const OverlayRoot: React.FC = () => {
       }
     };
   }, []);
-
-  // useEffect(() => {
-  //   if (!walletOpen && !showBackupModal) {
-  //     window.cefMessage?.send?.('overlay_hide', []);
-  //     console.log("🧹 Overlay HWND requested to hide.");
-  //   }
-  // }, [walletOpen, showBackupModal]);
 
   return (
     <>

@@ -2,6 +2,12 @@
 
 This document outlines the authentication process between BRC-100-compliant wallets and applications, emphasizing mutual trust, secure communication, and privacy-preserving identity management.
 
+## 🎯 Implementation Status
+
+**Current**: Python-based BRC-100 implementation using bsv-sdk
+**Future**: Migration to Rust for production security and performance
+**Timeline**: PoC in 2-3 weeks, production migration planned
+
 ---
 
 ## 🧩 Key Components
@@ -60,8 +66,39 @@ This document outlines the authentication process between BRC-100-compliant wall
 
 ---
 
+## 🐍 Python Implementation Notes
+
+### bsv-sdk Integration
+- **BEEF Support**: Built-in BEEF format creation and verification
+- **SPV Verification**: Simplified Payment Verification with BEEF
+- **HD Wallet**: Hierarchical deterministic wallet support
+- **Transaction Building**: Advanced transaction construction
+
+### Security Considerations
+- **Process Isolation**: Python wallet runs in separate daemon process
+- **Key Management**: Secure key derivation using PBKDF2
+- **Memory Protection**: Private keys never leave Python daemon
+- **Future Migration**: Plan for Rust implementation for production
+
+## 🚀 Development Roadmap
+
+### Phase 1: Python PoC (2-3 weeks)
+- [ ] Basic wallet creation and key management
+- [ ] BEEF transaction support
+- [ ] SPV verification implementation
+- [ ] BRC-100 authentication flow
+- [ ] C++ ↔ Python integration
+
+### Phase 2: Production Migration (Future)
+- [ ] Rust wallet backend implementation
+- [ ] Hardware security module integration
+- [ ] Performance optimizations
+- [ ] Security auditing
+
 ## 📚 References
 
 - [BSV Wallet Toolbox – GitHub](https://github.com/bsv-blockchain/wallet-toolbox)
 - [BRC-100 Wallet-to-App Interface – bsv.brc.dev](https://bsv.brc.dev/wallet/0100)
 - [BSV TypeScript SDK Security Best Practices](https://bsv-blockchain.github.io/ts-sdk/guides/security-best-practices/)
+- [Bitcoin SV Python SDK – PyPI](https://pypi.org/project/bsv-sdk/)
+- [BEEF Format Documentation](https://docs.bsvblockchain.org/guides/sdks/concepts/beef)

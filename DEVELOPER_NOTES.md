@@ -1,6 +1,18 @@
 # Developer Notes - Babbage Browser
 
-## Current Session: Backup Modal Overlay HWND Issue
+## 🎯 Current Development Focus: Python Wallet Backend Integration
+
+### Architecture Decision: Python for PoC, Rust for Production
+- **Current**: Python wallet backend using bsv-sdk for rapid development
+- **Future**: Migration to Rust for production security and performance
+- **Rationale**: Python provides faster PoC development with BEEF/SPV support
+
+### Key Considerations for Future Development
+- 🟡 **CEF vs Full Chromium**: Consider building full Chromium for better control
+- 🟡 **React vs React Native**: Evaluate React Native for mobile compatibility
+- 🟡 **Multi-platform**: Plan for Windows, Mac, and mobile builds
+
+## Previous Session: Backup Modal Overlay HWND Issue
 
 ### Problem Statement
 The backup modal needs to render in an `overlay_hwnd` at application startup when the identity file doesn't exist or its `backedUp` field is `false`. The modal should be populated with identity data, and checking a box should update the `backedUp` field to `true` and close the modal.
