@@ -11,6 +11,8 @@
 - 🟡 **CEF vs Full Chromium**: Consider building full Chromium for better control
 - 🟡 **React vs React Native**: Evaluate React Native for mobile compatibility
 - 🟡 **Multi-platform**: Plan for Windows, Mac, and mobile builds
+- 🟡 **Key Derivation**: PBKDF2-SHA256 is Bitcoin standard (Argon2 optional for production)
+- 🟡 **Python to Rust**: Plan migration path for production wallet backend
 
 ## Previous Session: Backup Modal Overlay HWND Issue
 

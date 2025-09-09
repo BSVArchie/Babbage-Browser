@@ -21,6 +21,7 @@ A custom Web3 browser built on the Chromium Embedded Framework (CEF) with native
 | Browser Shell | C++ / Chromium Embedded Framework | 🟡 *Future: Consider full Chromium build* |
 | UI | React + Vite (TypeScript) | 🟡 *Future: Consider React Native for mobile* |
 | Native Wallet | **Python** (bsv-sdk) | 🟡 *PoC: Will migrate to Rust for production* |
+| Key Derivation | **PBKDF2** (temporary) | 🟡 *Future: Upgrade to Argon2 for production* |
 | Identity / Auth | BRC-100 (Authrite Protocol (Babbage)) | |
 | Smart Contracts | sCrypt (BSV) | |
 | Blockchain Integration | Bitcoin SV (TAAL, GorillaPool) | 🟡 *Multi-platform: Windows, Mac, Mobile* |
