@@ -1,4 +1,4 @@
-# Developer Notes - Babbage Browser
+# Developer Notes - Bitcoin Browser
 
 ## 🎯 Current Development Focus: C++ CEF Integration with Go Wallet Daemon
 
@@ -19,6 +19,39 @@
 - 🟡 **Multi-platform**: Plan for Windows, Mac, and mobile builds
 - 🟡 **Key Derivation**: PBKDF2-SHA256 is Bitcoin standard (Argon2 optional for production)
 - 🟡 **Go to Rust**: Consider migration path for maximum performance if needed
+
+## 📋 Tomorrow's Development Plan: C++ CEF Integration
+
+### Phase 1: C++ HTTP Client Integration
+1. **Add HTTP Client Library**: Integrate libcurl or Windows HTTP API into C++ CEF
+2. **Create Wallet Service Class**: C++ class to communicate with Go daemon
+3. **Implement API Calls**: Methods for health, identity/get, identity/markBackedUp
+4. **Error Handling**: Robust error handling for network failures and daemon unavailability
+
+### Phase 2: CEF Message Bridge
+1. **Update IdentityHandler.cpp**: Replace file-based identity with HTTP calls to Go daemon
+2. **Modify CEF Messages**: Update `window.bitcoinBrowser.identity.get()` to use Go daemon
+3. **Add Daemon Management**: Start/stop Go daemon process from C++ if needed
+4. **Testing**: Verify frontend → C++ → Go daemon → response flow
+
+### Phase 3: Process Management
+1. **Daemon Lifecycle**: Ensure Go daemon starts with C++ application
+2. **Process Monitoring**: Monitor daemon health and restart if needed
+3. **Port Management**: Handle port conflicts and daemon startup failures
+4. **Integration Testing**: Full end-to-end testing of the complete pipeline
+
+### Technical Requirements
+- **HTTP Client**: Choose between libcurl (cross-platform) or Windows HTTP API
+- **JSON Parsing**: Use existing nlohmann/json library
+- **Process Management**: Windows process creation and monitoring
+- **Error Recovery**: Graceful handling of daemon failures
+
+### Success Criteria
+- ✅ Frontend can get identity from Go daemon via C++ bridge
+- ✅ Backup modal works with Go daemon data
+- ✅ Identity persistence works through Go daemon
+- ✅ Error handling works when daemon is unavailable
+- ✅ Complete pipeline: React → C++ → Go → Response
 
 ## Previous Session: Backup Modal Overlay HWND Issue
 

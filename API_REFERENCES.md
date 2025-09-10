@@ -1,4 +1,4 @@
-# API References - Babbage Browser
+# API References - Bitcoin Browser
 
 ## 🎯 Overview
 

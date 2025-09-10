@@ -1,4 +1,4 @@
-# Build Instructions - Babbage Browser
+# Build Instructions - Bitcoin Browser
 
 ## 🎯 Overview
 
