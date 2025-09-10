@@ -19,13 +19,13 @@
 +----------------------------+
             ↓
 +----------------------------+
-|   Python Wallet Backend    |
-|  - bsv-sdk Integration     |
+|   Go Wallet Backend        |
+|  - bitcoin-sv/go-sdk       |
 |  - BEEF Transaction Support|
 |  - SPV Verification        |
 |  - Secure Key Management   |
-|  🟡 PoC: Will migrate to   |
-|     Rust for production    |
+|  🟡 Future: May migrate to |
+|     Rust for max perf      |
 +----------------------------+
             ↓
 +----------------------------+

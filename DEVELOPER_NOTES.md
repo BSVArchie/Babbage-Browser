@@ -1,18 +1,18 @@
 # Developer Notes - Babbage Browser
 
-## 🎯 Current Development Focus: Python Wallet Backend Integration
+## 🎯 Current Development Focus: Go Wallet Backend Integration
 
-### Architecture Decision: Python for PoC, Rust for Production
-- **Current**: Python wallet backend using bsv-sdk for rapid development
-- **Future**: Migration to Rust for production security and performance
-- **Rationale**: Python provides faster PoC development with BEEF/SPV support
+### Architecture Decision: Go for PoC, Rust Possible for Future
+- **Current**: Go wallet backend using bitcoin-sv/go-sdk for rapid development
+- **Future**: May migrate to Rust for maximum performance and memory safety
+- **Rationale**: Go provides excellent balance of performance, safety, and development speed with official BSV SDK support
 
 ### Key Considerations for Future Development
 - 🟡 **CEF vs Full Chromium**: Consider building full Chromium for better control
 - 🟡 **React vs React Native**: Evaluate React Native for mobile compatibility
 - 🟡 **Multi-platform**: Plan for Windows, Mac, and mobile builds
 - 🟡 **Key Derivation**: PBKDF2-SHA256 is Bitcoin standard (Argon2 optional for production)
-- 🟡 **Python to Rust**: Plan migration path for production wallet backend
+- 🟡 **Go to Rust**: Consider migration path for maximum performance if needed
 
 ## Previous Session: Backup Modal Overlay HWND Issue
 

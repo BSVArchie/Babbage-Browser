@@ -2,7 +2,7 @@
 
 ## 🎯 Project Mission
 
-Bitcoin-Browser is a custom Web3 browser built on Chromium Embedded Framework (CEF) that prioritizes security and native control over blockchain operations. Unlike traditional browser-based wallets, this project implements a **Python-based wallet backend** (with future Rust migration planned) for all sensitive wallet operations, ensuring maximum security for real financial transactions.
+Bitcoin-Browser is a custom Web3 browser built on Chromium Embedded Framework (CEF) that prioritizes security and native control over blockchain operations. Unlike traditional browser-based wallets, this project implements a **Go-based wallet backend** (with future Rust migration possible) for all sensitive wallet operations, ensuring maximum security for real financial transactions.
 
 ## 🔒 Security Architecture & Design Philosophy
 
@@ -30,27 +30,27 @@ Traditional browser wallets face significant security challenges because they op
    - Browser extensions could inject code that accesses wallet data
    - The JavaScript environment is sandboxed but still accessible to web content
 
-**Our Solution: Python Wallet Backend with Process Isolation**
+**Our Solution: Go Wallet Backend with Process Isolation**
 
 1. **Process Separation**
-   - Wallet operations happen in isolated Python daemon processes, completely separate from web content
+   - Wallet operations happen in isolated Go daemon processes, completely separate from web content
    - CEF's multi-process architecture provides natural security boundaries
    - Even if a website compromises the render process, it cannot access the wallet backend
 
 2. **Enhanced Memory Protection**
-   - Python daemon provides stronger memory protection than JavaScript
+   - Go daemon provides stronger memory protection than JavaScript
    - Can leverage hardware security features and modules (HSM) in future Rust implementation
    - Memory isolation between processes prevents cross-process data access
 
 3. **Cryptographic Library Integration**
-   - Direct access to Bitcoin SV Python SDK (bsv-sdk) with BEEF and SPV support
+   - Direct access to Bitcoin SV Go SDK (bitcoin-sv/go-sdk) with BEEF and SPV support
    - Hardware security module (HSM) integration capabilities planned for production
-   - Signing operations happen in isolated, controlled Python daemon environments
+   - Signing operations happen in isolated, controlled Go daemon environments
 
 4. **Controlled API Exposure**
    - Only safe, high-level functions are exposed through `window.bitcoinBrowser`
    - The bridge API is carefully designed to prevent sensitive data leakage
-   - All cryptographic operations remain in the isolated Python backend
+   - All cryptographic operations remain in the isolated Go backend
 
 ### Security Architecture Benefits
 
@@ -92,12 +92,12 @@ Traditional browser wallets face significant security challenges because they op
                       │
                       ▼
 ┌─────────────────────────────────────────────────────────────┐
-│              Python Wallet Backend                         │
-│              • bsv-sdk Integration                         │
+│              Go Wallet Backend                             │
+│              • bitcoin-sv/go-sdk Integration               │
 │              • BEEF Transaction Support                    │
 │              • SPV Verification                            │
 │              • Secure Key Management                       │
-│              🟡 PoC: Will migrate to Rust for production   │
+│              🟡 Future: May migrate to Rust for max perf   │
 └─────────────────────┬───────────────────────────────────────┘
                       │
                       ▼

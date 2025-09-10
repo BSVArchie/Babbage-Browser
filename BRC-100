@@ -4,9 +4,9 @@ This document outlines the authentication process between BRC-100-compliant wall
 
 ## 🎯 Implementation Status
 
-**Current**: Python-based BRC-100 implementation using bsv-sdk
-**Future**: Migration to Rust for production security and performance
-**Timeline**: PoC in 2-3 weeks, production migration planned
+**Current**: Go-based BRC-100 implementation using bitcoin-sv/go-sdk
+**Future**: May migrate to Rust for maximum performance and memory safety
+**Timeline**: PoC in 2-3 weeks, production-ready with Go
 
 ---
 
@@ -66,39 +66,41 @@ This document outlines the authentication process between BRC-100-compliant wall
 
 ---
 
-## 🐍 Python Implementation Notes
+## 🐹 Go Implementation Notes
 
-### bsv-sdk Integration
+### bitcoin-sv/go-sdk Integration
 - **BEEF Support**: Built-in BEEF format creation and verification
 - **SPV Verification**: Simplified Payment Verification with BEEF
 - **HD Wallet**: Hierarchical deterministic wallet support
 - **Transaction Building**: Advanced transaction construction
+- **Performance**: Compiled binary with excellent concurrency support
 
 ### Security Considerations
-- **Process Isolation**: Python wallet runs in separate daemon process
+- **Process Isolation**: Go wallet runs in separate daemon process
 - **Key Management**: Secure key derivation using PBKDF2
-- **Memory Protection**: Private keys never leave Python daemon
-- **Future Migration**: Plan for Rust implementation for production
+- **Memory Protection**: Private keys never leave Go daemon
+- **Type Safety**: Compile-time type checking prevents many errors
+- **Future Migration**: May consider Rust for maximum performance if needed
 
 ## 🚀 Development Roadmap
 
-### Phase 1: Python PoC (2-3 weeks)
+### Phase 1: Go PoC (2-3 weeks)
 - [ ] Basic wallet creation and key management
 - [ ] BEEF transaction support
 - [ ] SPV verification implementation
 - [ ] BRC-100 authentication flow
-- [ ] C++ ↔ Python integration
+- [ ] C++ ↔ Go integration
 
-### Phase 2: Production Migration (Future)
-- [ ] Rust wallet backend implementation
-- [ ] Hardware security module integration
+### Phase 2: Production Optimization (Future)
 - [ ] Performance optimizations
+- [ ] Hardware security module integration
 - [ ] Security auditing
+- [ ] Consider Rust migration if maximum performance needed
 
 ## 📚 References
 
 - [BSV Wallet Toolbox – GitHub](https://github.com/bsv-blockchain/wallet-toolbox)
 - [BRC-100 Wallet-to-App Interface – bsv.brc.dev](https://bsv.brc.dev/wallet/0100)
 - [BSV TypeScript SDK Security Best Practices](https://bsv-blockchain.github.io/ts-sdk/guides/security-best-practices/)
-- [Bitcoin SV Python SDK – PyPI](https://pypi.org/project/bsv-sdk/)
+- [Bitcoin SV Go SDK – GitHub](https://github.com/bitcoin-sv/go-sdk)
 - [BEEF Format Documentation](https://docs.bsvblockchain.org/guides/sdks/concepts/beef)

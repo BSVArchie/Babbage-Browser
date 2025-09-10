@@ -2,14 +2,14 @@
 
 ## 🎯 Overview
 
-This document provides step-by-step instructions for building the Babbage Browser project. The build process involves multiple components: CEF binaries, C++ native shell, Python wallet backend, and React frontend.
+This document provides step-by-step instructions for building the Bitcoin Browser project. The build process involves multiple components: CEF binaries, C++ native shell, Go wallet backend, and React frontend.
 
 ## 📋 Prerequisites
 
 ### Required Software
 - **Visual Studio 2022** (Community or Professional)
 - **CMake** 3.20 or later
-- **Python** 3.9 or later
+- **Go** 1.21 or later
 - **Node.js** 18 or later
 - **Git** for version control
 
@@ -45,27 +45,25 @@ cmake --build . --config Release
 
 **Note**: The wrapper CMakeLists.txt needs to be copied from the local repository. The exact CEF version and paths are currently unknown and need to be determined.
 
-### Step 2: Python Wallet Backend Setup
+### Step 2: Go Wallet Backend Setup
 
-#### Install Python Dependencies
+#### Install Go Dependencies
 ```bash
-# Create virtual environment
-python -m venv venv
-venv\Scripts\activate  # Windows
-# source venv/bin/activate  # Linux/Mac
+# Initialize Go module
+go mod init browser-wallet
 
-# Install Bitcoin SV Python SDK
-pip install bsv-sdk
+# Install Bitcoin SV Go SDK
+go get github.com/bitcoin-sv/go-sdk
 
 # Install additional dependencies
-pip install cryptography
-pip install requests
-pip install pydantic
+go get github.com/gorilla/mux
+go get github.com/gorilla/websocket
+go get github.com/sirupsen/logrus
 ```
 
-#### Verify Python Installation
+#### Verify Go Installation
 ```bash
-python -c "import bsv; print('bsv-sdk installed successfully')"
+go run -c "import \"github.com/bitcoin-sv/go-sdk\"; fmt.Println(\"go-sdk installed successfully\")"
 ```
 
 ### Step 3: React Frontend Setup
@@ -111,11 +109,11 @@ cmake --build . --config Debug
 
 ### Step 5: Integration Testing
 
-#### Start Python Wallet Daemon
+#### Start Go Wallet Daemon
 ```bash
 # In separate terminal
-cd python-wallet
-python wallet_daemon.py
+cd go-wallet
+go run main.go
 ```
 
 #### Run Native Shell
@@ -133,11 +131,11 @@ python wallet_daemon.py
 - [ ] **OpenSSL Paths**: Fix hardcoded OpenSSL library paths
 - [ ] **Wrapper Build**: Ensure wrapper library builds correctly
 
-### Python Integration Issues
-- [ ] **Process Communication**: Implement C++ ↔ Python communication
-- [ ] **Error Handling**: Add proper error handling for Python calls
+### Go Integration Issues
+- [ ] **Process Communication**: Implement C++ ↔ Go communication
+- [ ] **Error Handling**: Add proper error handling for Go calls
 - [ ] **Security**: Implement secure process isolation for wallet daemon
-- [ ] **Dependencies**: Verify all Python dependencies are available
+- [ ] **Dependencies**: Verify all Go dependencies are available
 
 ### Build System Issues
 - [ ] **Cross-Platform**: Test build process on different platforms
@@ -174,13 +172,19 @@ python wallet_daemon.py
 }
 ```
 
-### Python Environment
-```bash
-# requirements.txt
-bsv-sdk>=1.0.0
-cryptography>=41.0.0
-requests>=2.31.0
-pydantic>=2.0.0
+### Go Environment
+```go
+// go.mod
+module babbage-browser-wallet
+
+go 1.21
+
+require (
+    github.com/bitcoin-sv/go-sdk v1.0.0
+    github.com/gorilla/mux v1.8.0
+    github.com/gorilla/websocket v1.5.0
+    github.com/sirupsen/logrus v1.9.0
+)
 ```
 
 ## 🚀 Future Build Considerations
@@ -221,11 +225,11 @@ pydantic>=2.0.0
 # Example: -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
 ```
 
-#### Python Integration Issues
+#### Go Integration Issues
 ```bash
-# Error: Python module not found
-# Solution: Ensure Python virtual environment is activated
-# Check: Verify all dependencies are installed
+# Error: Go module not found
+# Solution: Ensure Go module is initialized and dependencies are downloaded
+# Check: Run 'go mod tidy' to verify all dependencies
 ```
 
 #### CMake Configuration Issues

@@ -50,11 +50,11 @@ window.bitcoinBrowser.navigation.goForward(): void
 window.bitcoinBrowser.navigation.reload(): void
 ```
 
-## 🔧 CEF ↔ Python Bridge APIs
+## 🔧 CEF ↔ Go Bridge APIs
 
 ### Wallet Operations
 ```cpp
-// C++ to Python wallet communication
+// C++ to Go wallet communication
 class BitcoinWalletHandler {
     // Create new wallet
     std::string createWallet(const std::string& password);
@@ -88,57 +88,80 @@ class BRC100Handler {
 };
 ```
 
-## 🐍 Python Wallet Backend APIs
+## 🐹 Go Wallet Backend APIs
 
 ### Core Wallet Functions
-```python
-class BitcoinWallet:
-    def __init__(self, password: str):
-        """Initialize wallet with password"""
+```go
+type BitcoinWallet struct {
+    password string
+    // ... other fields
+}
 
-    def create_wallet(self) -> dict:
-        """Create new wallet and return identity data"""
+func NewBitcoinWallet(password string) *BitcoinWallet {
+    // Initialize wallet with password
+}
 
-    def load_wallet(self, private_key: str) -> dict:
-        """Load existing wallet from private key"""
+func (w *BitcoinWallet) CreateWallet() (map[string]interface{}, error) {
+    // Create new wallet and return identity data
+}
 
-    def sign_transaction(self, tx_data: dict) -> str:
-        """Sign transaction using bsv-sdk"""
+func (w *BitcoinWallet) LoadWallet(privateKey string) (map[string]interface{}, error) {
+    // Load existing wallet from private key
+}
 
-    def get_balance(self) -> int:
-        """Get wallet balance from blockchain"""
+func (w *BitcoinWallet) SignTransaction(txData map[string]interface{}) (string, error) {
+    // Sign transaction using bitcoin-sv/go-sdk
+}
 
-    def generate_address(self) -> str:
-        """Generate new receiving address"""
+func (w *BitcoinWallet) GetBalance() (int64, error) {
+    // Get wallet balance from blockchain
+}
 
-    def get_utxos(self) -> list:
-        """Get unspent transaction outputs"""
+func (w *BitcoinWallet) GenerateAddress() (string, error) {
+    // Generate new receiving address
+}
+
+func (w *BitcoinWallet) GetUTXOs() ([]UTXO, error) {
+    // Get unspent transaction outputs
+}
 ```
 
 ### BEEF Transaction Support
-```python
-class BEEFHandler:
-    def create_beef_transaction(self, inputs: list, outputs: list) -> str:
-        """Create BEEF format transaction"""
+```go
+type BEEFHandler struct {
+    // ... fields
+}
 
-    def verify_beef_transaction(self, beef_data: str) -> bool:
-        """Verify BEEF transaction"""
+func (h *BEEFHandler) CreateBEEFTransaction(inputs []UTXO, outputs []Output) (string, error) {
+    // Create BEEF format transaction
+}
 
-    def broadcast_beef_transaction(self, beef_data: str) -> str:
-        """Broadcast BEEF transaction to miners"""
+func (h *BEEFHandler) VerifyBEEFTransaction(beefData string) (bool, error) {
+    // Verify BEEF transaction
+}
+
+func (h *BEEFHandler) BroadcastBEEFTransaction(beefData string) (string, error) {
+    // Broadcast BEEF transaction to miners
+}
 ```
 
 ### SPV Verification
-```python
-class SPVHandler:
-    def verify_transaction(self, tx_id: str) -> bool:
-        """Verify transaction using SPV"""
+```go
+type SPVHandler struct {
+    // ... fields
+}
 
-    def get_merkle_proof(self, tx_id: str) -> dict:
-        """Get merkle proof for transaction"""
+func (h *SPVHandler) VerifyTransaction(txID string) (bool, error) {
+    // Verify transaction using SPV
+}
 
-    def verify_merkle_proof(self, proof: dict) -> bool:
-        """Verify merkle proof"""
+func (h *SPVHandler) GetMerkleProof(txID string) (map[string]interface{}, error) {
+    // Get merkle proof for transaction
+}
+
+func (h *SPVHandler) VerifyMerkleProof(proof map[string]interface{}) (bool, error) {
+    // Verify merkle proof
+}
 ```
 
 ## 🌐 Bitcoin SV Blockchain APIs

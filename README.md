@@ -20,7 +20,7 @@ A custom Web3 browser built on the Chromium Embedded Framework (CEF) with native
 |-------|------------|-------|
 | Browser Shell | C++ / Chromium Embedded Framework | 🟡 *Future: Consider full Chromium build* |
 | UI | React + Vite (TypeScript) | 🟡 *Future: Consider React Native for mobile* |
-| Native Wallet | **Python** (bsv-sdk) | 🟡 *PoC: Will migrate to Rust for production* |
+| Native Wallet | **Go** (bitcoin-sv/go-sdk) | 🟡 *Future: May migrate to Rust for maximum performance* |
 | Key Derivation | **PBKDF2** (temporary) | 🟡 *Future: Upgrade to Argon2 for production* |
 | Identity / Auth | BRC-100 (Authrite Protocol (Babbage)) | |
 | Smart Contracts | sCrypt (BSV) | |
@@ -31,7 +31,7 @@ A custom Web3 browser built on the Chromium Embedded Framework (CEF) with native
 Instructions need be added for:
 
 - Building the native CEF shell
-- Setting up Python wallet backend (bsv-sdk)
+- Setting up Go wallet backend (bitcoin-sv/go-sdk)
 - Running the React frontend in development
 - Integrating `window.bitcoinBrowser` bridge for UI ↔ native communication
 - CEF binaries download and wrapper compilation
@@ -95,16 +95,16 @@ Instructions need be added for:
 - **Memory Exposure**: Private keys stored in JavaScript variables are accessible through console inspection, memory dumps, and developer tools
 
 **Native Backend Benefits:**
-- **Process Separation**: Wallet operations happen in isolated Python daemon processes, completely separate from web content
-- **Memory Protection**: Python daemon provides stronger memory protection than JavaScript
-- **Cryptographic Libraries**: Direct access to Bitcoin SV Python SDK (bsv-sdk) with BEEF and SPV support
+- **Process Separation**: Wallet operations happen in isolated Go daemon processes, completely separate from web content
+- **Memory Protection**: Go daemon provides stronger memory protection than JavaScript
+- **Cryptographic Libraries**: Direct access to Bitcoin SV Go SDK (bitcoin-sv/go-sdk) with BEEF and SPV support
 - **Attack Surface Reduction**: Even if a website compromises the render process, it cannot access the wallet backend
 | 🟡 *PoC: Will migrate to Rust for production* |
 
 **Architecture Security:**
 - **Controlled Bridge API**: Only safe, high-level functions are exposed through `window.bitcoinBrowser`
 - **Multi-Process CEF**: Leverages Chromium's natural security boundaries between processes
-- **Python Daemon Isolation**: Private keys never leave the isolated Python wallet process
+- **Go Daemon Isolation**: Private keys never leave the isolated Go wallet process
 - **Real Financial Security**: Built for production use where real money is at stake, not just development/testing
 
 ## 🧬 BRC-100 Protocol Compatibility
