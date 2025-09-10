@@ -49,22 +49,56 @@ cmake --build . --config Release
 
 #### Install Go Dependencies
 ```bash
+# Navigate to wallet directory
+cd go-wallet
+
 # Initialize Go module
 go mod init browser-wallet
 
-# Install Bitcoin SV Go SDK
-go get github.com/bitcoin-sv/go-sdk
+# Install Bitcoin SV Go SDK (correct module path)
+go get github.com/bsv-blockchain/go-sdk
 
 # Install additional dependencies
 go get github.com/gorilla/mux
 go get github.com/gorilla/websocket
 go get github.com/sirupsen/logrus
+
+# Resolve all dependencies
+go mod tidy
 ```
 
-#### Verify Go Installation
+#### Build and Run Wallet Daemon
 ```bash
-go run -c "import \"github.com/bitcoin-sv/go-sdk\"; fmt.Println(\"go-sdk installed successfully\")"
+# Build the wallet daemon
+go build -o wallet.exe main.go
+
+# Run the wallet daemon
+./wallet.exe
 ```
+
+#### Test the API
+The wallet daemon provides these endpoints:
+- `GET http://localhost:8080/health` - Health check
+- `GET http://localhost:8080/identity/get` - Get wallet identity
+- `POST http://localhost:8080/identity/markBackedUp` - Mark wallet as backed up
+
+**Test with PowerShell** (in a separate terminal while server is running):
+```powershell
+# Health check
+Invoke-RestMethod -Uri "http://localhost:8080/health" -Method GET
+
+# Get identity
+Invoke-RestMethod -Uri "http://localhost:8080/identity/get" -Method GET
+
+# Mark as backed up
+Invoke-RestMethod -Uri "http://localhost:8080/identity/markBackedUp" -Method POST
+```
+
+#### Important Notes
+- The wallet daemon must be running for any wallet functionality
+- Identity files are stored in `%APPDATA%/BabbageBrowser/identity.json`
+- The daemon runs on port 8080 by default
+- Private keys are currently stored in plain text (will be encrypted in production)
 
 ### Step 3: React Frontend Setup
 
