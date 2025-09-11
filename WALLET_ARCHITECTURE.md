@@ -2,14 +2,14 @@
 
 ## 🎯 Overview
 
-This document outlines the wallet architecture, implementation details, and migration path from Python (PoC) to Rust (production).
+This document outlines the wallet architecture, implementation details, and migration path from Go (PoC) to Rust (production).
 
-## 🏗️ Current Architecture (Python PoC)
+## 🏗️ Current Architecture (Go PoC)
 
 ### Wallet Components
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    Python Wallet Backend                   │
+│                    Go Wallet Backend                   │
 │                                                             │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐ │
 │  │  BitcoinWallet  │  │  WalletDaemon   │  │  KeyManager │ │
@@ -37,19 +37,27 @@ This document outlines the wallet architecture, implementation details, and migr
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## 🐍 Python Implementation Details
+## 🐹 Go Implementation Details
 
 ### Key Derivation (Current - Temporary)
-```python
-# Current: PBKDF2 with SHA256 (Bitcoin standard)
-def _derive_key(self, password: str, salt: bytes) -> bytes:
-    kdf = PBKDF2HMAC(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=salt,
-        iterations=100000,  # Standard for PoC, matches Bitcoin wallets
-    )
-    return kdf.derive(password.encode())
+```go
+// Current: PBKDF2 with SHA256 (Bitcoin standard)
+// Note: Currently using hardcoded encryption key for PoC
+// Future: Implement PBKDF2 key derivation
+func (w *Wallet) encryptPrivateKey(privateKey []byte, password string) ([]byte, error) {
+    // TODO: Implement PBKDF2 key derivation
+    // For now, using hardcoded key for PoC
+    key := []byte("hardcoded-key-for-poc-32-bytes!!") // 32 bytes
+
+    // AES-256-CBC encryption
+    block, err := aes.NewCipher(key)
+    if err != nil {
+        return nil, err
+    }
+
+    // Implementation details...
+    return encryptedData, nil
+}
 ```
 
 **Security Notes:**
@@ -61,36 +69,34 @@ def _derive_key(self, password: str, salt: bytes) -> bytes:
 
 ### File Structure
 ```
-python-wallet/
-├── bitcoin_wallet.py      # Core wallet functionality
-├── wallet_daemon.py       # Process communication daemon
-├── key_manager.py         # Key derivation and encryption
-├── requirements.txt       # Python dependencies
-└── tests/                 # Unit tests
-    ├── test_wallet.py
-    ├── test_key_manager.py
-    └── test_daemon.py
+go-wallet/
+├── main.go               # Core wallet daemon with HTTP API
+├── go.mod               # Go module dependencies
+├── go.sum               # Dependency checksums
+└── wallet.exe           # Compiled binary (generated)
 ```
 
-### API Interface
-```python
-class BitcoinWallet:
-    def __init__(self, password: str)
-    def wallet_exists(self) -> bool
-    def generate_key_pair(self)
-    def save_identity_to_file(self) -> bool
-    def load_identity_from_file(self) -> bool
-    def get_decrypted_identity_json(self) -> dict
-    def mark_wallet_as_backed_up(self) -> bool
+### HTTP API Interface
+```go
+// HTTP Endpoints
+GET  /health                    # Health check
+GET  /identity/get              # Get wallet identity
+POST /identity/markBackedUp     # Mark wallet as backed up
+
+// Go Wallet Methods
+func (w *Wallet) CreateIdentity() (*IdentityData, error)
+func (w *Wallet) SaveIdentity(identity *IdentityData, filePath string) error
+func (w *Wallet) LoadIdentity(filePath string) (*IdentityData, error)
 ```
 
 ## 🦀 Future Rust Implementation
 
 ### Migration Strategy
-1. **Phase 1**: Python PoC (Current)
-2. **Phase 2**: Rust core with Python bindings
-3. **Phase 3**: Full Rust implementation
-4. **Phase 4**: Rust with hardware security modules
+1. **Phase 1**: Go PoC (Current) ✅
+2. **Phase 2**: Go with enhanced security features
+3. **Phase 3**: Rust core with Go bindings
+4. **Phase 4**: Full Rust implementation
+5. **Phase 5**: Rust with hardware security modules
 
 ### Rust Architecture (Planned)
 ```rust
