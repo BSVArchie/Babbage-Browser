@@ -2,7 +2,7 @@
 #pragma once
 
 #include "include/cef_v8.h"
-#include "../core/WalletManager.h"
+#include "../core/WalletService.h"
 #include <nlohmann/json.hpp>
 #include <iostream>
 

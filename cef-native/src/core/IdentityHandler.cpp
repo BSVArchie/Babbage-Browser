@@ -28,21 +28,28 @@ bool IdentityHandler::Execute(const CefString& name,
                                const CefV8ValueList& arguments,
                                CefRefPtr<CefV8Value>& retval,
                                CefString& exception) {
-    std::cout << "💡 IdentityHandler started" << std::endl;
+    std::cout << "💡 IdentityHandler started - Function: " << name.ToString() << std::endl;
 
-    WalletManager manager;
+    WalletService walletService;
 
-    if (!manager.walletExists()) {
-        std::cout << "🆕 No wallet found. Creating new identity..." << std::endl;
-        manager.saveIdentityToFile();
-    } else {
-        std::cout << "📁 Wallet file exists" << std::endl;
+    // Check if Go daemon is running
+    if (!walletService.isConnected()) {
+        std::cerr << "❌ Cannot connect to Go wallet daemon. Make sure it's running on port 8080." << std::endl;
+        exception = "Go wallet daemon is not running. Please start the wallet daemon first.";
+        return false;
+    }
+
+    // Check daemon health
+    if (!walletService.isHealthy()) {
+        std::cerr << "❌ Go wallet daemon is not healthy" << std::endl;
+        exception = "Go wallet daemon is not responding properly.";
+        return false;
     }
 
     if (name == "markBackedUp") {
-        std::cout << "✅ Marking wallet as backed up" << std::endl;
+        std::cout << "✅ Marking wallet as backed up via Go daemon" << std::endl;
 
-        if (manager.markWalletAsBackedUp()) {
+        if (walletService.markBackedUp()) {
             retval = CefV8Value::CreateString("success");
         } else {
             retval = CefV8Value::CreateString("error");
@@ -52,8 +59,16 @@ bool IdentityHandler::Execute(const CefString& name,
     }
 
     try {
-        nlohmann::json identity = manager.getDecryptedIdentityJSON();
-        std::cout << "📦 Decrypted identity JSON: " << identity.dump() << std::endl;
+        // Get identity from Go daemon
+        nlohmann::json identity = walletService.getIdentity();
+
+        if (identity.empty()) {
+            std::cerr << "❌ Failed to get identity from Go daemon" << std::endl;
+            exception = "Failed to retrieve identity from Go wallet daemon.";
+            return false;
+        }
+
+        std::cout << "📦 Identity from Go daemon: " << identity.dump() << std::endl;
 
         CefRefPtr<CefV8Value> identityObject = jsonToV8(identity);
         retval = identityObject;

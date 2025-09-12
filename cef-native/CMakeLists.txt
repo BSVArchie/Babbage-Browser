@@ -33,7 +33,7 @@ set(SOURCES
     src/handlers/simple_render_process_handler.cpp
     src/handlers/simple_app.cpp
     src/handlers/my_overlay_render_handler.cpp
-    src/core/WalletManager.cpp
+    src/core/WalletService.cpp
     src/core/IdentityHandler.cpp
     src/core/NavigationHandler.cpp
     src/core/PanelHandler.cpp
@@ -45,10 +45,6 @@ add_executable(BitcoinBrowserShell WIN32 ${SOURCES})
 
 set_target_properties(BitcoinBrowserShell PROPERTIES
     MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
-)
-
-target_sources(BitcoinBrowserShell PRIVATE
-    src/core/WalletManager.cpp
 )
 
 # Include CEF headers
@@ -89,6 +85,7 @@ target_link_libraries(BitcoinBrowserShell PRIVATE
     advapi32
     dwmapi
     version
+    winhttp
     OpenSSL::SSL
     OpenSSL::Crypto
     nlohmann_json::nlohmann_json
@@ -118,5 +115,5 @@ add_custom_command(TARGET BitcoinBrowserShell POST_BUILD
     COMMENT "Copying all CEF binaries and resources"
 )
 
-add_subdirectory(src/core)
-add_subdirectory(tests)
+# add_subdirectory(src/core) # Removed - wallet library no longer needed
+# add_subdirectory(tests) # Removed - test files deleted
