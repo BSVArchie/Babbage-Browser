@@ -29,6 +29,12 @@ bool IdentityHandler::Execute(const CefString& name,
                                CefRefPtr<CefV8Value>& retval,
                                CefString& exception) {
     std::cout << "💡 IdentityHandler started - Function: " << name.ToString() << std::endl;
+    std::cout.flush(); // Force flush
+
+    // Also try OutputDebugString for Windows
+    std::string debugMsg = "💡 IdentityHandler started - Function: " + name.ToString();
+    OutputDebugStringA(debugMsg.c_str());
+    OutputDebugStringA("\n");
 
     WalletService walletService;
 

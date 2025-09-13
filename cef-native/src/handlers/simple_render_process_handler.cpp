@@ -16,6 +16,11 @@ void SimpleRenderProcessHandler::OnContextCreated(
 
     CEF_REQUIRE_RENDERER_THREAD();
 
+    std::cout << "🔧 OnContextCreated called for browser ID: " << browser->GetIdentifier() << std::endl;
+    std::cout << "🔧 Frame URL: " << frame->GetURL().ToString() << std::endl;
+    std::cout << "🔧 Process ID: " << GetCurrentProcessId() << std::endl;
+    std::cout << "🔧 Thread ID: " << GetCurrentThreadId() << std::endl;
+
     CefRefPtr<CefV8Value> global = context->GetGlobal();
 
     // Create the bitcoinBrowser object

@@ -2,6 +2,9 @@
 #include <iostream>
 #include <sstream>
 
+// Static instance for console handler
+static WalletService* g_walletService = nullptr;
+
 WalletService::WalletService()
     : baseUrl_("http://localhost:8080")
     , daemonPath_("")
@@ -9,6 +12,9 @@ WalletService::WalletService()
     , hConnect_(nullptr)
     , connected_(false)
     , daemonRunning_(false) {
+
+    // Set global instance for console handler
+    g_walletService = this;
 
     // Initialize daemon process info
     ZeroMemory(&daemonProcess_, sizeof(PROCESS_INFORMATION));
@@ -33,6 +39,9 @@ WalletService::WalletService()
     } else {
         std::cout << "✅ Go daemon executable found" << std::endl;
     }
+
+    // Set up console control handler
+    SetConsoleCtrlHandler(ConsoleCtrlHandler, TRUE);
 
     // Start daemon and initialize connection
     if (startDaemon()) {
@@ -365,5 +374,22 @@ void WalletService::cleanupDaemonProcess() {
         CloseHandle(daemonProcess_.hThread);
 
         ZeroMemory(&daemonProcess_, sizeof(PROCESS_INFORMATION));
+    }
+}
+
+// Console Control Handler Implementation
+BOOL WINAPI WalletService::ConsoleCtrlHandler(DWORD ctrlType) {
+    switch (ctrlType) {
+        case CTRL_C_EVENT:
+        case CTRL_BREAK_EVENT:
+        case CTRL_CLOSE_EVENT:
+        case CTRL_SHUTDOWN_EVENT:
+            std::cout << "\n🛑 Console shutdown signal received - cleaning up daemon..." << std::endl;
+            if (g_walletService) {
+                g_walletService->stopDaemon();
+            }
+            return TRUE;
+        default:
+            return FALSE;
     }
 }

@@ -49,4 +49,7 @@ private:
     bool createDaemonProcess();
     void monitorDaemon();
     void cleanupDaemonProcess();
+
+    // Console control handler
+    static BOOL WINAPI ConsoleCtrlHandler(DWORD ctrlType);
 };
