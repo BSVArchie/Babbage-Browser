@@ -16,6 +16,7 @@ public:
     bool isHealthy();
     nlohmann::json getIdentity();
     bool markBackedUp();
+    nlohmann::json generateAddress();
 
     // Connection management
     bool isConnected();

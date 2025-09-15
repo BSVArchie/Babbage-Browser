@@ -5,11 +5,13 @@
 #include "include/cef_display_handler.h"
 #include "include/cef_life_span_handler.h"
 #include "include/cef_load_handler.h"
+#include "include/cef_request_handler.h"
 
 class SimpleHandler : public CefClient,
                       public CefLifeSpanHandler,
                       public CefDisplayHandler,
-                      public CefLoadHandler {
+                      public CefLoadHandler,
+                      public CefRequestHandler {
 public:
     explicit SimpleHandler(const std::string& role);
 
@@ -17,6 +19,7 @@ public:
     CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override;
     CefRefPtr<CefDisplayHandler> GetDisplayHandler() override;
     CefRefPtr<CefLoadHandler> GetLoadHandler() override;
+    CefRefPtr<CefRequestHandler> GetRequestHandler() override;
     static CefRefPtr<CefBrowser> webview_browser_;
     static CefRefPtr<CefBrowser> GetOverlayBrowser();
     static std::string pending_panel_;

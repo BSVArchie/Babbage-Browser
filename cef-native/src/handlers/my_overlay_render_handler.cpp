@@ -106,17 +106,12 @@ void MyOverlayRenderHandler::OnPaint(CefRefPtr<CefBrowser> browser,
         hdc_mem_, &ptSrc, 0, &blend, ULW_ALPHA);
 
     if (result) {
-        // Ensure window can receive input
+        // Ensure window can receive input (but don't steal focus on every paint)
         LONG exStyle = GetWindowLong(hwnd_, GWL_EXSTYLE);
         if (exStyle & WS_EX_TRANSPARENT) {
-        SetWindowLong(hwnd_, GWL_EXSTYLE, exStyle & ~WS_EX_TRANSPARENT);
-        std::cout << "🖱️ Removed WS_EX_TRANSPARENT for input handling" << std::endl;
+            SetWindowLong(hwnd_, GWL_EXSTYLE, exStyle & ~WS_EX_TRANSPARENT);
+            std::cout << "🖱️ Removed WS_EX_TRANSPARENT for input handling" << std::endl;
         }
-
-        // Set window focus
-        SetForegroundWindow(hwnd_);
-        SetFocus(hwnd_);
-        std::cout << "🎯 Set window focus and input" << std::endl;
     }
 
     ReleaseDC(NULL, screenDC);
@@ -130,4 +125,37 @@ void MyOverlayRenderHandler::OnPaint(CefRefPtr<CefBrowser> browser,
     std::cout << "🖱️ Window handle: " << hwnd_ << std::endl;
     std::cout << "🖱️ Window enabled: " << IsWindowEnabled(hwnd_) << std::endl;
     std::cout << "🖱️ Window visible: " << IsWindowVisible(hwnd_) << std::endl;
+}
+
+bool MyOverlayRenderHandler::GetScreenPoint(CefRefPtr<CefBrowser> browser, int viewX, int viewY, int& screenX, int& screenY) {
+    RECT windowRect;
+    GetWindowRect(hwnd_, &windowRect);
+
+    screenX = windowRect.left + viewX;
+    screenY = windowRect.top + viewY;
+    return true;
+}
+
+bool MyOverlayRenderHandler::GetScreenInfo(CefRefPtr<CefBrowser> browser, CefScreenInfo& screen_info) {
+    RECT windowRect;
+    GetWindowRect(hwnd_, &windowRect);
+
+    screen_info.device_scale_factor = 1.0f;
+    screen_info.depth = 32;
+    screen_info.depth_per_component = 8;
+    screen_info.is_monochrome = false;
+    screen_info.rect = CefRect(windowRect.left, windowRect.top,
+                              windowRect.right - windowRect.left,
+                              windowRect.bottom - windowRect.top);
+    screen_info.available_rect = screen_info.rect;
+
+    return true;
+}
+
+void MyOverlayRenderHandler::OnPopupShow(CefRefPtr<CefBrowser> browser, bool show) {
+    // Handle popup show/hide
+}
+
+void MyOverlayRenderHandler::OnPopupSize(CefRefPtr<CefBrowser> browser, const CefRect& rect) {
+    // Handle popup size changes
 }

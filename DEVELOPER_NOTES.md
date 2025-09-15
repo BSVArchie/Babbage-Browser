@@ -1,5 +1,36 @@
 # Developer Notes - Bitcoin Browser
 
+## 🎯 Current Development Focus: Process-Per-Overlay Architecture Implementation
+
+### 🚀 NEW FOCUS: Process-Per-Overlay Model (Brave Browser Style)
+- **Status**: Planning and implementation phase
+- **Goal**: Implement process-per-overlay architecture for better security and state isolation
+- **Current Issue**: Settings button opens JSX in header instead of overlay
+- **Target**: Each overlay (wallet, settings) runs in its own CEF subprocess
+
+## 📊 Comprehensive Architecture Analysis
+
+### Current Overlay System (Single Process Model)
+- **Architecture**: All overlays run in same CEF process
+- **HWND Management**: Reuses `g_overlay_hwnd` via `CreateOverlayBrowserIfNeeded()`
+- **State Management**: Shared V8 context causes state pollution
+- **Communication**: Uses `window.cefMessage.send()` for IPC
+- **Problems**:
+  - Settings button opens in header HWND instead of overlay
+  - Modal JSX doesn't populate due to state pollution
+  - No process isolation between overlays
+
+### Target Architecture (Process-Per-Overlay Model)
+- **Architecture**: Each overlay runs in separate CEF subprocess
+- **HWND Management**: Creates new HWND per overlay type
+- **State Management**: Complete V8 context isolation
+- **Communication**: Process-based IPC with fresh state
+- **Benefits**:
+  - Clean state for each overlay
+  - Better security through process boundaries
+  - No state pollution between overlays
+  - Mimics Brave Browser architecture
+
 ## 🎯 Current Development Focus: Complete C++ to Go Integration ✅
 
 ### ✅ COMPLETED: Full C++ to Go Daemon Integration
@@ -27,10 +58,214 @@
 - 🟡 **Key Derivation**: PBKDF2-SHA256 is Bitcoin standard (Argon2 optional for production)
 - 🟡 **Go to Rust**: Consider migration path for maximum performance if needed
 
+## 🚀 Process-Per-Overlay Implementation Plan
+
+### Phase 1: Analysis and Preparation ✅
+- **Current State Assessment**: ✅ Completed
+  - Wallet button works (reuses existing overlay)
+  - Settings button broken (opens in header instead of overlay)
+  - Modal JSX not populating due to state pollution
+  - No process isolation
+- **Architecture Research**: ✅ Completed
+  - Analyzed current single-process model
+  - Researched Brave Browser process-per-overlay architecture
+  - Identified key differences and benefits
+
+### Phase 2: Settings Button Process-Per-Overlay Implementation
+**Goal**: Fix settings button to open dedicated overlay with fresh process
+
+#### Step 2.1: Modify Settings Button Handler
+**File**: `cef-native/src/handlers/simple_handler.cpp`
+**Location**: `OnProcessMessageReceived()` method
+```cpp
+if (message_name == "overlay_show") {
+    // Check if this is settings overlay request
+    if (role_ == "header") {
+        // Create new process for settings overlay
+        CreateSettingsOverlayWithSeparateProcess(g_hInstance);
+    } else {
+        // Normal wallet overlay behavior
+        ShowWindow(g_overlay_hwnd, SW_SHOW);
+    }
+}
+```
+
+#### Step 2.2: Create Settings-Specific Overlay Function
+**File**: `cef-native/src/handlers/simple_app.cpp`
+**Function**: `CreateSettingsOverlayWithSeparateProcess(HINSTANCE hInstance)`
+```cpp
+void CreateSettingsOverlayWithSeparateProcess(HINSTANCE hInstance) {
+    // Create new HWND for settings
+    HWND settings_hwnd = CreateWindowEx(
+        WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
+        L"CEFOverlayWindow", nullptr, WS_POPUP | WS_VISIBLE,
+        0, 0, width, height, nullptr, nullptr, hInstance, nullptr);
+
+    // Create new CEF browser with subprocess
+    CefWindowInfo window_info;
+    window_info.SetAsPopup(settings_hwnd, "SettingsOverlay");
+
+    CefBrowserSettings settings;
+    settings.windowless_rendering_enabled = true;
+
+    // Create new browser with subprocess
+    CefBrowserHost::CreateBrowser(window_info, handler,
+                                  "http://localhost:5173/settings", settings);
+}
+```
+
+#### Step 2.3: Create Settings-Specific React Route
+**File**: `frontend/src/App.tsx`
+**Route**: Add `/settings` route for settings overlay
+**Component**: Create `SettingsOverlayRoot.tsx` for settings-specific state management
+
+#### Step 2.4: Test Settings Button
+**Expected Results**:
+- ✅ Settings button opens new overlay window
+- ✅ Fresh V8 context, no state pollution
+- ✅ Settings panel renders correctly
+- ✅ Wallet button still works normally
+
+### Phase 3: Implement Process-Per-Overlay for All Overlays
+**Goal**: Refactor to support any overlay type with process isolation
+
+#### Step 3.1: Refactor Overlay Creation
+**File**: `cef-native/src/handlers/simple_app.cpp`
+**Function**: `CreateOverlayWithSeparateProcess(HINSTANCE hInstance, const std::string& overlayType)`
+```cpp
+void CreateOverlayWithSeparateProcess(HINSTANCE hInstance,
+                                     const std::string& overlayType) {
+    // Create overlay-specific HWND
+    HWND overlay_hwnd = CreateOverlayWindow(overlayType);
+
+    // Create new CEF browser with subprocess
+    CefWindowInfo window_info;
+    window_info.SetAsPopup(overlay_hwnd, overlayType + "Overlay");
+
+    // Load overlay-specific URL
+    std::string url = "http://localhost:5173/" + overlayType;
+    CefBrowserHost::CreateBrowser(window_info, handler, url, settings);
+}
+```
+
+#### Step 3.2: Update Message Handling
+**File**: `cef-native/src/handlers/simple_handler.cpp`
+**Location**: `OnProcessMessageReceived()` method
+```cpp
+if (message_name == "overlay_show") {
+    std::string overlayType = args->GetString(0); // "wallet" or "settings"
+    CreateOverlayWithSeparateProcess(g_hInstance, overlayType);
+}
+```
+
+#### Step 3.3: Update Frontend API
+**File**: `frontend/src/bridge/initWindowBridge.ts`
+**Function**: Update `overlay.show()` to accept argument
+```typescript
+window.bitcoinBrowser.overlay.show = (overlayType: string) => {
+    window.cefMessage?.send('overlay_show', [overlayType]);
+};
+```
+
+### Phase 4: Testing and Validation
+**Goal**: Ensure process-per-overlay works correctly for all overlay types
+
+#### Step 4.1: Individual Overlay Tests
+- **Settings Overlay**: Fresh state, correct rendering
+- **Wallet Overlay**: Fresh state, address generation works
+- **Multiple Overlays**: Can open both simultaneously
+
+#### Step 4.2: State Isolation Tests
+- **Test**: Open settings, modify state, close, reopen
+- **Expected**: Fresh state on reopen
+- **Test**: Open wallet, generate address, open settings
+- **Expected**: No state interference
+
+#### Step 4.3: Performance Tests
+- **Test**: Open/close overlays rapidly
+- **Expected**: No memory leaks, clean process cleanup
+- **Test**: Multiple overlays open simultaneously
+- **Expected**: Stable performance
+
+## 🎯 Simplified Implementation Approach
+
+### The Simplest Method: Argument-Based Process Creation
+**Core Concept**: Use a single function `CreateOverlayWithSeparateProcess(overlayType)` that creates a new subprocess for each overlay type.
+
+#### Key Implementation Points:
+1. **Single Function**: `CreateOverlayWithSeparateProcess(overlayType)`
+2. **Argument-Based**: Pass overlay type as argument ("wallet", "settings")
+3. **URL-Based Routing**: Use different URLs for different overlays
+4. **Process Isolation**: Each call creates new CEF subprocess
+
+#### Implementation Steps:
+1. **Modify `overlay.show()`**: Accept argument: `overlay.show('settings')`
+2. **Update C++ Handler**: Create new process based on argument
+3. **Create React Routes**: Overlay-specific routes (`/settings`, `/wallet`)
+4. **Test Settings Button**: Use as proof-of-concept
+
+### Testing Strategy
+
+#### Phase 1: Settings Button Test
+**Goal**: Verify settings button opens dedicated overlay
+**Steps**:
+1. Click settings button
+2. Verify new overlay window opens
+3. Verify settings panel renders correctly
+4. Verify fresh V8 context (no state pollution)
+
+#### Phase 2: Wallet Button Test
+**Goal**: Verify wallet button still works
+**Steps**:
+1. Click wallet button
+2. Verify wallet overlay opens correctly
+3. Verify address generation works
+4. Verify no interference with settings
+
+#### Phase 3: Multiple Overlays Test
+**Goal**: Verify both overlays can be open simultaneously
+**Steps**:
+1. Open settings overlay
+2. Open wallet overlay
+3. Verify both work independently
+4. Verify no state interference
+
+#### Phase 4: State Isolation Test
+**Goal**: Verify fresh state for each overlay
+**Steps**:
+1. Open settings, modify state, close
+2. Reopen settings, verify fresh state
+3. Open wallet, generate address
+4. Open settings, verify no wallet state interference
+
+### Expected Outcomes
+
+#### After Phase 2 (Settings Button):
+- ✅ Settings button opens dedicated settings overlay
+- ✅ Fresh V8 context, no state pollution
+- ✅ Settings panel renders correctly
+- ✅ Wallet button still works normally
+
+#### After Phase 3 (All Overlays):
+- ✅ All overlays use process-per-overlay model
+- ✅ Complete state isolation between overlays
+- ✅ Clean state management for each overlay
+- ✅ Better security through process boundaries
+
+#### After Phase 4 (Full Implementation):
+- ✅ Process-per-overlay architecture complete
+- ✅ Mimics Brave Browser architecture
+- ✅ No state pollution issues
+- ✅ Clean, maintainable codebase
+
 ## 📋 Next Development Priorities
 
 ### 🔧 Immediate Fixes (Next Session)
-1. **Console Shutdown Issue**: Fix console window not responding to X button
+1. **Process-Per-Overlay Implementation**: Start with settings button
+   - Implement `CreateSettingsOverlayWithSeparateProcess()`
+   - Create settings-specific React route
+   - Test settings button opens overlay correctly
+2. **Console Shutdown Issue**: Fix console window not responding to X button
    - Add Console Control Handler for graceful shutdown
    - Ensure daemon process cleanup on app exit
    - Improve user experience for development

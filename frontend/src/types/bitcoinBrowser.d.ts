@@ -1,4 +1,5 @@
 import type { IdentityResult } from './identity';
+import type { AddressData } from './address';
 
 declare global {
   interface Window {
@@ -6,6 +7,9 @@ declare global {
       identity: {
         get: () => Promise<IdentityResult>;
         markBackedUp: () => Promise<string>;
+      };
+      address: {
+        generate: () => Promise<AddressData>;
       };
       navigation: {
         navigate: (path: string) => void;
@@ -23,6 +27,8 @@ declare global {
       send: (channel: string, args: any[]) => void;
     };
     triggerPanel?: (panelName: string) => void;
+    onAddressGenerated?: (data: AddressData) => void;
+    onAddressError?: (error: string) => void;
      __overlayReady?: boolean;
   }
 }

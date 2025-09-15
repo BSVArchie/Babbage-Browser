@@ -43,11 +43,17 @@ WalletService::WalletService()
     // Set up console control handler
     SetConsoleCtrlHandler(ConsoleCtrlHandler, TRUE);
 
-    // Start daemon and initialize connection
-    if (startDaemon()) {
-        // Wait a moment for daemon to start
-        Sleep(2000);
-        initializeConnection();
+    // Try to connect to existing daemon first
+    if (initializeConnection()) {
+        std::cout << "✅ Connected to existing Go daemon" << std::endl;
+    } else {
+        // If connection fails, start our own daemon
+        std::cout << "⚠️ No existing daemon found, starting new one..." << std::endl;
+        if (startDaemon()) {
+            // Wait a moment for daemon to start
+            Sleep(2000);
+            initializeConnection();
+        }
     }
 }
 
@@ -260,6 +266,21 @@ bool WalletService::markBackedUp() {
     } else {
         std::cerr << "❌ Failed to mark wallet as backed up" << std::endl;
         return false;
+    }
+}
+
+nlohmann::json WalletService::generateAddress() {
+    std::cout << "🔍 Generating new address from Go daemon..." << std::endl;
+
+    auto response = makeHttpRequest("GET", "/address/generate");
+
+    if (response.contains("address")) {
+        std::cout << "✅ Address generated successfully" << std::endl;
+        std::cout << "📍 New Address: " << response["address"].get<std::string>() << std::endl;
+        return response;
+    } else {
+        std::cerr << "❌ Failed to generate address from Go daemon" << std::endl;
+        return nlohmann::json::object();
     }
 }
 

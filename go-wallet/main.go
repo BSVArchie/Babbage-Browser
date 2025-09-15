@@ -11,7 +11,6 @@ import (
 
 	ec "github.com/bsv-blockchain/go-sdk/primitives/ec"
 	"github.com/bsv-blockchain/go-sdk/script"
-	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 )
 
@@ -21,6 +20,14 @@ type IdentityData struct {
 	PrivateKey string `json:"privateKey"` // Will be encrypted in production
 	Address    string `json:"address"`
 	BackedUp   bool   `json:"backedUp"`
+}
+
+// AddressData represents a generated address
+type AddressData struct {
+	Address    string `json:"address"`
+	PublicKey  string `json:"publicKey"`
+	PrivateKey string `json:"privateKey"` // Will be encrypted in production
+	Index      int    `json:"index"`
 }
 
 // Wallet represents our Bitcoin SV wallet
@@ -121,6 +128,38 @@ func (w *Wallet) LoadIdentity(filePath string) (*IdentityData, error) {
 	return &identity, nil
 }
 
+// GenerateAddress creates a new Bitcoin SV address
+func (w *Wallet) GenerateAddress() (*AddressData, error) {
+	w.logger.Info("Generating new Bitcoin SV address...")
+
+	// Generate a new private key
+	privateKey, err := ec.NewPrivateKey()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate private key: %v", err)
+	}
+
+	// Get the public key
+	publicKey := privateKey.PubKey()
+
+	// Generate Bitcoin SV address
+	address, err := script.NewAddressFromPublicKey(publicKey, true) // true = mainnet
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate address: %v", err)
+	}
+
+	addressData := &AddressData{
+		Address:    address.AddressString,
+		PublicKey:  hex.EncodeToString(publicKey.Compressed()),
+		PrivateKey: hex.EncodeToString(privateKey.Serialize()),
+		Index:      0, // For now, we'll use 0. In a real wallet, this would be incremental
+	}
+
+	w.logger.Info("Address generated successfully")
+	w.logger.Infof("Address: %s", addressData.Address)
+
+	return addressData, nil
+}
+
 // GetIdentityPath returns the standard identity file path
 func GetIdentityPath() string {
 	homeDir, _ := os.UserHomeDir()
@@ -133,16 +172,21 @@ func main() {
 	// Create wallet instance
 	wallet := NewWallet()
 
-	// Set up HTTP router
-	r := mux.NewRouter()
-
-	// API endpoints
-	r.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	// Set up HTTP handlers
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "healthy"})
-	}).Methods("GET")
+	})
 
-	r.HandleFunc("/identity/get", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/identity/get", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
 		identityPath := GetIdentityPath()
 
 		// Try to load existing identity
@@ -164,9 +208,13 @@ func main() {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(identity)
-	}).Methods("GET")
+	})
 
-	r.HandleFunc("/identity/markBackedUp", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/identity/markBackedUp", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
 		identityPath := GetIdentityPath()
 
 		// Load existing identity
@@ -187,7 +235,23 @@ func main() {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]bool{"success": true})
-	}).Methods("POST")
+	})
+
+	http.HandleFunc("/address/generate", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		// Generate new address
+		address, err := wallet.GenerateAddress()
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to generate address: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(address)
+	})
 
 	// Start HTTP server
 	port := "8080"
@@ -196,6 +260,7 @@ func main() {
 	fmt.Println("  GET  /health - Health check")
 	fmt.Println("  GET  /identity/get - Get wallet identity")
 	fmt.Println("  POST /identity/markBackedUp - Mark wallet as backed up")
+	fmt.Println("  GET  /address/generate - Generate new Bitcoin address")
 
-	log.Fatal(http.ListenAndServe(":"+port, r))
+	log.Fatal(http.ListenAndServe(":"+port, nil))
 }

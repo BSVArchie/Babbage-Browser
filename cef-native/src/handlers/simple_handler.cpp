@@ -8,11 +8,15 @@
 #include "include/cef_task.h"
 #include "base/cef_callback.h"
 #include "base/internal/cef_callback_internal.h"
+#include <fstream>
+#include "../../include/core/WalletService.h"
 #include <windows.h>
 #include <iostream>
 #include <string>
+#include <nlohmann/json.hpp>
 
 extern void CreateOverlayBrowserIfNeeded(HINSTANCE hInstance);
+extern void CreateTestOverlayWithSeparateProcess(HINSTANCE hInstance);
 
 std::string SimpleHandler::pending_panel_;
 bool SimpleHandler::needs_overlay_reload_ = false;
@@ -91,31 +95,67 @@ void SimpleHandler::OnLoadingStateChange(CefRefPtr<CefBrowser> browser,
                                          bool canGoBack,
                                          bool canGoForward) {
     std::cout << "📡 Loading state for role " << role_ << ": " << (isLoading ? "loading..." : "done") << std::endl;
+    std::ofstream debugLog("debug_output.log", std::ios::app);
+    debugLog << "📡 Loading state for role " << role_ << ": " << (isLoading ? "loading..." : "done") << std::endl;
+    debugLog.close();
+
     if (role_ == "overlay") {
         std::cout << "📡 Overlay URL: " << browser->GetMainFrame()->GetURL().ToString() << std::endl;
     }
 
-    if (!isLoading && role_ == "overlay") {
-        // Check if we need to reload the overlay
-        if (needs_overlay_reload_) {
-            std::cout << "🔄 Overlay finished loading, now reloading React app" << std::endl;
-            needs_overlay_reload_ = false;
-            browser->GetMainFrame()->LoadURL("http://127.0.0.1:5137/overlay");
-            std::cout << "🔄 LoadURL called for overlay reload" << std::endl;
-            return; // Don't process pending panels yet, wait for reload to complete
+    if (!isLoading) {
+        if (role_ == "overlay") {
+            // Log that we're about to inject the API
+            std::ofstream debugLog("debug_output.log", std::ios::app);
+            debugLog << "🔧 OVERLAY LOADED - About to inject bitcoinBrowser API" << std::endl;
+            debugLog.close();
+
+            // Inject the bitcoinBrowser API when overlay finishes loading
+            extern void InjectBitcoinBrowserAPI(CefRefPtr<CefBrowser> browser);
+            InjectBitcoinBrowserAPI(browser);
+        } else if (role_ == "webview") {
+            // Inject the bitcoinBrowser API into webview browser as well
+            std::cout << "🔧 WEBVIEW BROWSER LOADED - Injecting bitcoinBrowser API" << std::endl;
+            std::ofstream debugLog("debug_output.log", std::ios::app);
+            debugLog << "🔧 WEBVIEW BROWSER LOADED - Injecting bitcoinBrowser API" << std::endl;
+            debugLog.close();
+
+            extern void InjectBitcoinBrowserAPI(CefRefPtr<CefBrowser> browser);
+            InjectBitcoinBrowserAPI(browser);
+        } else if (role_ == "header") {
+            // Inject the bitcoinBrowser API into header browser (where React app runs)
+            std::cout << "🔧 HEADER BROWSER LOADED - Injecting bitcoinBrowser API" << std::endl;
+            std::ofstream debugLog("debug_output.log", std::ios::app);
+            debugLog << "🔧 HEADER BROWSER LOADED - Injecting bitcoinBrowser API" << std::endl;
+            debugLog.close();
+
+            extern void InjectBitcoinBrowserAPI(CefRefPtr<CefBrowser> browser);
+            InjectBitcoinBrowserAPI(browser);
         }
 
-        // Handle pending panel triggers
-        if (!pending_panel_.empty()) {
-            std::string panel = pending_panel_;
-            std::cout << "🕒 OnLoadingStateChange: Creating deferred trigger for panel: " << panel << std::endl;
+        // Overlay-specific logic
+        if (role_ == "overlay") {
+            // Check if we need to reload the overlay
+            if (needs_overlay_reload_) {
+                std::cout << "🔄 Overlay finished loading, now reloading React app" << std::endl;
+                needs_overlay_reload_ = false;
+                browser->GetMainFrame()->LoadURL("http://127.0.0.1:5137/overlay");
+                std::cout << "🔄 LoadURL called for overlay reload" << std::endl;
+                return; // Don't process pending panels yet, wait for reload to complete
+            }
 
-            // Clear pending_panel_ immediately to prevent duplicate deferred triggers
-            SimpleHandler::pending_panel_.clear();
+            // Handle pending panel triggers
+            if (!pending_panel_.empty()) {
+                std::string panel = pending_panel_;
+                std::cout << "🕒 OnLoadingStateChange: Creating deferred trigger for panel: " << panel << std::endl;
 
-            // Delay JS execution slightly to ensure React is mounted
-            // Use a simple function call instead of lambda to avoid CEF bind issues
-            CefPostDelayedTask(TID_UI, base::BindOnce(&SimpleHandler::TriggerDeferredPanel, panel), 100);
+                // Clear pending_panel_ immediately to prevent duplicate deferred triggers
+                SimpleHandler::pending_panel_.clear();
+
+                // Delay JS execution slightly to ensure React is mounted
+                // Use a simple function call instead of lambda to avoid CEF bind issues
+                CefPostDelayedTask(TID_UI, base::BindOnce(&SimpleHandler::TriggerDeferredPanel, panel), 100);
+            }
         }
     }
 }
@@ -128,11 +168,20 @@ void SimpleHandler::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
     if (role_ == "webview") {
         webview_browser_ = browser;
         std::cout << "📡 WebView browser reference stored." << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "📡 WebView browser reference stored. ID: " << browser->GetIdentifier() << std::endl;
+        debugLog.close();
     } else if (role_ == "header") {
         std::cout << "🧭 header browser initialized." << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "🧭 header browser initialized. ID: " << browser->GetIdentifier() << std::endl;
+        debugLog.close();
     }else if (role_ == "overlay") {
         overlay_browser_ = browser;
         std::cout << "🪟 Overlay browser initialized." << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "🪟 Overlay browser initialized. ID: " << browser->GetIdentifier() << std::endl;
+        debugLog.close();
     }
 
     std::cout << "🧭 Browser Created → role: " << role_
@@ -174,6 +223,34 @@ bool SimpleHandler::OnProcessMessageReceived(
         return true;
     }
 
+    if (message_name == "address_generate") {
+        std::cout << "🔑 Address generation requested via process message" << std::endl;
+
+        // Generate address using WalletService
+        WalletService walletService;
+        nlohmann::json addressData = walletService.generateAddress();
+
+        std::cout << "✅ Address generated: " << addressData.dump() << std::endl;
+
+        // Send response back to the render process
+        CefRefPtr<CefProcessMessage> response = CefProcessMessage::Create("address_generate_response");
+        CefRefPtr<CefListValue> responseArgs = response->GetArgumentList();
+
+        // Create response object
+        nlohmann::json responseJson;
+        responseJson["success"] = true;
+        responseJson["data"] = addressData;
+
+        responseArgs->SetString(0, responseJson.dump());
+
+        // Send response back to the frame that requested it
+        frame->SendProcessMessage(PID_RENDERER, response);
+
+        return true;
+    }
+
+
+
     if (message->GetName() == "overlay_open_panel") {
         CefRefPtr<CefListValue> args = message->GetArgumentList();
         std::string panel = args->GetString(0);
@@ -213,7 +290,8 @@ bool SimpleHandler::OnProcessMessageReceived(
     }
 
     if (message_name == "overlay_show") {
-        std::cout << "🪟 Showing overlay HWND" << std::endl;
+        std::cout << "🪟 overlay_show message received" << std::endl;
+        std::cout << "🪟 Showing existing overlay HWND" << std::endl;
         ShowWindow(g_overlay_hwnd, SW_SHOW);
         return true;
     }
@@ -232,7 +310,45 @@ bool SimpleHandler::OnProcessMessageReceived(
         return true;
     }
 
+    if (message_name == "address_generate") {
+        std::cout << "🔑 Address generation requested from browser ID: " << browser->GetIdentifier() << std::endl;
+
+        try {
+            // Call WalletService to generate address
+            WalletService walletService;
+            nlohmann::json addressData = walletService.generateAddress();
+
+            std::cout << "✅ Address generated successfully: " << addressData.dump() << std::endl;
+
+            // Send result back to the requesting browser
+            CefRefPtr<CefProcessMessage> response = CefProcessMessage::Create("address_generate_response");
+            CefRefPtr<CefListValue> responseArgs = response->GetArgumentList();
+            responseArgs->SetString(0, addressData.dump());
+
+                    browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, response);
+                    std::cout << "📤 Address data sent back to browser" << std::endl;
+                    std::cout << "🔍 Browser ID: " << browser->GetIdentifier() << std::endl;
+                    std::cout << "🔍 Frame URL: " << browser->GetMainFrame()->GetURL().ToString() << std::endl;
+
+        } catch (const std::exception& e) {
+            std::cout << "❌ Address generation failed: " << e.what() << std::endl;
+
+            // Send error response
+            CefRefPtr<CefProcessMessage> response = CefProcessMessage::Create("address_generate_error");
+            CefRefPtr<CefListValue> responseArgs = response->GetArgumentList();
+            responseArgs->SetString(0, e.what());
+
+            browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, response);
+        }
+
+        return true;
+    }
+
     return false;
+}
+
+CefRefPtr<CefRequestHandler> SimpleHandler::GetRequestHandler() {
+    return this;
 }
 
 void SimpleHandler::SetRenderHandler(CefRefPtr<CefRenderHandler> handler) {

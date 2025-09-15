@@ -10,7 +10,10 @@
 #include <fstream>
 
 SimpleApp::SimpleApp()
-    : render_process_handler_(new SimpleRenderProcessHandler()) {}
+    : render_process_handler_(new SimpleRenderProcessHandler()) {
+    std::cout << "🔧 SimpleApp constructor called!" << std::endl;
+    std::cout << "🔧 Render process handler created: " << (render_process_handler_ ? "true" : "false") << std::endl;
+}
 
 CefRefPtr<CefBrowserProcessHandler> SimpleApp::GetBrowserProcessHandler() {
     std::cout << "✅ SimpleApp::GetBrowserProcessHandler CALLED" << std::endl;
@@ -18,6 +21,8 @@ CefRefPtr<CefBrowserProcessHandler> SimpleApp::GetBrowserProcessHandler() {
 }
 
 CefRefPtr<CefRenderProcessHandler> SimpleApp::GetRenderProcessHandler() {
+    std::cout << "🔧 SimpleApp::GetRenderProcessHandler CALLED" << std::endl;
+    std::cout << "🔧 Returning render process handler: " << (render_process_handler_ ? "true" : "false") << std::endl;
     return render_process_handler_;
 }
 
@@ -123,56 +128,75 @@ void SimpleApp::OnContextInitialized() {
     }
 }
 
+// Create a test overlay with process-per-overlay model (like Brave)
+void CreateTestOverlayWithSeparateProcess(HINSTANCE hInstance) {
+    std::cout << "🧪 Creating test overlay with separate process (Brave-style)" << std::endl;
+
+    RECT rect;
+    SystemParametersInfo(SPI_GETWORKAREA, 0, &rect, 0);
+    int width = 400;
+    int height = 300;
+    int x = (rect.right - width) / 2;
+    int y = (rect.bottom - height) / 2;
+
+    // Create a new HWND for this overlay
+    HWND test_overlay_hwnd = CreateWindowEx(
+        WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
+        L"CEFTestOverlayWindow",
+        L"Test Overlay",
+        WS_POPUP | WS_VISIBLE,
+        x, y, width, height,
+        nullptr, nullptr, hInstance, nullptr
+    );
+
+    if (!test_overlay_hwnd) {
+        std::cout << "❌ Failed to create test overlay HWND" << std::endl;
+        return;
+    }
+
+    std::cout << "✅ Test overlay HWND created: " << test_overlay_hwnd << std::endl;
+
+    // Set up window info for separate process
+    CefWindowInfo window_info;
+    window_info.windowless_rendering_enabled = true;
+    window_info.SetAsPopup(test_overlay_hwnd, "TestOverlayWindow");
+
+    // Create a dedicated render handler for this overlay
+    CefRefPtr<MyOverlayRenderHandler> render_handler =
+        new MyOverlayRenderHandler(test_overlay_hwnd, width, height);
+
+    // Create a dedicated handler for this overlay (separate from main overlay)
+    CefRefPtr<SimpleHandler> test_handler = new SimpleHandler("test-overlay");
+    test_handler->SetRenderHandler(render_handler);
+
+    // Browser settings for the test overlay
+    CefBrowserSettings browser_settings;
+    browser_settings.windowless_frame_rate = 30;
+    browser_settings.background_color = CefColorSetARGB(255, 102, 126, 234); // Blue background
+    browser_settings.javascript = STATE_ENABLED;
+    browser_settings.javascript_access_clipboard = STATE_ENABLED;
+    browser_settings.javascript_dom_paste = STATE_ENABLED;
+
+    // Create the browser with separate process
+    bool result = CefBrowserHost::CreateBrowser(
+        window_info,
+        test_handler,
+        "http://127.0.0.1:5137/test-overlay.html", // Our test page
+        browser_settings,
+        nullptr,
+        CefRequestContext::GetGlobalContext()
+    );
+
+    std::cout << "🧪 Test overlay browser creation result: " << (result ? "SUCCESS" : "FAILED") << std::endl;
+}
+
 void CreateOverlayBrowserIfNeeded(HINSTANCE hInstance) {
     std::cout << "🚀 Called CreateOverlayBrowserIfNeeded()" << std::endl;
 
     // Check if overlay already exists and is valid
     if (g_overlay_hwnd && IsWindow(g_overlay_hwnd)) {
         std::cout << "🔄 Reusing existing overlay HWND: " << g_overlay_hwnd << std::endl;
-
-        // Ensure React app is loaded in the existing overlay
-        CefRefPtr<CefBrowser> existing_overlay = SimpleHandler::GetOverlayBrowser();
-        if (existing_overlay && existing_overlay->GetMainFrame()) {
-            std::string current_url = existing_overlay->GetMainFrame()->GetURL().ToString();
-            std::cout << "🔄 Current overlay URL: '" << current_url << "'" << std::endl;
-            std::cout << "🔄 Overlay browser ID: " << existing_overlay->GetIdentifier() << std::endl;
-            std::cout << "🔄 Overlay browser loading state: " << (existing_overlay->IsLoading() ? "loading" : "not loading") << std::endl;
-
-            // Check if browser is ready to accept new URLs
-            if (existing_overlay->IsLoading()) {
-                std::cout << "⚠️ Overlay browser is still loading, cannot load new URL yet" << std::endl;
-                std::cout << "⚠️ Will retry loading after browser finishes loading" << std::endl;
-                // Set flag to reload when browser finishes loading
-                SimpleHandler::needs_overlay_reload_ = true;
-                return;
-            }
-
-            // Always reload to ensure clean state, especially if URL looks corrupted or empty
-            if (current_url.empty() ||
-                current_url.find("data:text/html") != std::string::npos ||
-                current_url.find("Failed to load") != std::string::npos ||
-                current_url != "http://127.0.0.1:5137/overlay") {
-                std::cout << "🔄 Loading fresh React app in existing overlay (URL was: '" << current_url << "')" << std::endl;
-                std::cout << "🔄 Calling LoadURL on overlay browser..." << std::endl;
-                existing_overlay->GetMainFrame()->LoadURL("http://127.0.0.1:5137/overlay");
-                std::cout << "🔄 LoadURL called, new URL should be: http://127.0.0.1:5137/overlay" << std::endl;
-                std::cout << "🔄 Browser loading state after LoadURL: " << (existing_overlay->IsLoading() ? "loading" : "not loading") << std::endl;
-            } else {
-                std::cout << "🔄 React app already loaded, reloading for fresh state" << std::endl;
-                std::cout << "🔄 Calling LoadURL on overlay browser..." << std::endl;
-                existing_overlay->GetMainFrame()->LoadURL("http://127.0.0.1:5137/overlay");
-                std::cout << "🔄 LoadURL called, new URL should be: http://127.0.0.1:5137/overlay" << std::endl;
-                std::cout << "🔄 Browser loading state after LoadURL: " << (existing_overlay->IsLoading() ? "loading" : "not loading") << std::endl;
-            }
-        } else {
-            std::cout << "⚠️ Overlay browser not available, cannot reload React app" << std::endl;
-            if (!existing_overlay) {
-                std::cout << "⚠️ existing_overlay is null" << std::endl;
-            } else if (!existing_overlay->GetMainFrame()) {
-                std::cout << "⚠️ existing_overlay->GetMainFrame() is null" << std::endl;
-            }
-        }
-        return; // Exit early, don't create new one
+        return; // Just return, don't create new one
     }
 
     RECT rect;
@@ -186,15 +210,10 @@ void CreateOverlayBrowserIfNeeded(HINSTANCE hInstance) {
         0, 0, width, height, nullptr, nullptr, hInstance, nullptr);
 
     if (overlay_hwnd) {
-        // Force it to be truly topmost
-        SetWindowPos(overlay_hwnd, HWND_TOPMOST, 0, 0, 0, 0,
-                        SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+        // Set initial position and show window
+        SetWindowPos(overlay_hwnd, HWND_TOPMOST, 0, 0, width, height, SWP_SHOWWINDOW);
 
-        // Bring to front and activate
-        BringWindowToTop(overlay_hwnd);
-        SetForegroundWindow(overlay_hwnd);
-
-        // Force redraw
+        // Update window to ensure proper display
         UpdateWindow(overlay_hwnd);
     }
 
@@ -211,12 +230,13 @@ void CreateOverlayBrowserIfNeeded(HINSTANCE hInstance) {
 
     std::cout << "[Overlay Setup] g_overlay_hwnd BEFORE passing to render handler: " << g_overlay_hwnd << std::endl;
 
-    SetWindowPos(g_overlay_hwnd, HWND_TOPMOST, 0, 0, width, height, SWP_SHOWWINDOW);
+    // SetWindowPos(g_overlay_hwnd, HWND_TOPMOST, 0, 0, width, height, SWP_SHOWWINDOW);
     UpdateWindow(g_overlay_hwnd);
 
-    SetForegroundWindow(g_overlay_hwnd);
-    SetFocus(g_overlay_hwnd);
-    SetActiveWindow(g_overlay_hwnd);
+    // Remove focus-stealing calls that cause conflicts
+    // SetForegroundWindow(g_overlay_hwnd);
+    // SetFocus(g_overlay_hwnd);
+    // SetActiveWindow(g_overlay_hwnd);
 
     int overlayWidth = prepWidth;
     int overlayHeight = prepHeight;
@@ -238,6 +258,11 @@ void CreateOverlayBrowserIfNeeded(HINSTANCE hInstance) {
     overlay_settings.windowless_frame_rate = 30;
     overlay_settings.background_color = CefColorSetARGB(0, 0, 0, 0); // fully transparent
 
+    // Enable right-click context menu and DevTools (using available settings)
+    overlay_settings.javascript = STATE_ENABLED;
+    overlay_settings.javascript_access_clipboard = STATE_ENABLED;
+    overlay_settings.javascript_dom_paste = STATE_ENABLED;
+
     bool overlay_result = CefBrowserHost::CreateBrowser(
         overlay_window_info,
         overlay_handler,
@@ -248,4 +273,138 @@ void CreateOverlayBrowserIfNeeded(HINSTANCE hInstance) {
     );
 
     std::cout << "🪟 Overlay browser creation result: " << (overlay_result ? "SUCCESS" : "FAILED") << std::endl;
+}
+
+// Chrome-style approach: Inject JavaScript directly into the overlay browser
+void InjectBitcoinBrowserAPI(CefRefPtr<CefBrowser> browser) {
+    if (!browser || !browser->GetMainFrame()) {
+        std::cout << "❌ Cannot inject API - browser or frame not available" << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "❌ Cannot inject API - browser or frame not available" << std::endl;
+        debugLog.close();
+        return;
+    }
+
+    std::cout << "🔧 Injecting bitcoinBrowser API into browser ID: " << browser->GetIdentifier() << std::endl;
+    std::ofstream debugLog1("debug_output.log", std::ios::app);
+    debugLog1 << "🔧 Injecting bitcoinBrowser API into browser ID: " << browser->GetIdentifier() << std::endl;
+    debugLog1.close();
+
+    std::string jsCode = R"(
+                 // Create bitcoinBrowser object using CEF's built-in V8 integration
+                 window.bitcoinBrowser = {
+                     address: {
+                         generate: function() {
+                             console.log('🔑 Address generation requested via injected JavaScript');
+
+                             // Also try to log to a visible element for debugging
+                             var debugDiv = document.getElementById('debug-log');
+                             if (!debugDiv) {
+                                 debugDiv = document.createElement('div');
+                                 debugDiv.id = 'debug-log';
+                                 debugDiv.style.position = 'fixed';
+                                 debugDiv.style.top = '10px';
+                                 debugDiv.style.left = '10px';
+                                 debugDiv.style.background = 'black';
+                                 debugDiv.style.color = 'white';
+                                 debugDiv.style.padding = '10px';
+                                 debugDiv.style.zIndex = '9999';
+                                 debugDiv.style.fontSize = '12px';
+                                 document.body.appendChild(debugDiv);
+                             }
+                             debugDiv.innerHTML += '🔑 Address generation requested<br>';
+
+                             // Return a Promise for async operation
+                             return new Promise((resolve, reject) => {
+                                 try {
+                                     // Use CEF's process message system
+                                     if (window.chrome && window.chrome.runtime && window.chrome.runtime.sendMessage) {
+                                         debugDiv.innerHTML += '📤 Sending process message<br>';
+                                         window.chrome.runtime.sendMessage({
+                                             type: 'address_generate'
+                                         }, function(response) {
+                                             debugDiv.innerHTML += '📥 Response received<br>';
+                                             console.log('🔍 Response received:', JSON.stringify(response));
+                                             if (response && response.success) {
+                                                 debugDiv.innerHTML += '✅ Address generated successfully<br>';
+                                                 console.log('✅ Address generated:', response.data);
+                                                 console.log('🔍 Address field:', response.data.address);
+                                                 console.log('🔍 PublicKey field:', response.data.publicKey);
+                                                 console.log('🔍 PrivateKey field:', response.data.privateKey);
+                                                 resolve(response.data);
+                                             } else {
+                                                 debugDiv.innerHTML += '❌ Address generation failed<br>';
+                                                 console.error('❌ Address generation failed:', response ? response.error : 'Unknown error');
+                                                 reject(new Error(response ? response.error : 'Unknown error'));
+                                             }
+                                         });
+                                     } else {
+                                         debugDiv.innerHTML += '❌ CEF runtime not available<br>';
+                                         console.error('❌ CEF runtime not available, trying alternative method');
+                                         // Fallback: try to call a global function
+                                         if (window.generateAddress) {
+                                             try {
+                                                 var result = window.generateAddress();
+                                                 debugDiv.innerHTML += '✅ Address generated via fallback<br>';
+                                                 console.log('✅ Address generated via fallback:', result);
+                                                 resolve(result);
+                                             } catch (e) {
+                                                 debugDiv.innerHTML += '❌ Error in fallback<br>';
+                                                 console.error('❌ Error in fallback address generation:', e);
+                                                 reject(e);
+                                             }
+                                         } else {
+                                             debugDiv.innerHTML += '❌ No address generation method available<br>';
+                                             console.error('❌ No address generation method available');
+                                             reject(new Error('No address generation method available'));
+                                         }
+                                     }
+                                 } catch (e) {
+                                     debugDiv.innerHTML += '❌ Error in address generation<br>';
+                                     console.error('❌ Error in address generation:', e);
+                                     reject(e);
+                                 }
+                             });
+                         }
+                     },
+                     overlay: {
+                         show: function() {
+                             console.log('🧪 Test overlay requested via bitcoinBrowser API');
+                             // Send process message for test overlay
+                             if (window.chrome && window.chrome.runtime && window.chrome.runtime.sendMessage) {
+                                 window.chrome.runtime.sendMessage({
+                                     type: 'test_overlay'
+                                 }, function(response) {
+                                     console.log('🧪 Test overlay response:', response);
+                                 });
+                             } else {
+                                 console.error('❌ CEF runtime not available for test overlay');
+                             }
+                         }
+                     }
+                 };
+
+                 // Set up cefMessage for communication (needed by bridge system)
+                 if (!window.cefMessage) {
+                     window.cefMessage = {
+                         send: function(channel, args) {
+                             console.log('📤 cefMessage.send:', channel, args);
+                             // This will be handled by the C++ process message system
+                             // We need to implement this in the render process handler
+                         }
+                     };
+                     console.log('✅ Set up cefMessage for communication');
+                 }
+
+
+        console.log('✅ bitcoinBrowser API injected successfully');
+    )";
+
+    browser->GetMainFrame()->ExecuteJavaScript(jsCode, "", 0);
+    std::cout << "🔧 Injected bitcoinBrowser API into browser ID: " << browser->GetIdentifier() << std::endl;
+
+    // Also log to file
+    std::ofstream debugLog2("debug_output.log", std::ios::app);
+    debugLog2 << "🔧 Injected bitcoinBrowser API into browser ID: " << browser->GetIdentifier() << std::endl;
+    debugLog2.close();
 }

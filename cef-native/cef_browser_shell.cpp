@@ -30,12 +30,21 @@
 #include <windowsx.h>
 #include <filesystem>
 #include <iostream>
+#include <fstream>
 
 HWND g_hwnd = nullptr;
 HWND g_header_hwnd = nullptr;
 HWND g_webview_hwnd = nullptr;
 HWND g_overlay_hwnd = nullptr;
 HINSTANCE g_hInstance = nullptr;
+
+// Debug logging function
+void DebugLog(const std::string& message) {
+    std::cout << message << std::endl;
+    std::ofstream debugLog("debug_output.log", std::ios::app);
+    debugLog << message << std::endl;
+    debugLog.close();
+}
 
 LRESULT CALLBACK ShellWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
@@ -47,13 +56,12 @@ LRESULT CALLBACK ShellWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                 int width  = shellRect.right - shellRect.left;
                 int height = shellRect.bottom - shellRect.top;
 
-                SetWindowPos(g_overlay_hwnd, HWND_TOPMOST,
+                // Position overlay to match main window
+                SetWindowPos(g_overlay_hwnd, HWND_TOP,
                              shellRect.left, shellRect.top,
                              width, height,
                              SWP_NOOWNERZORDER);
 
-                BringWindowToTop(g_overlay_hwnd);
-                SetForegroundWindow(g_overlay_hwnd);
                 UpdateWindow(g_overlay_hwnd);
             }
             break;
@@ -70,9 +78,7 @@ LRESULT CALLBACK OverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
     switch (msg) {
         case WM_MOUSEACTIVATE:
             std::cout << "👆 Overlay HWND received WM_MOUSEACTIVATE\n";
-            // Force overlay to stay on top when activated
-            SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
-                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            // Allow normal activation without forcing z-order
             return MA_ACTIVATE;
 
         case WM_LBUTTONDOWN: {
@@ -100,16 +106,12 @@ LRESULT CALLBACK OverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 
         case WM_ACTIVATE:
             std::cout << "⚡ HWND activated with state: " << LOWORD(wParam) << "\n";
-            if (LOWORD(wParam) == WA_INACTIVE) {
-                // When losing focus, bring back to top
-                SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
-                            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-            }
+            // Remove conflicting z-order management
             break;
 
         case WM_WINDOWPOSCHANGING:
-            // Prevent other windows from covering us
-            ((WINDOWPOS*)lParam)->flags |= SWP_NOZORDER;
+            // Allow normal z-order changes for better window management
+            // ((WINDOWPOS*)lParam)->flags |= SWP_NOZORDER;
             break;
     }
     return DefWindowProc(hwnd, msg, wParam, lParam);
@@ -128,7 +130,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     freopen_s(&dummy, "CONOUT$", "w", stdout);
     freopen_s(&dummy, "CONOUT$", "w", stderr);
     freopen_s(&dummy, "CONIN$", "r", stdin);
-    std::cout << "Shell starting..." << std::endl;
+
+    // Create a separate log file for our debug messages
+    std::ofstream debugLog("debug_output.log", std::ios::app);
+    debugLog << "=== NEW SESSION STARTED ===" << std::endl;
+    debugLog.close();
+
+    DebugLog("Shell starting...");
+    debugLog << "=== NEW SESSION STARTED ===" << std::endl;
+    debugLog.close();
 
     CefSettings settings;
     settings.command_line_args_disabled = false;
@@ -137,9 +147,17 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     settings.remote_debugging_port = 9222;
     settings.windowless_rendering_enabled = true;
 
-    CefString(&settings.resources_dir_path).FromWString(L"...");
-    CefString(&settings.locales_dir_path).FromWString(L"...");
-    CefString(&settings.browser_subprocess_path).FromWString(L"...");
+    // Enable CEF's runtime API for JavaScript communication
+    CefString(&settings.javascript_flags).FromASCII("--expose-gc --allow-running-insecure-content");
+
+    // Get the executable path for subprocess
+    wchar_t exe_path[MAX_PATH];
+    GetModuleFileNameW(nullptr, exe_path, MAX_PATH);
+
+    // Set CEF paths - use relative paths from the executable
+    CefString(&settings.resources_dir_path).FromWString(L"cef-binaries\\Resources");
+    CefString(&settings.locales_dir_path).FromWString(L"cef-binaries\\Resources\\locales");
+    CefString(&settings.browser_subprocess_path).FromWString(exe_path);
 
     RECT rect;
     SystemParametersInfo(SPI_GETWORKAREA, 0, &rect, 0);
@@ -184,7 +202,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     ShowWindow(hwnd, SW_SHOW);        UpdateWindow(hwnd);
     ShowWindow(header_hwnd, SW_SHOW); UpdateWindow(header_hwnd);
     ShowWindow(webview_hwnd, SW_SHOW); UpdateWindow(webview_hwnd);
-   
+
     std::cout << "Initializing CEF..." << std::endl;
     bool success = CefInitialize(main_args, settings, app, nullptr);
     std::cout << "CefInitialize success: " << (success ? "true" : "false") << std::endl;

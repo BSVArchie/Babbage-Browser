@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import type { IdentityResult } from '../types/identity';
+import type { AddressData } from '../types/address';
 
 export function useBitcoinBrowser() {
   const getIdentity = useCallback(async (): Promise<IdentityResult> => {
@@ -18,6 +19,14 @@ export function useBitcoinBrowser() {
     return result;
   }, []);
 
+  const generateAddress = useCallback(async (): Promise<AddressData> => {
+    if (!window.bitcoinBrowser?.address?.generate) {
+      throw new Error('bitcoinBrowser.address.generate not available');
+    }
+    const result = await window.bitcoinBrowser.address.generate();
+    return result;
+  }, []);
+
   const navigate = useCallback((path: string): void => {
     if (!window.bitcoinBrowser?.navigation?.navigate) {
       console.warn('bitcoinBrowser.navigation.navigate not available');
@@ -33,6 +42,7 @@ export function useBitcoinBrowser() {
   return {
     getIdentity,
     markBackedUp,
+    generateAddress,
     navigate,
   };
 }

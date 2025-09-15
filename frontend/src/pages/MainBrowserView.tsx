@@ -96,6 +96,7 @@ const MainBrowserView: React.FC = () => {
                     <AccountBalanceWalletIcon />
                 </IconButton>
 
+
                 {/* Settings Button */}
                 <IconButton
                     onClick={() => {
