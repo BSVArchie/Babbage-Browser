@@ -117,6 +117,82 @@ LRESULT CALLBACK OverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
     return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
+LRESULT CALLBACK SettingsOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+        case WM_MOUSEACTIVATE:
+            std::cout << "👆 Settings Overlay HWND received WM_MOUSEACTIVATE\n";
+            // Allow normal activation without forcing z-order
+            return MA_ACTIVATE;
+
+        case WM_LBUTTONDOWN: {
+            std::cout << "🖱️ Settings Overlay received WM_LBUTTONDOWN\n";
+            SetFocus(hwnd);
+
+            POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+            // Translate to CEF MouseEvent
+            CefMouseEvent mouse_event;
+            mouse_event.x = pt.x;
+            mouse_event.y = pt.y;
+            mouse_event.modifiers = 0;
+
+            // Find the settings browser
+            CefRefPtr<CefBrowser> settings_browser = SimpleHandler::GetSettingsBrowser();
+            if (settings_browser) {
+                settings_browser->GetHost()->SendMouseClickEvent(mouse_event, MBT_LEFT, false, 1);  // mouse down
+                settings_browser->GetHost()->SendMouseClickEvent(mouse_event, MBT_LEFT, true, 1);   // mouse up
+                std::cout << "🧠 Left-click sent to settings overlay browser\n";
+            } else {
+                std::cout << "⚠️ No settings overlay browser to send left-click\n";
+            }
+
+            return 0;
+        }
+
+        case WM_RBUTTONDOWN: {
+            std::cout << "🖱️ Settings Overlay received WM_RBUTTONDOWN\n";
+            SetFocus(hwnd);
+
+            POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+            // Translate to CEF MouseEvent
+            CefMouseEvent mouse_event;
+            mouse_event.x = pt.x;
+            mouse_event.y = pt.y;
+            mouse_event.modifiers = 0;
+
+            // Find the settings browser
+            CefRefPtr<CefBrowser> settings_browser = SimpleHandler::GetSettingsBrowser();
+            if (settings_browser) {
+                settings_browser->GetHost()->SendMouseClickEvent(mouse_event, MBT_RIGHT, false, 1);  // mouse down
+                settings_browser->GetHost()->SendMouseClickEvent(mouse_event, MBT_RIGHT, true, 1);   // mouse up
+                std::cout << "🧠 Right-click sent to settings overlay browser\n";
+            } else {
+                std::cout << "⚠️ No settings overlay browser to send right-click\n";
+            }
+
+            return 0;
+        }
+
+        case WM_CLOSE:
+            std::cout << "❌ Settings Overlay received WM_CLOSE - destroying window\n";
+            DestroyWindow(hwnd);
+            return 0;
+
+        case WM_DESTROY:
+            std::cout << "❌ Settings Overlay received WM_DESTROY - cleaning up\n";
+            // Clean up any resources if needed
+            return 0;
+
+        case WM_ACTIVATE:
+            std::cout << "⚡ Settings HWND activated with state: " << LOWORD(wParam) << "\n";
+            break;
+
+        case WM_WINDOWPOSCHANGING:
+            // Allow normal z-order changes for better window management
+            break;
+    }
+    return DefWindowProc(hwnd, msg, wParam, lParam);
+}
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     g_hInstance = hInstance;
     CefMainArgs main_args(hInstance);
@@ -182,6 +258,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
 
     if (!RegisterClass(&overlayClass)) {
         std::cout << "❌ Failed to register overlay window class. Error: " << GetLastError() << std::endl;
+    }
+
+    WNDCLASS settingsOverlayClass = {};
+    settingsOverlayClass.lpfnWndProc = SettingsOverlayWndProc;  // ✅ Settings-specific message handler
+    settingsOverlayClass.hInstance = hInstance;
+    settingsOverlayClass.lpszClassName = L"CEFSettingsOverlayWindow";
+
+    if (!RegisterClass(&settingsOverlayClass)) {
+        std::cout << "❌ Failed to register settings overlay window class. Error: " << GetLastError() << std::endl;
     }
 
     HWND hwnd = CreateWindow(L"BitcoinBrowserWndClass", L"Bitcoin Browser / Babbage Browser",

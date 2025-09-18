@@ -1,6 +1,7 @@
 // src/simple_app.cpp
 #include "../../include/handlers/simple_app.h"
 #include "../../include/handlers/simple_handler.h"
+#include "../../include/handlers/simple_render_process_handler.h"
 #include "../../include/handlers/my_overlay_render_handler.h"
 #include "include/wrapper/cef_helpers.h"
 #include "include/cef_browser.h"
@@ -128,67 +129,6 @@ void SimpleApp::OnContextInitialized() {
     }
 }
 
-// Create a test overlay with process-per-overlay model (like Brave)
-void CreateTestOverlayWithSeparateProcess(HINSTANCE hInstance) {
-    std::cout << "🧪 Creating test overlay with separate process (Brave-style)" << std::endl;
-
-    RECT rect;
-    SystemParametersInfo(SPI_GETWORKAREA, 0, &rect, 0);
-    int width = 400;
-    int height = 300;
-    int x = (rect.right - width) / 2;
-    int y = (rect.bottom - height) / 2;
-
-    // Create a new HWND for this overlay
-    HWND test_overlay_hwnd = CreateWindowEx(
-        WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
-        L"CEFTestOverlayWindow",
-        L"Test Overlay",
-        WS_POPUP | WS_VISIBLE,
-        x, y, width, height,
-        nullptr, nullptr, hInstance, nullptr
-    );
-
-    if (!test_overlay_hwnd) {
-        std::cout << "❌ Failed to create test overlay HWND" << std::endl;
-        return;
-    }
-
-    std::cout << "✅ Test overlay HWND created: " << test_overlay_hwnd << std::endl;
-
-    // Set up window info for separate process
-    CefWindowInfo window_info;
-    window_info.windowless_rendering_enabled = true;
-    window_info.SetAsPopup(test_overlay_hwnd, "TestOverlayWindow");
-
-    // Create a dedicated render handler for this overlay
-    CefRefPtr<MyOverlayRenderHandler> render_handler =
-        new MyOverlayRenderHandler(test_overlay_hwnd, width, height);
-
-    // Create a dedicated handler for this overlay (separate from main overlay)
-    CefRefPtr<SimpleHandler> test_handler = new SimpleHandler("test-overlay");
-    test_handler->SetRenderHandler(render_handler);
-
-    // Browser settings for the test overlay
-    CefBrowserSettings browser_settings;
-    browser_settings.windowless_frame_rate = 30;
-    browser_settings.background_color = CefColorSetARGB(255, 102, 126, 234); // Blue background
-    browser_settings.javascript = STATE_ENABLED;
-    browser_settings.javascript_access_clipboard = STATE_ENABLED;
-    browser_settings.javascript_dom_paste = STATE_ENABLED;
-
-    // Create the browser with separate process
-    bool result = CefBrowserHost::CreateBrowser(
-        window_info,
-        test_handler,
-        "http://127.0.0.1:5137/test-overlay.html", // Our test page
-        browser_settings,
-        nullptr,
-        CefRequestContext::GetGlobalContext()
-    );
-
-    std::cout << "🧪 Test overlay browser creation result: " << (result ? "SUCCESS" : "FAILED") << std::endl;
-}
 
 void CreateOverlayBrowserIfNeeded(HINSTANCE hInstance) {
     std::cout << "🚀 Called CreateOverlayBrowserIfNeeded()" << std::endl;
@@ -384,17 +324,8 @@ void InjectBitcoinBrowserAPI(CefRefPtr<CefBrowser> browser) {
                      }
                  };
 
-                 // Set up cefMessage for communication (needed by bridge system)
-                 if (!window.cefMessage) {
-                     window.cefMessage = {
-                         send: function(channel, args) {
-                             console.log('📤 cefMessage.send:', channel, args);
-                             // This will be handled by the C++ process message system
-                             // We need to implement this in the render process handler
-                         }
-                     };
-                     console.log('✅ Set up cefMessage for communication');
-                 }
+                // cefMessage is now implemented in the render process handler
+                // No need to set it up here as a stub
 
 
         console.log('✅ bitcoinBrowser API injected successfully');
@@ -407,4 +338,89 @@ void InjectBitcoinBrowserAPI(CefRefPtr<CefBrowser> browser) {
     std::ofstream debugLog2("debug_output.log", std::ios::app);
     debugLog2 << "🔧 Injected bitcoinBrowser API into browser ID: " << browser->GetIdentifier() << std::endl;
     debugLog2.close();
+}
+
+void CreateSettingsOverlayWithSeparateProcess(HINSTANCE hInstance) {
+    std::cout << "🪟 Creating settings overlay with separate process" << std::endl;
+    std::ofstream debugLog("debug_output.log", std::ios::app);
+    debugLog << "🪟 Creating settings overlay with separate process" << std::endl;
+    debugLog.close();
+
+    // Get main window dimensions for positioning
+    RECT mainRect;
+    GetWindowRect(g_hwnd, &mainRect);
+    int width = mainRect.right - mainRect.left;
+    int height = mainRect.bottom - mainRect.top;
+
+    // Create new HWND for settings overlay
+    HWND settings_hwnd = CreateWindowEx(
+        WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
+        L"CEFSettingsOverlayWindow",
+        L"Settings Overlay",
+        WS_POPUP | WS_VISIBLE,
+        mainRect.left, mainRect.top, width, height,
+        g_hwnd, nullptr, hInstance, nullptr);
+
+    if (!settings_hwnd) {
+        std::cout << "❌ Failed to create settings overlay HWND. Error: " << GetLastError() << std::endl;
+        std::ofstream debugLog2("debug_output.log", std::ios::app);
+        debugLog2 << "❌ Failed to create settings overlay HWND. Error: " << GetLastError() << std::endl;
+        debugLog2.close();
+        return;
+    }
+
+    std::cout << "✅ Settings overlay HWND created: " << settings_hwnd << std::endl;
+    std::ofstream debugLog3("debug_output.log", std::ios::app);
+    debugLog3 << "✅ Settings overlay HWND created: " << settings_hwnd << std::endl;
+    debugLog3.close();
+
+    // Create new CEF browser with subprocess
+    CefWindowInfo window_info;
+    window_info.windowless_rendering_enabled = true;
+    window_info.SetAsPopup(settings_hwnd, "SettingsOverlay");
+
+    CefBrowserSettings settings;
+    settings.windowless_frame_rate = 30;
+    settings.background_color = CefColorSetARGB(0, 0, 0, 0); // fully transparent
+    settings.javascript = STATE_ENABLED;
+    settings.javascript_access_clipboard = STATE_ENABLED;
+    settings.javascript_dom_paste = STATE_ENABLED;
+
+    // Note: DevTools is enabled through context menu handler, not browser settings
+
+    // Create new handler for settings overlay
+    CefRefPtr<SimpleHandler> settings_handler(new SimpleHandler("settings"));
+
+    // Set render handler for settings overlay (same as wallet overlay)
+    CefRefPtr<MyOverlayRenderHandler> render_handler = new MyOverlayRenderHandler(settings_hwnd, width, height);
+    settings_handler->SetRenderHandler(render_handler);
+
+    // Create new browser with subprocess
+    bool result = CefBrowserHost::CreateBrowser(
+        window_info,
+        settings_handler,
+        "http://127.0.0.1:5137/settings",
+        settings,
+        nullptr,
+        CefRequestContext::GetGlobalContext()
+    );
+
+    if (result) {
+        std::cout << "✅ Settings overlay browser created with subprocess" << std::endl;
+        std::ofstream debugLog4("debug_output.log", std::ios::app);
+        debugLog4 << "✅ Settings overlay browser created with subprocess" << std::endl;
+        debugLog4.close();
+
+        // Enable mouse input for settings overlay
+        LONG exStyle = GetWindowLong(settings_hwnd, GWL_EXSTYLE);
+        SetWindowLong(settings_hwnd, GWL_EXSTYLE, exStyle & ~WS_EX_TRANSPARENT);
+        std::ofstream debugLog6("debug_output.log", std::ios::app);
+        debugLog6 << "🪟 Mouse input ENABLED for settings overlay HWND: " << settings_hwnd << std::endl;
+        debugLog6.close();
+    } else {
+        std::cout << "❌ Failed to create settings overlay browser" << std::endl;
+        std::ofstream debugLog5("debug_output.log", std::ios::app);
+        debugLog5 << "❌ Failed to create settings overlay browser" << std::endl;
+        debugLog5.close();
+    }
 }

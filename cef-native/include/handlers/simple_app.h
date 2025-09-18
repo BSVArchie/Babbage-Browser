@@ -17,6 +17,9 @@ extern HWND g_overlay_hwnd;
 // globals.h
 extern HINSTANCE g_hInstance;
 
+// Global functions
+void CreateSettingsOverlayWithSeparateProcess(HINSTANCE hInstance);
+
 
 class SimpleApp : public CefApp,
                   public CefBrowserProcessHandler,

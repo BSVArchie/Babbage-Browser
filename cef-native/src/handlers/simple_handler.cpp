@@ -37,8 +37,12 @@ CefRefPtr<CefLoadHandler> SimpleHandler::GetLoadHandler() {
 
 CefRefPtr<CefBrowser> SimpleHandler::webview_browser_ = nullptr;
 CefRefPtr<CefBrowser> SimpleHandler::overlay_browser_ = nullptr;
+CefRefPtr<CefBrowser> SimpleHandler::settings_browser_ = nullptr;
 CefRefPtr<CefBrowser> SimpleHandler::GetOverlayBrowser() {
     return overlay_browser_;
+}
+CefRefPtr<CefBrowser> SimpleHandler::GetSettingsBrowser() {
+    return settings_browser_;
 }
 
 void SimpleHandler::TriggerDeferredPanel(const std::string& panel) {
@@ -131,6 +135,15 @@ void SimpleHandler::OnLoadingStateChange(CefRefPtr<CefBrowser> browser,
 
             extern void InjectBitcoinBrowserAPI(CefRefPtr<CefBrowser> browser);
             InjectBitcoinBrowserAPI(browser);
+        } else if (role_ == "settings") {
+            // Inject the bitcoinBrowser API into settings browser
+            std::cout << "🔧 SETTINGS BROWSER LOADED - Injecting bitcoinBrowser API" << std::endl;
+            std::ofstream debugLog("debug_output.log", std::ios::app);
+            debugLog << "🔧 SETTINGS BROWSER LOADED - Injecting bitcoinBrowser API" << std::endl;
+            debugLog.close();
+
+            extern void InjectBitcoinBrowserAPI(CefRefPtr<CefBrowser> browser);
+            InjectBitcoinBrowserAPI(browser);
         }
 
         // Overlay-specific logic
@@ -176,11 +189,17 @@ void SimpleHandler::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
         std::ofstream debugLog("debug_output.log", std::ios::app);
         debugLog << "🧭 header browser initialized. ID: " << browser->GetIdentifier() << std::endl;
         debugLog.close();
-    }else if (role_ == "overlay") {
+    } else if (role_ == "overlay") {
         overlay_browser_ = browser;
         std::cout << "🪟 Overlay browser initialized." << std::endl;
         std::ofstream debugLog("debug_output.log", std::ios::app);
         debugLog << "🪟 Overlay browser initialized. ID: " << browser->GetIdentifier() << std::endl;
+        debugLog.close();
+    } else if (role_ == "settings") {
+        settings_browser_ = browser;
+        std::cout << "⚙️ Settings browser initialized." << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "⚙️ Settings browser initialized. ID: " << browser->GetIdentifier() << std::endl;
         debugLog.close();
     }
 
@@ -277,6 +296,37 @@ bool SimpleHandler::OnProcessMessageReceived(
             SimpleHandler::pending_panel_ = panel;
             std::cout << "🕒 Set pending_panel_ to: " << panel << std::endl;
         }
+    } else if (message->GetName() == "overlay_close") {
+        std::cout << "🧠 [SimpleHandler] overlay_close message received" << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "🧠 [SimpleHandler] overlay_close message received" << std::endl;
+        debugLog.close();
+
+        // Find and destroy the settings overlay window
+        HWND settings_hwnd = FindWindow(L"CEFSettingsOverlayWindow", L"Settings Overlay");
+        if (settings_hwnd && IsWindow(settings_hwnd)) {
+            std::cout << "✅ Found settings overlay window: " << settings_hwnd << std::endl;
+            std::ofstream debugLog2("debug_output.log", std::ios::app);
+            debugLog2 << "✅ Found settings overlay window: " << settings_hwnd << std::endl;
+            debugLog2.close();
+
+            // Close the browser first
+            CefRefPtr<CefBrowser> settings_browser = GetSettingsBrowser();
+            if (settings_browser) {
+                std::cout << "🔄 Closing settings browser" << std::endl;
+                settings_browser->GetHost()->CloseBrowser(false);
+                settings_browser_ = nullptr; // Clear the reference
+            }
+
+            // Then destroy the window
+            std::cout << "🔄 Destroying settings overlay window" << std::endl;
+            SendMessage(settings_hwnd, WM_CLOSE, 0, 0);
+        } else {
+            std::cout << "❌ Settings overlay window not found" << std::endl;
+            std::ofstream debugLog3("debug_output.log", std::ios::app);
+            debugLog3 << "❌ Settings overlay window not found" << std::endl;
+            debugLog3.close();
+        }
 
         return true;
     }
@@ -289,23 +339,107 @@ bool SimpleHandler::OnProcessMessageReceived(
         return true;
     }
 
-    if (message_name == "overlay_show") {
-        std::cout << "🪟 overlay_show message received" << std::endl;
-        std::cout << "🪟 Showing existing overlay HWND" << std::endl;
+    if (message_name == "overlay_show_wallet") {
+        std::cout << "🪟 overlay_show_wallet message received from role: " << role_ << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "🪟 overlay_show_wallet message received from role: " << role_ << std::endl;
+        debugLog.close();
+
+        std::cout << "🪟 Showing existing wallet overlay HWND" << std::endl;
+        std::ofstream debugLog2("debug_output.log", std::ios::app);
+        debugLog2 << "🪟 Showing existing wallet overlay HWND" << std::endl;
+        debugLog2.close();
+        // Normal wallet overlay behavior
         ShowWindow(g_overlay_hwnd, SW_SHOW);
         return true;
     }
 
+    if (message_name == "overlay_show_settings") {
+        std::cout << "🪟 overlay_show_settings message received from role: " << role_ << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "🪟 overlay_show_settings message received from role: " << role_ << std::endl;
+        debugLog.close();
+
+        std::cout << "🪟 Creating settings overlay with separate process" << std::endl;
+        std::ofstream debugLog2("debug_output.log", std::ios::app);
+        debugLog2 << "🪟 Creating settings overlay with separate process" << std::endl;
+        debugLog2.close();
+        // Create new process for settings overlay
+        extern HINSTANCE g_hInstance;
+        CreateSettingsOverlayWithSeparateProcess(g_hInstance);
+        return true;
+    }
+
+    if (message_name == "test_settings_message") {
+        std::cout << "🧪 test_settings_message received from role: " << role_ << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "🧪 test_settings_message received from role: " << role_ << std::endl;
+        debugLog.close();
+        return true;
+    }
+
+    if (message_name == "overlay_hide" && role_ == "settings") {
+        std::cout << "🪟 overlay_hide message received for settings overlay" << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "🪟 overlay_hide message received for settings overlay" << std::endl;
+        debugLog.close();
+
+        // Close the settings overlay window
+        HWND settings_hwnd = FindWindow(L"CEFSettingsOverlayWindow", L"Settings Overlay");
+        if (settings_hwnd) {
+            std::cout << "🪟 Closing settings overlay window" << std::endl;
+            std::ofstream debugLog2("debug_output.log", std::ios::app);
+            debugLog2 << "🪟 Closing settings overlay window" << std::endl;
+            debugLog2.close();
+            DestroyWindow(settings_hwnd);
+        }
+        return true;
+    }
+
     if (message_name == "overlay_input") {
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "🪟 overlay_input message received from role: " << role_ << std::endl;
+        debugLog.close();
+
         CefRefPtr<CefListValue> args = message->GetArgumentList();
         bool enable = args->GetBool(0);
-        std::cout << "🪟 Setting overlay input: " << (enable ? "enabled" : "disabled") << std::endl;
+        std::ofstream debugLog2("debug_output.log", std::ios::app);
+        debugLog2 << "🪟 Setting overlay input: " << (enable ? "enabled" : "disabled") << " for role: " << role_ << std::endl;
+        debugLog2.close();
 
-        LONG exStyle = GetWindowLong(g_overlay_hwnd, GWL_EXSTYLE);
-        if (enable) {
-            SetWindowLong(g_overlay_hwnd, GWL_EXSTYLE, exStyle & ~WS_EX_TRANSPARENT);
+        // Handle input for the appropriate overlay based on role
+        HWND target_hwnd = nullptr;
+        if (role_ == "settings") {
+            // Find the settings overlay window
+            target_hwnd = FindWindow(L"CEFOverlayWindow", L"Settings Overlay");
+            std::ofstream debugLog2("debug_output.log", std::ios::app);
+            debugLog2 << "🪟 Settings overlay HWND found: " << target_hwnd << std::endl;
+            debugLog2.close();
+        } else if (role_ == "overlay") {
+            // Use the old shared overlay
+            target_hwnd = g_overlay_hwnd;
+            std::ofstream debugLog3("debug_output.log", std::ios::app);
+            debugLog3 << "🪟 Shared overlay HWND: " << target_hwnd << std::endl;
+            debugLog3.close();
+        }
+
+        if (target_hwnd) {
+            LONG exStyle = GetWindowLong(target_hwnd, GWL_EXSTYLE);
+            if (enable) {
+                SetWindowLong(target_hwnd, GWL_EXSTYLE, exStyle & ~WS_EX_TRANSPARENT);
+                std::ofstream debugLog4("debug_output.log", std::ios::app);
+                debugLog4 << "🪟 Mouse input ENABLED for HWND: " << target_hwnd << std::endl;
+                debugLog4.close();
+            } else {
+                SetWindowLong(target_hwnd, GWL_EXSTYLE, exStyle | WS_EX_TRANSPARENT);
+                std::ofstream debugLog5("debug_output.log", std::ios::app);
+                debugLog5 << "🪟 Mouse input DISABLED for HWND: " << target_hwnd << std::endl;
+                debugLog5.close();
+            }
         } else {
-            SetWindowLong(g_overlay_hwnd, GWL_EXSTYLE, exStyle | WS_EX_TRANSPARENT);
+            std::ofstream debugLog6("debug_output.log", std::ios::app);
+            debugLog6 << "❌ No target HWND found for overlay_input" << std::endl;
+            debugLog6.close();
         }
         return true;
     }
@@ -351,10 +485,43 @@ CefRefPtr<CefRequestHandler> SimpleHandler::GetRequestHandler() {
     return this;
 }
 
+CefRefPtr<CefContextMenuHandler> SimpleHandler::GetContextMenuHandler() {
+    return this;
+}
+
 void SimpleHandler::SetRenderHandler(CefRefPtr<CefRenderHandler> handler) {
     render_handler_ = handler;
 }
 
 CefRefPtr<CefRenderHandler> SimpleHandler::GetRenderHandler() {
     return render_handler_;
+}
+
+void SimpleHandler::OnBeforeContextMenu(CefRefPtr<CefBrowser> browser,
+                                        CefRefPtr<CefFrame> frame,
+                                        CefRefPtr<CefContextMenuParams> params,
+                                        CefRefPtr<CefMenuModel> model) {
+    // Enable DevTools for settings overlay in development
+    if (role_ == "settings") {
+        // Add Inspect Element option - use custom menu ID
+        const int MENU_ID_DEV_TOOLS_INSPECT = MENU_ID_USER_FIRST + 1;
+        model->AddItem(MENU_ID_DEV_TOOLS_INSPECT, "Inspect Element");
+        model->AddSeparator();
+
+        std::cout << "🔧 Context menu enabled for settings overlay - DevTools available" << std::endl;
+    }
+}
+
+bool SimpleHandler::OnContextMenuCommand(CefRefPtr<CefBrowser> browser,
+                                         CefRefPtr<CefFrame> frame,
+                                         CefRefPtr<CefContextMenuParams> params,
+                                         int command_id,
+                                         EventFlags event_flags) {
+    if (role_ == "settings" && command_id == (MENU_ID_USER_FIRST + 1)) {
+        // Open DevTools
+        browser->GetHost()->ShowDevTools(CefWindowInfo(), nullptr, CefBrowserSettings(), CefPoint());
+        std::cout << "🔧 DevTools opened for settings overlay" << std::endl;
+        return true;
+    }
+    return false;
 }

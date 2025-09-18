@@ -15,6 +15,8 @@ type Props = {
 };
 
 const SettingsPanelLayout: React.FC<Props> = ({ onClose, open }) => {
+  console.log("🔧 SettingsPanelLayout render - open:", open);
+
   return (
     <Drawer
       anchor="right"

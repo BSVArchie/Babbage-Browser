@@ -54,6 +54,16 @@ if (!window.bitcoinBrowser.overlay?.toggleInput) {
     window.cefMessage?.send?.('overlay_input', [enable]);
 }
 
+if (!window.bitcoinBrowser.overlay?.close) {
+  if (!window.bitcoinBrowser.overlay) {
+    (window.bitcoinBrowser as any).overlay = {};
+  }
+  window.bitcoinBrowser.overlay.close = () => {
+    console.log("🧠 JS: Sending overlay_close to native");
+    window.cefMessage?.send?.('overlay_close', []);
+  };
+}
+
 if (!window.bitcoinBrowser.address) {
   window.bitcoinBrowser.address = {
     generate: () => {
@@ -77,6 +87,19 @@ if (!window.bitcoinBrowser.address) {
         // Send the request
         window.cefMessage?.send('address_generate', []);
       });
+    }
+  };
+}
+
+if (!window.bitcoinBrowser.overlayPanel) {
+  window.bitcoinBrowser.overlayPanel = {
+    open: (panelName: string) => {
+      console.log("🧠 JS: Sending overlay_open_panel to native");
+      window.cefMessage?.send('overlay_open_panel', [panelName]);
+    },
+    toggleInput: (enable: boolean) => {
+      console.log("🧠 JS: Sending overlay_input to native");
+      window.cefMessage?.send('overlay_input', [enable]);
     }
   };
 }

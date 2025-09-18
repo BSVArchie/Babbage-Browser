@@ -12,7 +12,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
-import SettingsPanelLayout from '../components/panels/SettingsPanelLayout';
+// Settings panel now rendered in separate overlay process
 import { useBitcoinBrowser } from '../hooks/useBitcoinBrowser';
 
 
@@ -25,7 +25,7 @@ const MainBrowserView: React.FC = () => {
     // alert("MainBrowserView is working!");
 
 
-    const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
+    // Settings panel state now managed in separate overlay process
     const [address, setAddress] = useState('https://example.com');
 
     const { navigate } = useBitcoinBrowser();
@@ -82,7 +82,7 @@ const MainBrowserView: React.FC = () => {
                 <IconButton
                     onClick={() => {
                         console.log("🟢 Wallet button clicked");
-                        window.bitcoinBrowser.overlay.show();
+                        window.cefMessage?.send('overlay_show_wallet', []);
                         window.bitcoinBrowser.overlay.toggleInput(true);
                         window.bitcoinBrowser.overlayPanel.open('wallet');
                     }}
@@ -100,9 +100,14 @@ const MainBrowserView: React.FC = () => {
                 {/* Settings Button */}
                 <IconButton
                     onClick={() => {
-                        window.bitcoinBrowser.overlay.show();
-                        window.bitcoinBrowser.overlay.toggleInput(true);
-                        setSettingsPanelOpen(true);
+                        console.log("🔧 Settings button clicked");
+                        console.log("🔧 bitcoinBrowser:", window.bitcoinBrowser);
+                        console.log("🔧 overlayPanel:", window.bitcoinBrowser?.overlayPanel);
+                        console.log("🔧 overlayPanel.toggleInput:", window.bitcoinBrowser?.overlayPanel?.toggleInput);
+                        window.cefMessage?.send('overlay_show_settings', []);
+                        console.log("🔧 Settings overlay will open in separate process");
+                        window.bitcoinBrowser.overlayPanel?.open('settings');
+                        window.bitcoinBrowser.overlayPanel?.toggleInput(true);
                     }}
                     sx={{
                         ml: 1,
@@ -123,14 +128,7 @@ const MainBrowserView: React.FC = () => {
             </Typography>
             </Box>
 
-            <SettingsPanelLayout
-                open={settingsPanelOpen}
-                onClose={() => {
-                    window.bitcoinBrowser.overlay.hide();
-                    window.bitcoinBrowser.overlay.toggleInput(false);
-                    setSettingsPanelOpen(false);
-                }}
-            />
+            {/* Settings panel is now rendered in separate overlay process */}
         </Box>
     );
 };

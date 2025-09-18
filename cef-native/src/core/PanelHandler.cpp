@@ -34,6 +34,38 @@ bool PanelHandler::Execute(const CefString& name,
             exception = "overlayPanel.open() expects one string argument.";
             return false;
         }
+    } else if (name == "close") {
+        std::cout << "🧠 [PanelHandler] close() called" << std::endl;
+
+        // Create message to close the overlay
+        CefRefPtr<CefProcessMessage> msg = CefProcessMessage::Create("overlay_close");
+        CefRefPtr<CefListValue> args = msg->GetArgumentList();
+        // No arguments needed for close
+
+        CefV8Context::GetCurrentContext()
+            ->GetFrame()
+            ->SendProcessMessage(PID_BROWSER, msg);
+
+        return true;
+    } else if (name == "toggleInput") {
+        if (arguments.size() == 1 && arguments[0]->IsBool()) {
+            bool enable = arguments[0]->GetBoolValue();
+            std::cout << "🧠 [PanelHandler] toggleInput() called with enable: " << (enable ? "true" : "false") << std::endl;
+
+            // Create message to toggle input
+            CefRefPtr<CefProcessMessage> msg = CefProcessMessage::Create("overlay_input");
+            CefRefPtr<CefListValue> args = msg->GetArgumentList();
+            args->SetBool(0, enable);
+
+            CefV8Context::GetCurrentContext()
+                ->GetFrame()
+                ->SendProcessMessage(PID_BROWSER, msg);
+
+            return true;
+        } else {
+            exception = "overlayPanel.toggleInput() expects one boolean argument.";
+            return false;
+        }
     }
 
     exception = "Unknown function: " + name.ToString();

@@ -18,9 +18,11 @@ declare global {
         show: () => void;
         hide: () => void;
         toggleInput: (enable: boolean) => void;
+        close: () => void;
       };
       overlayPanel: {
         open: (panelName: string) => void;
+        toggleInput: (enable: boolean) => void;
       };
     };
     cefMessage?: {

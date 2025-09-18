@@ -6,12 +6,14 @@
 #include "include/cef_life_span_handler.h"
 #include "include/cef_load_handler.h"
 #include "include/cef_request_handler.h"
+#include "include/cef_context_menu_handler.h"
 
 class SimpleHandler : public CefClient,
                       public CefLifeSpanHandler,
                       public CefDisplayHandler,
                       public CefLoadHandler,
-                      public CefRequestHandler {
+                      public CefRequestHandler,
+                      public CefContextMenuHandler {
 public:
     explicit SimpleHandler(const std::string& role);
 
@@ -20,8 +22,10 @@ public:
     CefRefPtr<CefDisplayHandler> GetDisplayHandler() override;
     CefRefPtr<CefLoadHandler> GetLoadHandler() override;
     CefRefPtr<CefRequestHandler> GetRequestHandler() override;
+    CefRefPtr<CefContextMenuHandler> GetContextMenuHandler() override;
     static CefRefPtr<CefBrowser> webview_browser_;
     static CefRefPtr<CefBrowser> GetOverlayBrowser();
+    static CefRefPtr<CefBrowser> GetSettingsBrowser();
     static std::string pending_panel_;
     static bool needs_overlay_reload_;
     static void TriggerDeferredPanel(const std::string& panel);
@@ -51,9 +55,22 @@ public:
     void SetRenderHandler(CefRefPtr<CefRenderHandler> handler);
     CefRefPtr<CefRenderHandler> GetRenderHandler() override;
 
+    // CefContextMenuHandler methods
+    void OnBeforeContextMenu(CefRefPtr<CefBrowser> browser,
+                            CefRefPtr<CefFrame> frame,
+                            CefRefPtr<CefContextMenuParams> params,
+                            CefRefPtr<CefMenuModel> model) override;
+
+    bool OnContextMenuCommand(CefRefPtr<CefBrowser> browser,
+                             CefRefPtr<CefFrame> frame,
+                             CefRefPtr<CefContextMenuParams> params,
+                             int command_id,
+                             EventFlags event_flags) override;
+
 private:
     std::string role_;
     CefRefPtr<CefRenderHandler> render_handler_;
     static CefRefPtr<CefBrowser> overlay_browser_;
+    static CefRefPtr<CefBrowser> settings_browser_;
     IMPLEMENT_REFCOUNTING(SimpleHandler);
 };

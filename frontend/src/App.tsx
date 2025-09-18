@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import OverlayRoot from './pages/OverlayRoot';
+import SettingsOverlayRoot from './pages/SettingsOverlayRoot';
 import MainBrowserView from './pages/MainBrowserView';
 import type { IdentityResult } from './types/identity';
 
@@ -57,6 +58,7 @@ const App = () => {
         {/* <Route path="/" element={walletExists ? <MainBrowserView /> : <OverlayRoot />} /> */}
         <Route path="/" element={<MainBrowserView />} />
         <Route path="/overlay" element={<OverlayRoot />} />
+        <Route path="/settings" element={<SettingsOverlayRoot />} />
       </Routes>
     </>
   );

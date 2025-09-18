@@ -1,5 +1,55 @@
 # Developer Notes - Bitcoin Browser
 
+## 🚨 **CURRENT SESSION STATUS - READ THIS FIRST**
+
+### **Current State: Settings Overlay Implementation - PARTIALLY WORKING**
+
+**✅ WHAT'S WORKING:**
+1. **Settings Button**: Opens settings overlay window in separate process
+2. **Process Isolation**: Settings overlay runs in its own CEF subprocess (process-per-overlay architecture)
+3. **Window Creation**: Settings overlay window is created with dedicated `CEFSettingsOverlayWindow` class
+4. **API Injection**: `bitcoinBrowser.overlay.close()` method is properly injected into settings overlay
+5. **Message Handling**: `overlay_close` message is sent from frontend to native C++
+
+**❌ CURRENT ISSUE:**
+- **Settings overlay window does not close** when clicking the close button
+- The window is created and renders correctly, but `DestroyWindow()` call isn't working
+
+### **Architecture Overview:**
+- **Main Browser**: React app running on `http://127.0.0.1:5137` (header browser)
+- **Settings Overlay**: Separate CEF process running on `http://127.0.0.1:5137/settings`
+- **Communication**: Uses `cefMessage.send()` for IPC between processes
+- **Window Management**: Each overlay has its own HWND with dedicated message handlers
+
+### **Key Files Modified:**
+1. **`cef-native/src/handlers/simple_handler.cpp`**:
+   - Added `overlay_show_settings` handler
+   - Added `overlay_close` handler (currently using `DestroyWindow()`)
+2. **`cef-native/src/handlers/simple_app.cpp`**:
+   - Added `CreateSettingsOverlayWithSeparateProcess()` function
+3. **`cef-native/cef_browser_shell.cpp`**:
+   - Added `SettingsOverlayWndProc` for mouse input handling
+4. **`frontend/src/pages/SettingsOverlayRoot.tsx`**:
+   - Settings overlay React component
+5. **`frontend/src/pages/MainBrowserView.tsx`**:
+   - Settings button handler
+
+### **Current Problem:**
+The settings overlay window is created successfully but won't close. The `overlay_close` message is being sent and received, but `DestroyWindow(settings_hwnd)` isn't working as expected.
+
+### **Next Steps Needed:**
+1. **Debug the close functionality** - investigate why `DestroyWindow()` isn't working
+2. **Test mouse input** - ensure left-click and right-click work on settings overlay
+3. **Verify process cleanup** - ensure CEF subprocess is properly terminated when window closes
+
+### **Technical Context:**
+- **CEF Version**: Using CEF binaries with process-per-overlay architecture
+- **React**: Frontend running on Vite dev server
+- **Build System**: CMake with Visual Studio
+- **Debug Logging**: All native logs go to `debug_output.log`
+
+---
+
 ## 🎯 Current Development Focus: Process-Per-Overlay Architecture Implementation
 
 ### 🚀 NEW FOCUS: Process-Per-Overlay Model (Brave Browser Style)
@@ -301,6 +351,93 @@ window.bitcoinBrowser.overlay.show = (overlayType: string) => {
 - **HTTP Communication**: Windows HTTP API client ✅
 - **Identity Management**: Full CRUD operations ✅
 - **Error Handling**: Robust error recovery ✅
+
+---
+
+## 🏭 Production Build Configuration
+
+### 🚨 **CRITICAL: Context Menu Security Strategy**
+
+**YES, you MUST remove/disable the context menu in production builds.** This is essential for security and user experience.
+
+#### **Why Remove Context Menu in Production:**
+
+1. **Security**: Prevents users from accessing DevTools and potentially inspecting sensitive code
+2. **User Experience**: Cleaner, more professional appearance
+3. **Performance**: Slight performance improvement
+4. **Control**: Prevents users from accessing developer features
+
+#### **Implementation Strategy:**
+
+**Recommended Approach - Build Configuration System:**
+
+```cpp
+// In simple_handler.cpp - OnBeforeContextMenu method
+void SimpleHandler::OnBeforeContextMenu(...) {
+    #ifdef DEBUG_BUILD
+        // Enable DevTools for settings overlay in development
+        if (role_ == "settings") {
+            model->AddItem(MENU_ID_DEV_TOOLS, "Inspect Element");
+            model->AddSeparator();
+        }
+    #else
+        // Production build - disable context menu entirely
+        model->Clear();
+    #endif
+}
+```
+
+#### **Alternative Implementation Methods:**
+
+1. **Role-based Control**:
+   ```cpp
+   if (role_ == "settings" && isDevelopmentBuild) {
+       // Add DevTools
+   }
+   ```
+
+2. **Command Line Flag**:
+   ```cpp
+   // Check for --enable-devtools flag
+   if (commandLine->HasSwitch("enable-devtools")) {
+       // Enable context menu
+   }
+   ```
+
+3. **Environment Variable**:
+   ```cpp
+   // Check environment variable
+   if (getenv("BITCOIN_BROWSER_DEBUG")) {
+       // Enable DevTools
+   }
+   ```
+
+#### **Production Browser Settings:**
+
+```cpp
+// In production builds - secure configuration
+CefBrowserSettings settings;
+settings.javascript_access_clipboard = STATE_DISABLED;
+settings.plugins = STATE_DISABLED;
+settings.web_security = STATE_ENABLED; // Re-enable security
+settings.javascript = STATE_ENABLED; // Keep JS enabled for functionality
+// No context menu handler or empty context menu
+```
+
+#### **Build Configuration Checklist:**
+
+- [ ] **Development Build**: Context menu with DevTools enabled
+- [ ] **Production Build**: Context menu completely disabled
+- [ ] **Security Settings**: Web security enabled, plugins disabled
+- [ ] **Performance**: Optimized settings for production
+- [ ] **Testing**: Verify context menu behavior in both builds
+
+#### **Security Considerations:**
+
+- **Never ship with DevTools enabled** in production
+- **Test production builds thoroughly** to ensure no developer features leak through
+- **Consider code obfuscation** for additional protection
+- **Implement proper error handling** that doesn't expose internal details
 
 ## Previous Session: Backup Modal Overlay HWND Issue
 
