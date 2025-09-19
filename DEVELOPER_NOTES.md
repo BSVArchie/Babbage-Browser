@@ -305,36 +305,194 @@ window.bitcoinBrowser.overlay.show = (overlayType: string) => {
 
 ## 📋 Next Development Priorities
 
-### 🔧 Immediate Fixes (Next Session)
-1. **Address Generation Functionality**: Get address generation fully working in wallet overlay
-   - Fix address generation button getting stuck in "generating" state
-   - Ensure proper response handling from Go daemon
-   - Test address display and clipboard functionality
-2. **Elegant Shutdown Implementation**: Implement proper shutdown for all components
-   - CEF browser process cleanup and destruction
-   - HWND window management and proper destruction
+### ✅ Recently Completed (Current Session)
+1. **Address Generation Functionality**: ✅ COMPLETE
+   - Fixed address generation button getting stuck in "generating" state
+   - Implemented proper response handling from Go daemon
+   - Address display and clipboard functionality working
+   - Frontend now handles address indexing (backend simplified)
+2. **Elegant Shutdown Implementation**: ✅ COMPLETE
+   - CEF browser process cleanup and destruction implemented
+   - HWND window management and proper destruction sequence
    - Go daemon graceful shutdown integration
-   - Event listener cleanup to prevent memory leaks
-   - Console control handler for graceful app termination
+   - Frontend event listener cleanup in React components
+   - Console window cleanup (FreeConsole on shutdown)
 
 ### 🚀 Feature Development (Next Phase)
-1. **Enhanced Wallet Features**:
-   - Transaction signing and broadcasting
-   - BRC-100 authentication implementation
-   - SPV transaction verification
-   - Multiple wallet support
 
-2. **UI/UX Improvements**:
-   - Add wallet status indicators
-   - Better error messaging and user feedback
-   - Improve overlay window positioning and sizing
-   - Add loading states for all async operations
+#### **1. Transaction Signing and Broadcasting** (Priority #1)
+**Implementation Steps:**
 
-3. **Security Enhancements**:
-   - Implement proper key derivation (PBKDF2)
-   - Add encryption for private key storage
-   - Secure daemon communication
-   - Process isolation improvements
+**Backend (Go Daemon):**
+1. **Create Transaction Builder**
+   - Add `POST /transaction/create` endpoint
+   - Implement UTXO selection and fee calculation
+   - Support multiple output types (P2PKH, P2SH, etc.)
+   - Add transaction validation logic
+
+2. **Implement Transaction Signing**
+   - Add `POST /transaction/sign` endpoint
+   - Use existing private key from identity
+   - Implement proper Bitcoin transaction signing
+   - Add signature verification
+
+3. **Add Broadcasting Support**
+   - Add `POST /transaction/broadcast` endpoint
+   - Integrate with Bitcoin network (via SPV or full node)
+   - Implement retry logic and error handling
+   - Add transaction status tracking
+
+**Frontend (React/C++):**
+1. **Transaction UI Components**
+   - Create transaction form (recipient, amount, fee)
+   - Add transaction history display
+   - Implement transaction status indicators
+   - Add confirmation dialogs
+
+2. **C++ Integration**
+   - Add transaction message handlers in `simple_handler.cpp`
+   - Implement V8 bindings for transaction operations
+   - Add proper error handling and user feedback
+
+#### **2. Balance Display in USD** (Priority #2)
+**Implementation Steps:**
+1. **Price API Integration**
+   - Add Bitcoin price fetching (CoinGecko/CoinMarketCap API)
+   - Implement price caching and refresh logic
+   - Add USD conversion calculations
+
+2. **Balance Calculation**
+   - Implement UTXO balance calculation
+   - Add real-time balance updates
+   - Display both BTC and USD amounts
+
+3. **UI Components**
+   - Add balance display to wallet overlay
+   - Implement price refresh controls
+   - Add balance history/graphs
+
+#### **3. Additional Wallet Features** (Future)
+- **BRC-100 authentication implementation**
+- **SPV transaction verification**
+- **Hardware wallet integration**
+
+#### **4. UI/UX Improvements**
+- Add wallet status indicators
+- Better error messaging and user feedback
+- Improve overlay window positioning and sizing
+- Add loading states for all async operations
+
+---
+
+## 🏗️ **Advanced Wallet Management Architecture** (Future Planning)
+
+### **📋 Features Requiring Architectural Analysis**
+
+These features are important but require careful architectural planning before implementation. Each needs a comprehensive design analysis to ensure proper integration with the existing system.
+
+#### **1. Multiple Wallet Support**
+**Status:** Requires architectural analysis
+**Complexity:** High - affects core identity system, file management, and UI
+
+**Key Design Questions:**
+- How to modify existing single-identity system to support multiple wallets?
+- File structure and storage strategy (`~/AppData/Roaming/BabbageBrowser/wallets/`)
+- Wallet selection and switching mechanisms
+- Address generation per wallet vs shared address space
+- Transaction history organization and filtering
+- Security isolation between wallets
+- Import/export functionality and standards
+
+**Implementation Considerations:**
+- Breaking changes to existing identity system
+- Database vs file-based wallet storage
+- UI/UX for wallet management (creation, deletion, switching)
+- Backup and recovery per wallet vs global
+- Performance implications of multiple wallet scanning
+
+#### **2. Wallet Recovery System**
+**Status:** Requires architectural analysis
+**Complexity:** High - security and cryptographic considerations
+
+**Key Design Questions:**
+- Recovery method options (seed phrases, private key backup, hardware wallet)
+- BIP39/BIP44 mnemonic implementation and standards
+- Recovery phrase generation, storage, and validation
+- Import existing wallets from other software
+- Recovery verification and testing procedures
+- Security considerations for recovery data storage
+
+**Implementation Considerations:**
+- Cryptographic libraries and dependencies
+- Recovery phrase UI/UX (security best practices)
+- Integration with existing identity system
+- Backup file formats and standards
+- Cross-platform recovery compatibility
+
+#### **3. Advanced Security Features**
+**Status:** Requires architectural analysis
+**Complexity:** High - security-critical implementation
+
+**Key Design Questions:**
+- Hardware wallet integration
+- Multi-signature wallet support
+- Advanced key derivation (PBKDF2, scrypt, Argon2)
+- Encrypted private key storage
+- Secure communication protocols
+- Biometric authentication integration
+
+**Implementation Considerations:**
+- Hardware wallet communication protocols
+- Security audit requirements
+- Key management and storage strategies
+- User experience for security features
+- Compliance and regulatory considerations
+
+#### **4. Advanced Transaction Features**
+**Status:** Requires architectural analysis
+**Complexity:** Medium-High - Bitcoin protocol complexity
+
+**Key Design Questions:**
+- Transaction batching and optimization
+- Advanced fee estimation algorithms
+- Atomic swaps and cross-chain transactions
+- Transaction privacy features
+
+**Implementation Considerations:**
+- Bitcoin protocol implementation complexity
+- Network integration and SPV considerations
+- User interface for advanced features
+- Performance and scalability implications
+
+### **📅 When to Analyze These Features**
+
+**Recommended Timeline:**
+1. **After Core Functionality** - Complete transaction signing/broadcasting first
+2. **Before Major UI Overhaul** - Plan wallet management before redesigning interface
+3. **Security Audit Phase** - Analyze security features during security review
+4. **Performance Optimization** - Consider advanced features during performance tuning
+
+**Analysis Process:**
+1. **Research Phase** - Study existing wallet implementations and standards
+2. **Architecture Design** - Create detailed technical specifications
+3. **Prototype Development** - Build proof-of-concepts for complex features
+4. **Security Review** - Audit security-critical features before implementation
+5. **User Testing** - Validate UX decisions with real users
+
+**Decision Factors:**
+- User demand and feedback
+- Technical feasibility and complexity
+- Security implications and audit requirements
+- Integration with existing architecture
+- Development timeline and resource availability
+
+---
+
+## 🔒 **Security Enhancements** (Future)
+- Implement proper key derivation (PBKDF2)
+- Add encryption for private key storage
+- Secure daemon communication
+- Process isolation improvements
 
 ### 🎯 Long-term Goals
 1. **Rust Migration**: Plan migration path from Go to Rust
@@ -353,6 +511,9 @@ window.bitcoinBrowser.overlay.show = (overlayType: string) => {
 - **Backup Modal System**: Full identity creation and backup flow ✅
 - **Settings Overlay**: Dedicated process with proper window management ✅
 - **Wallet Overlay**: Isolated process with fresh V8 context ✅
+- **Address Generation**: Complete functionality with proper indexing ✅
+- **Graceful Shutdown**: Complete CEF browser, HWND, and daemon cleanup ✅
+- **Console Management**: Proper console window lifecycle management ✅
 
 ---
 
