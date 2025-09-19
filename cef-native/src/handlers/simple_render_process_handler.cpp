@@ -2,7 +2,6 @@
 #include "../../include/handlers/simple_render_process_handler.h"
 #include "../../include/core/IdentityHandler.h"
 #include "../../include/core/NavigationHandler.h"
-#include "../../include/core/PanelHandler.h"
 #include "../../include/core/AddressHandler.h"
 #include "wrapper/cef_helpers.h"
 #include "include/cef_v8.h"
@@ -70,6 +69,43 @@ public:
 
 private:
     IMPLEMENT_REFCOUNTING(CefMessageSendHandler);
+};
+
+// Handler for overlay.close() function
+class OverlayCloseHandler : public CefV8Handler {
+public:
+    OverlayCloseHandler() {}
+
+    bool Execute(const CefString& name,
+                 CefRefPtr<CefV8Value> object,
+                 const CefV8ValueList& arguments,
+                 CefRefPtr<CefV8Value>& retval,
+                 CefString& exception) override {
+
+        CEF_REQUIRE_RENDERER_THREAD();
+
+        std::cout << "🎯 overlay.close() called from overlay browser" << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "🎯 overlay.close() called from overlay browser" << std::endl;
+        debugLog.close();
+
+        // Send overlay_close message via cefMessage
+        CefRefPtr<CefV8Context> context = CefV8Context::GetCurrentContext();
+        if (context && context->GetFrame()) {
+            CefRefPtr<CefProcessMessage> message = CefProcessMessage::Create("overlay_close");
+            context->GetFrame()->SendProcessMessage(PID_BROWSER, message);
+
+            std::cout << "✅ overlay.close() sent overlay_close message" << std::endl;
+            std::ofstream debugLog2("debug_output.log", std::ios::app);
+            debugLog2 << "✅ overlay.close() sent overlay_close message" << std::endl;
+            debugLog2.close();
+        }
+
+        return true;
+    }
+
+private:
+    IMPLEMENT_REFCOUNTING(OverlayCloseHandler);
 };
 
 SimpleRenderProcessHandler::SimpleRenderProcessHandler() {
@@ -141,19 +177,7 @@ void SimpleRenderProcessHandler::OnContextCreated(
         CefV8Value::CreateFunction("navigate", navigationHandler),
         V8_PROPERTY_ATTRIBUTE_NONE);
 
-    // Create the overlayPanel object
-    CefRefPtr<CefV8Value> overlayPanelObject = CefV8Value::CreateObject(nullptr, nullptr);
-    bitcoinBrowser->SetValue("overlayPanel", overlayPanelObject, V8_PROPERTY_ATTRIBUTE_READONLY);
-
-    // Bind PanelHandler
-    CefRefPtr<PanelHandler> panelHandler = new PanelHandler();
-    overlayPanelObject->SetValue("open",
-        CefV8Value::CreateFunction("open", panelHandler),
-        V8_PROPERTY_ATTRIBUTE_NONE);
-
-    overlayPanelObject->SetValue("toggleInput",
-        CefV8Value::CreateFunction("toggleInput", panelHandler),
-        V8_PROPERTY_ATTRIBUTE_NONE);
+    // overlayPanel object removed - now using process-per-overlay architecture
 
     // Create the overlay object (for overlay browsers only)
     if (isOverlayBrowser) {
@@ -164,9 +188,9 @@ void SimpleRenderProcessHandler::OnContextCreated(
         CefRefPtr<CefV8Value> overlayObject = CefV8Value::CreateObject(nullptr, nullptr);
         bitcoinBrowser->SetValue("overlay", overlayObject, V8_PROPERTY_ATTRIBUTE_READONLY);
 
-        // Add close method for overlay browsers
+        // Add close method for overlay browsers - uses cefMessage internally
         overlayObject->SetValue("close",
-            CefV8Value::CreateFunction("close", panelHandler),
+            CefV8Value::CreateFunction("close", new OverlayCloseHandler()),
             V8_PROPERTY_ATTRIBUTE_NONE);
 
         std::ofstream debugLog4("debug_output.log", std::ios::app);

@@ -12,7 +12,6 @@
 extern HWND g_hwnd;
 extern HWND g_header_hwnd;
 extern HWND g_webview_hwnd;
-extern HWND g_overlay_hwnd;
 
 // globals.h
 extern HINSTANCE g_hInstance;
@@ -41,7 +40,6 @@ public:
     HWND webview_hwnd_ = nullptr;
     // HWND overlay_hwnd_ = nullptr;
 
-    void CreateOverlayBrowserIfNeeded(HINSTANCE hInstance);
 
 private:
     CefRefPtr<SimpleRenderProcessHandler> render_process_handler_;

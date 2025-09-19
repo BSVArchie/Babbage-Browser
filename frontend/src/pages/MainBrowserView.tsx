@@ -84,7 +84,6 @@ const MainBrowserView: React.FC = () => {
                         console.log("🟢 Wallet button clicked");
                         window.cefMessage?.send('overlay_show_wallet', []);
                         window.bitcoinBrowser.overlay.toggleInput(true);
-                        window.bitcoinBrowser.overlayPanel.open('wallet');
                     }}
                     sx={{
                         ml: 1,
@@ -106,8 +105,7 @@ const MainBrowserView: React.FC = () => {
                         console.log("🔧 overlayPanel.toggleInput:", window.bitcoinBrowser?.overlayPanel?.toggleInput);
                         window.cefMessage?.send('overlay_show_settings', []);
                         console.log("🔧 Settings overlay will open in separate process");
-                        window.bitcoinBrowser.overlayPanel?.open('settings');
-                        window.bitcoinBrowser.overlayPanel?.toggleInput(true);
+                        window.bitcoinBrowser.overlay.toggleInput(true);
                     }}
                     sx={{
                         ml: 1,

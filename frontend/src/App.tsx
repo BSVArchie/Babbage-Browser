@@ -1,14 +1,16 @@
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Routes, Route } from 'react-router-dom';
-import OverlayRoot from './pages/OverlayRoot';
 import SettingsOverlayRoot from './pages/SettingsOverlayRoot';
+import WalletOverlayRoot from './pages/WalletOverlayRoot';
+import BackupOverlayRoot from './pages/BackupOverlayRoot';
 import MainBrowserView from './pages/MainBrowserView';
 import type { IdentityResult } from './types/identity';
 
 const App = () => {
   console.log("🔍 App component rendering, pathname:", window.location.pathname);
   const [identityFileExists, setIdentityFileExists] = useState(false);
+  const backupModalTriggeredRef = useRef(false);
 
 
   useEffect(() => {
@@ -35,14 +37,35 @@ const App = () => {
         try {
           const result: IdentityResult = await window.bitcoinBrowser.identity.get();
           console.log("�� Identity result:", result);
-          if (result.backedUp === false) {
-            console.log("🔍 Triggering backup modal");
-            window.bitcoinBrowser.overlay.show();
-            window.bitcoinBrowser.overlay.toggleInput(true);
-            window.bitcoinBrowser.overlayPanel.open('backup');
+          // Handle the three cases:
+          if (!result) {
+            // Case 1: Identity file doesn't exist - create it and show backup modal
+            console.log("🔍 No identity file found, creating new identity");
+            // The identity will be created by the backup modal when it loads
+            if (!backupModalTriggeredRef.current) {
+              console.log("🔍 Triggering backup modal for new identity");
+              backupModalTriggeredRef.current = true;
+              window.cefMessage?.send('overlay_show_backup', []);
+            }
+          } else if (result.backedUp === false) {
+            // Case 2: Identity exists but not backed up - show backup modal
+            if (!backupModalTriggeredRef.current) {
+              console.log("🔍 Identity exists but not backed up, triggering backup modal");
+              backupModalTriggeredRef.current = true;
+              window.cefMessage?.send('overlay_show_backup', []);
+            }
+          } else {
+            // Case 3: Identity exists and is backed up - do nothing
+            console.log("🔍 Identity exists and is backed up, no action needed");
           }
         } catch (err) {
           console.error("💥 Error in identity.get():", err);
+          // If there's an error getting identity, assume it doesn't exist and create it
+          if (!backupModalTriggeredRef.current) {
+            console.log("🔍 Error getting identity, assuming it doesn't exist, triggering backup modal");
+            backupModalTriggeredRef.current = true;
+            window.cefMessage?.send('overlay_show_backup', []);
+          }
         }
       } else {
         console.log("🔍 Skipping identity check - path:", window.location.pathname, "backend ready:", typeof window.bitcoinBrowser?.identity?.get === 'function');
@@ -57,8 +80,9 @@ const App = () => {
       <Routes>
         {/* <Route path="/" element={walletExists ? <MainBrowserView /> : <OverlayRoot />} /> */}
         <Route path="/" element={<MainBrowserView />} />
-        <Route path="/overlay" element={<OverlayRoot />} />
         <Route path="/settings" element={<SettingsOverlayRoot />} />
+        <Route path="/wallet" element={<WalletOverlayRoot />} />
+        <Route path="/backup" element={<BackupOverlayRoot />} />
       </Routes>
     </>
   );

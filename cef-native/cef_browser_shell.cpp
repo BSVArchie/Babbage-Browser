@@ -35,7 +35,6 @@
 HWND g_hwnd = nullptr;
 HWND g_header_hwnd = nullptr;
 HWND g_webview_hwnd = nullptr;
-HWND g_overlay_hwnd = nullptr;
 HINSTANCE g_hInstance = nullptr;
 
 // Debug logging function
@@ -50,20 +49,6 @@ LRESULT CALLBACK ShellWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
     switch (msg) {
         case WM_MOVE:
         case WM_SIZE:
-            if (g_hwnd && g_overlay_hwnd) {
-                RECT shellRect;
-                GetWindowRect(g_hwnd, &shellRect);
-                int width  = shellRect.right - shellRect.left;
-                int height = shellRect.bottom - shellRect.top;
-
-                // Position overlay to match main window
-                SetWindowPos(g_overlay_hwnd, HWND_TOP,
-                             shellRect.left, shellRect.top,
-                             width, height,
-                             SWP_NOOWNERZORDER);
-
-                UpdateWindow(g_overlay_hwnd);
-            }
             break;
 
         case WM_DESTROY:
@@ -74,48 +59,6 @@ LRESULT CALLBACK ShellWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
     return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
-LRESULT CALLBACK OverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    switch (msg) {
-        case WM_MOUSEACTIVATE:
-            std::cout << "👆 Overlay HWND received WM_MOUSEACTIVATE\n";
-            // Allow normal activation without forcing z-order
-            return MA_ACTIVATE;
-
-        case WM_LBUTTONDOWN: {
-            std::cout << "🖱️ Overlay received WM_LBUTTONDOWN\n";
-            SetFocus(hwnd);
-
-            POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
-            // Translate to CEF MouseEvent
-            CefMouseEvent mouse_event;
-            mouse_event.x = pt.x;
-            mouse_event.y = pt.y;
-            mouse_event.modifiers = 0;
-
-            CefRefPtr<CefBrowser> overlay = SimpleHandler::GetOverlayBrowser();
-            if (overlay) {
-                overlay->GetHost()->SendMouseClickEvent(mouse_event, MBT_LEFT, false, 1);  // mouse down
-                overlay->GetHost()->SendMouseClickEvent(mouse_event, MBT_LEFT, true, 1);   // mouse up
-                std::cout << "🧠 Mouse click sent to overlay browser\n";
-            } else {
-                std::cout << "⚠️ No overlay browser to send click\n";
-            }
-
-            return 0;
-        }
-
-        case WM_ACTIVATE:
-            std::cout << "⚡ HWND activated with state: " << LOWORD(wParam) << "\n";
-            // Remove conflicting z-order management
-            break;
-
-        case WM_WINDOWPOSCHANGING:
-            // Allow normal z-order changes for better window management
-            // ((WINDOWPOS*)lParam)->flags |= SWP_NOZORDER;
-            break;
-    }
-    return DefWindowProc(hwnd, msg, wParam, lParam);
-}
 
 LRESULT CALLBACK SettingsOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
@@ -193,6 +136,145 @@ LRESULT CALLBACK SettingsOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
     return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
+LRESULT CALLBACK WalletOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+        case WM_MOUSEACTIVATE:
+            std::cout << "👆 Wallet Overlay HWND received WM_MOUSEACTIVATE\n";
+            // Allow normal activation without forcing z-order
+            return MA_ACTIVATE;
+
+        case WM_LBUTTONDOWN: {
+            std::cout << "🖱️ Wallet Overlay received WM_LBUTTONDOWN\n";
+            SetFocus(hwnd);
+
+            POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+            // Translate to CEF MouseEvent
+            CefMouseEvent mouse_event;
+            mouse_event.x = pt.x;
+            mouse_event.y = pt.y;
+            mouse_event.modifiers = 0;
+
+            // Find the wallet browser
+            CefRefPtr<CefBrowser> wallet_browser = SimpleHandler::GetWalletBrowser();
+            if (wallet_browser) {
+                wallet_browser->GetHost()->SendMouseClickEvent(mouse_event, MBT_LEFT, false, 1);  // mouse down
+                wallet_browser->GetHost()->SendMouseClickEvent(mouse_event, MBT_LEFT, true, 1);   // mouse up
+                std::cout << "🧠 Left-click sent to wallet overlay browser\n";
+            } else {
+                std::cout << "⚠️ No wallet overlay browser to send left-click\n";
+            }
+
+            return 0;
+        }
+
+        case WM_RBUTTONDOWN: {
+            std::cout << "🖱️ Wallet Overlay received WM_RBUTTONDOWN\n";
+            SetFocus(hwnd);
+
+            POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+            // Translate to CEF MouseEvent
+            CefMouseEvent mouse_event;
+            mouse_event.x = pt.x;
+            mouse_event.y = pt.y;
+            mouse_event.modifiers = 0;
+
+            // Find the wallet browser
+            CefRefPtr<CefBrowser> wallet_browser = SimpleHandler::GetWalletBrowser();
+            if (wallet_browser) {
+                wallet_browser->GetHost()->SendMouseClickEvent(mouse_event, MBT_RIGHT, false, 1);  // mouse down
+                wallet_browser->GetHost()->SendMouseClickEvent(mouse_event, MBT_RIGHT, true, 1);   // mouse up
+                std::cout << "🧠 Right-click sent to wallet overlay browser\n";
+            } else {
+                std::cout << "⚠️ No wallet overlay browser to send right-click\n";
+            }
+
+            return 0;
+        }
+
+        case WM_CLOSE:
+            std::cout << "❌ Wallet Overlay received WM_CLOSE - destroying window\n";
+            DestroyWindow(hwnd);
+            return 0;
+
+        case WM_DESTROY:
+            std::cout << "❌ Wallet Overlay received WM_DESTROY - cleaning up\n";
+            // Clean up any resources if needed
+            return 0;
+
+        case WM_ACTIVATE:
+            std::cout << "⚡ Wallet HWND activated with state: " << LOWORD(wParam) << "\n";
+            break;
+
+        case WM_WINDOWPOSCHANGING:
+            // Allow normal z-order changes for better window management
+            break;
+    }
+    return DefWindowProc(hwnd, msg, wParam, lParam);
+}
+
+LRESULT CALLBACK BackupOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+        case WM_MOUSEACTIVATE:
+            std::cout << "👆 Backup Overlay HWND received WM_MOUSEACTIVATE\n";
+            return MA_ACTIVATE;
+
+        case WM_LBUTTONDOWN: {
+            std::cout << "🖱️ Backup Overlay received WM_LBUTTONDOWN\n";
+            SetFocus(hwnd);
+            POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+            CefMouseEvent mouse_event;
+            mouse_event.x = pt.x;
+            mouse_event.y = pt.y;
+            mouse_event.modifiers = 0;
+            CefRefPtr<CefBrowser> backup_browser = SimpleHandler::GetBackupBrowser();
+            if (backup_browser) {
+                backup_browser->GetHost()->SendMouseClickEvent(mouse_event, MBT_LEFT, false, 1);
+                backup_browser->GetHost()->SendMouseClickEvent(mouse_event, MBT_LEFT, true, 1);
+                std::cout << "🧠 Left-click sent to backup overlay browser\n";
+            } else {
+                std::cout << "⚠️ No backup overlay browser to send left-click\n";
+            }
+            return 0;
+        }
+
+        case WM_RBUTTONDOWN: {
+            std::cout << "🖱️ Backup Overlay received WM_RBUTTONDOWN\n";
+            SetFocus(hwnd);
+            POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+            CefMouseEvent mouse_event;
+            mouse_event.x = pt.x;
+            mouse_event.y = pt.y;
+            mouse_event.modifiers = 0;
+            CefRefPtr<CefBrowser> backup_browser = SimpleHandler::GetBackupBrowser();
+            if (backup_browser) {
+                backup_browser->GetHost()->SendMouseClickEvent(mouse_event, MBT_RIGHT, false, 1);
+                backup_browser->GetHost()->SendMouseClickEvent(mouse_event, MBT_RIGHT, true, 1);
+                std::cout << "🧠 Right-click sent to backup overlay browser\n";
+            } else {
+                std::cout << "⚠️ No backup overlay browser to send right-click\n";
+            }
+            return 0;
+        }
+
+        case WM_CLOSE:
+            std::cout << "❌ Backup Overlay received WM_CLOSE - destroying window\n";
+            DestroyWindow(hwnd);
+            return 0;
+
+        case WM_DESTROY:
+            std::cout << "❌ Backup Overlay received WM_DESTROY - cleaning up\n";
+            return 0;
+
+        case WM_ACTIVATE:
+            std::cout << "⚡ Backup HWND activated with state: " << LOWORD(wParam) << "\n";
+            break;
+
+        case WM_WINDOWPOSCHANGING:
+            break;
+    }
+    return DefWindowProc(hwnd, msg, wParam, lParam);
+}
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     g_hInstance = hInstance;
     CefMainArgs main_args(hInstance);
@@ -248,17 +330,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     WNDCLASS browserClass = {}; browserClass.lpfnWndProc = DefWindowProc; browserClass.hInstance = hInstance;
     browserClass.lpszClassName = L"CEFHostWindow"; RegisterClass(&browserClass);
 
-    // WNDCLASS overlayClass = {}; overlayClass.lpfnWndProc = DefWindowProc; overlayClass.hInstance = hInstance;
-    // overlayClass.lpszClassName = L"CEFOverlayWindow"; RegisterClass(&overlayClass);
-
-    WNDCLASS overlayClass = {};
-    overlayClass.lpfnWndProc = OverlayWndProc;  // ✅ Correct static function
-    overlayClass.hInstance = hInstance;
-    overlayClass.lpszClassName = L"CEFOverlayWindow";
-
-    if (!RegisterClass(&overlayClass)) {
-        std::cout << "❌ Failed to register overlay window class. Error: " << GetLastError() << std::endl;
-    }
 
     WNDCLASS settingsOverlayClass = {};
     settingsOverlayClass.lpfnWndProc = SettingsOverlayWndProc;  // ✅ Settings-specific message handler
@@ -267,6 +338,25 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
 
     if (!RegisterClass(&settingsOverlayClass)) {
         std::cout << "❌ Failed to register settings overlay window class. Error: " << GetLastError() << std::endl;
+    }
+
+    WNDCLASS walletOverlayClass = {};
+    walletOverlayClass.lpfnWndProc = WalletOverlayWndProc;  // ✅ Wallet-specific message handler
+    walletOverlayClass.hInstance = hInstance;
+    walletOverlayClass.lpszClassName = L"CEFWalletOverlayWindow";
+
+    if (!RegisterClass(&walletOverlayClass)) {
+        std::cout << "❌ Failed to register wallet overlay window class. Error: " << GetLastError() << std::endl;
+    }
+
+    // Register backup overlay window class
+    WNDCLASS backupOverlayClass = {};
+    backupOverlayClass.lpfnWndProc = BackupOverlayWndProc;  // ✅ Backup-specific message handler
+    backupOverlayClass.hInstance = hInstance;
+    backupOverlayClass.lpszClassName = L"CEFBackupOverlayWindow";
+
+    if (!RegisterClass(&backupOverlayClass)) {
+        std::cout << "❌ Failed to register backup overlay window class. Error: " << GetLastError() << std::endl;
     }
 
     HWND hwnd = CreateWindow(L"BitcoinBrowserWndClass", L"Bitcoin Browser / Babbage Browser",

@@ -40,6 +40,8 @@ const BackupModal: React.FC<Props> = ({ open, onClose, identity }) => {
   const [copied, setCopied] = useState(false);
   const [confirmedBackup, setConfirmedBackup] = useState(false);
 
+  console.log("💾 BackupModal render - open:", open, "identity:", identity);
+
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopied(true);

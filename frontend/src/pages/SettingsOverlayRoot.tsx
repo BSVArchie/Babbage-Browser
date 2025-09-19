@@ -39,15 +39,9 @@ const SettingsOverlayRoot: React.FC = () => {
         onClose={() => {
           console.log("🔧 Settings closing");
           setSettingsOpen(false);
-          // Use the proper overlay close method
-          if (window.bitcoinBrowser && window.bitcoinBrowser.overlay && window.bitcoinBrowser.overlay.close) {
-            console.log("🔧 Calling bitcoinBrowser.overlay.close()");
-            window.bitcoinBrowser.overlay.close();
-          } else {
-            console.log("❌ bitcoinBrowser.overlay.close() not available");
-            console.log("🔧 bitcoinBrowser:", window.bitcoinBrowser);
-            console.log("🔧 bitcoinBrowser.overlay:", window.bitcoinBrowser?.overlay);
-          }
+          // Use the new process-per-overlay close method
+          console.log("🔧 Calling overlay_close message for settings overlay");
+          window.cefMessage?.send('overlay_close', []);
         }}
       />
     </>

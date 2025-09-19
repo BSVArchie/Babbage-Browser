@@ -26,6 +26,8 @@ public:
     static CefRefPtr<CefBrowser> webview_browser_;
     static CefRefPtr<CefBrowser> GetOverlayBrowser();
     static CefRefPtr<CefBrowser> GetSettingsBrowser();
+    static CefRefPtr<CefBrowser> GetWalletBrowser();
+    static CefRefPtr<CefBrowser> GetBackupBrowser();
     static std::string pending_panel_;
     static bool needs_overlay_reload_;
     static void TriggerDeferredPanel(const std::string& panel);
@@ -72,5 +74,7 @@ private:
     CefRefPtr<CefRenderHandler> render_handler_;
     static CefRefPtr<CefBrowser> overlay_browser_;
     static CefRefPtr<CefBrowser> settings_browser_;
+    static CefRefPtr<CefBrowser> wallet_browser_;
+    static CefRefPtr<CefBrowser> backup_browser_;
     IMPLEMENT_REFCOUNTING(SimpleHandler);
 };

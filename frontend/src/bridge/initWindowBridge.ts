@@ -91,15 +91,4 @@ if (!window.bitcoinBrowser.address) {
   };
 }
 
-if (!window.bitcoinBrowser.overlayPanel) {
-  window.bitcoinBrowser.overlayPanel = {
-    open: (panelName: string) => {
-      console.log("🧠 JS: Sending overlay_open_panel to native");
-      window.cefMessage?.send('overlay_open_panel', [panelName]);
-    },
-    toggleInput: (enable: boolean) => {
-      console.log("🧠 JS: Sending overlay_input to native");
-      window.cefMessage?.send('overlay_input', [enable]);
-    }
-  };
-}
+// overlayPanel methods removed - now using process-per-overlay architecture

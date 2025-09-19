@@ -130,90 +130,6 @@ void SimpleApp::OnContextInitialized() {
 }
 
 
-void CreateOverlayBrowserIfNeeded(HINSTANCE hInstance) {
-    std::cout << "🚀 Called CreateOverlayBrowserIfNeeded()" << std::endl;
-
-    // Check if overlay already exists and is valid
-    if (g_overlay_hwnd && IsWindow(g_overlay_hwnd)) {
-        std::cout << "🔄 Reusing existing overlay HWND: " << g_overlay_hwnd << std::endl;
-        return; // Just return, don't create new one
-    }
-
-    RECT rect;
-    SystemParametersInfo(SPI_GETWORKAREA, 0, &rect, 0);
-    int width  = rect.right - rect.left;
-    int height = rect.bottom - rect.top;
-
-    HWND overlay_hwnd = CreateWindowEx(
-        WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
-        L"CEFOverlayWindow", nullptr, WS_POPUP | WS_VISIBLE,
-        0, 0, width, height, nullptr, nullptr, hInstance, nullptr);
-
-    if (overlay_hwnd) {
-        // Set initial position and show window
-        SetWindowPos(overlay_hwnd, HWND_TOPMOST, 0, 0, width, height, SWP_SHOWWINDOW);
-
-        // Update window to ensure proper display
-        UpdateWindow(overlay_hwnd);
-    }
-
-    LONG exStyle = GetWindowLong(overlay_hwnd, GWL_EXSTYLE);
-    std::cout << "🧠 HWND EXSTYLE AFTER CREATE: " << std::hex << exStyle << std::endl;
-
-    g_overlay_hwnd = overlay_hwnd;
-
-    RECT overlayRect;
-
-    SystemParametersInfo(SPI_GETWORKAREA, 0, &overlayRect, 0);
-    int prepWidth  = overlayRect.right - overlayRect.left;
-    int prepHeight = overlayRect.bottom - overlayRect.top;
-
-    std::cout << "[Overlay Setup] g_overlay_hwnd BEFORE passing to render handler: " << g_overlay_hwnd << std::endl;
-
-    // SetWindowPos(g_overlay_hwnd, HWND_TOPMOST, 0, 0, width, height, SWP_SHOWWINDOW);
-    UpdateWindow(g_overlay_hwnd);
-
-    // Remove focus-stealing calls that cause conflicts
-    // SetForegroundWindow(g_overlay_hwnd);
-    // SetFocus(g_overlay_hwnd);
-    // SetActiveWindow(g_overlay_hwnd);
-
-    int overlayWidth = prepWidth;
-    int overlayHeight = prepHeight;
-
-    CefWindowInfo overlay_window_info;
-    overlay_window_info.windowless_rendering_enabled = true;
-    overlay_window_info.SetAsPopup(g_overlay_hwnd, "OverlayWindow");
-
-    CefRefPtr<MyOverlayRenderHandler> render_handler =
-        new MyOverlayRenderHandler(g_overlay_hwnd, overlayWidth, overlayHeight);
-
-
-    CefRefPtr<SimpleHandler> overlay_handler = new SimpleHandler("overlay");
-    overlay_handler->SetRenderHandler(render_handler);
-
-    std::cout << "[OverlayRenderHandler] HWND: " << g_overlay_hwnd << ", Width: " << overlayWidth << ", Height: " << overlayHeight << std::endl;
-
-    CefBrowserSettings overlay_settings;
-    overlay_settings.windowless_frame_rate = 30;
-    overlay_settings.background_color = CefColorSetARGB(0, 0, 0, 0); // fully transparent
-
-    // Enable right-click context menu and DevTools (using available settings)
-    overlay_settings.javascript = STATE_ENABLED;
-    overlay_settings.javascript_access_clipboard = STATE_ENABLED;
-    overlay_settings.javascript_dom_paste = STATE_ENABLED;
-
-    bool overlay_result = CefBrowserHost::CreateBrowser(
-        overlay_window_info,
-        overlay_handler,
-        "http://127.0.0.1:5137/overlay",
-        overlay_settings,
-        nullptr,
-        CefRequestContext::GetGlobalContext()
-    );
-
-    std::cout << "🪟 Overlay browser creation result: " << (overlay_result ? "SUCCESS" : "FAILED") << std::endl;
-}
 
 // Chrome-style approach: Inject JavaScript directly into the overlay browser
 void InjectBitcoinBrowserAPI(CefRefPtr<CefBrowser> browser) {
@@ -421,6 +337,168 @@ void CreateSettingsOverlayWithSeparateProcess(HINSTANCE hInstance) {
         std::cout << "❌ Failed to create settings overlay browser" << std::endl;
         std::ofstream debugLog5("debug_output.log", std::ios::app);
         debugLog5 << "❌ Failed to create settings overlay browser" << std::endl;
+        debugLog5.close();
+    }
+}
+
+void CreateWalletOverlayWithSeparateProcess(HINSTANCE hInstance) {
+    std::cout << "💰 Creating wallet overlay with separate process" << std::endl;
+    std::ofstream debugLog("debug_output.log", std::ios::app);
+    debugLog << "💰 Creating wallet overlay with separate process" << std::endl;
+    debugLog.close();
+
+    // Get main window dimensions for positioning
+    RECT mainRect;
+    GetWindowRect(g_hwnd, &mainRect);
+    int width = mainRect.right - mainRect.left;
+    int height = mainRect.bottom - mainRect.top;
+
+    // Create new HWND for wallet overlay
+    HWND wallet_hwnd = CreateWindowEx(
+        WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
+        L"CEFWalletOverlayWindow",
+        L"Wallet Overlay",
+        WS_POPUP | WS_VISIBLE,
+        mainRect.left, mainRect.top, width, height,
+        g_hwnd, nullptr, hInstance, nullptr);
+
+    if (!wallet_hwnd) {
+        std::cout << "❌ Failed to create wallet overlay HWND. Error: " << GetLastError() << std::endl;
+        std::ofstream debugLog2("debug_output.log", std::ios::app);
+        debugLog2 << "❌ Failed to create wallet overlay HWND. Error: " << GetLastError() << std::endl;
+        debugLog2.close();
+        return;
+    }
+
+    std::cout << "✅ Wallet overlay HWND created: " << wallet_hwnd << std::endl;
+    std::ofstream debugLog3("debug_output.log", std::ios::app);
+    debugLog3 << "✅ Wallet overlay HWND created: " << wallet_hwnd << std::endl;
+    debugLog3.close();
+
+    // Create new CEF browser with subprocess
+    CefWindowInfo window_info;
+    window_info.windowless_rendering_enabled = true;
+    window_info.SetAsPopup(wallet_hwnd, "WalletOverlay");
+
+    CefBrowserSettings settings;
+    settings.windowless_frame_rate = 30;
+    settings.background_color = CefColorSetARGB(0, 0, 0, 0); // fully transparent
+    settings.javascript = STATE_ENABLED;
+    settings.javascript_access_clipboard = STATE_ENABLED;
+    settings.javascript_dom_paste = STATE_ENABLED;
+
+    // Note: DevTools is enabled through context menu handler, not browser settings
+
+    // Create new handler for wallet overlay
+    CefRefPtr<SimpleHandler> wallet_handler(new SimpleHandler("wallet"));
+
+    // Set render handler for wallet overlay (same as settings overlay)
+    CefRefPtr<MyOverlayRenderHandler> render_handler = new MyOverlayRenderHandler(wallet_hwnd, width, height);
+    wallet_handler->SetRenderHandler(render_handler);
+
+    // Create new browser with subprocess
+    bool result = CefBrowserHost::CreateBrowser(
+        window_info,
+        wallet_handler,
+        "http://127.0.0.1:5137/wallet",
+        settings,
+        nullptr,
+        CefRequestContext::GetGlobalContext()
+    );
+
+    if (result) {
+        std::cout << "✅ Wallet overlay browser created with subprocess" << std::endl;
+        std::ofstream debugLog4("debug_output.log", std::ios::app);
+        debugLog4 << "✅ Wallet overlay browser created with subprocess" << std::endl;
+        debugLog4.close();
+
+        // Enable mouse input for wallet overlay
+        LONG exStyle = GetWindowLong(wallet_hwnd, GWL_EXSTYLE);
+        SetWindowLong(wallet_hwnd, GWL_EXSTYLE, exStyle & ~WS_EX_TRANSPARENT);
+        std::ofstream debugLog6("debug_output.log", std::ios::app);
+        debugLog6 << "💰 Mouse input ENABLED for wallet overlay HWND: " << wallet_hwnd << std::endl;
+        debugLog6.close();
+    } else {
+        std::cout << "❌ Failed to create wallet overlay browser" << std::endl;
+        std::ofstream debugLog5("debug_output.log", std::ios::app);
+        debugLog5 << "❌ Failed to create wallet overlay browser" << std::endl;
+        debugLog5.close();
+    }
+}
+
+void CreateBackupOverlayWithSeparateProcess(HINSTANCE hInstance) {
+    std::cout << "💾 Creating backup overlay with separate process" << std::endl;
+    std::ofstream debugLog("debug_output.log", std::ios::app);
+    debugLog << "💾 Creating backup overlay with separate process" << std::endl;
+    debugLog.close();
+
+    RECT mainRect;
+    GetWindowRect(g_hwnd, &mainRect);
+    int width = mainRect.right - mainRect.left;
+    int height = mainRect.bottom - mainRect.top;
+
+    HWND backup_hwnd = CreateWindowEx(
+        WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
+        L"CEFBackupOverlayWindow",
+        L"Backup Overlay",
+        WS_POPUP | WS_VISIBLE,
+        mainRect.left, mainRect.top, width, height,
+        g_hwnd, nullptr, hInstance, nullptr);
+
+    if (!backup_hwnd) {
+        std::cout << "❌ Failed to create backup overlay HWND. Error: " << GetLastError() << std::endl;
+        std::ofstream debugLog2("debug_output.log", std::ios::app);
+        debugLog2 << "❌ Failed to create backup overlay HWND. Error: " << GetLastError() << std::endl;
+        debugLog2.close();
+        return;
+    }
+
+    std::cout << "✅ Backup overlay HWND created: " << backup_hwnd << std::endl;
+    std::ofstream debugLog3("debug_output.log", std::ios::app);
+    debugLog3 << "✅ Backup overlay HWND created: " << backup_hwnd << std::endl;
+    debugLog3.close();
+
+    CefWindowInfo window_info;
+    window_info.windowless_rendering_enabled = true;
+    window_info.SetAsPopup(backup_hwnd, "BackupOverlay");
+
+    CefBrowserSettings settings;
+    settings.windowless_frame_rate = 30;
+    settings.background_color = CefColorSetARGB(0, 0, 0, 0);
+    settings.javascript = STATE_ENABLED;
+    settings.javascript_access_clipboard = STATE_ENABLED;
+    settings.javascript_dom_paste = STATE_ENABLED;
+
+    CefRefPtr<SimpleHandler> backup_handler(new SimpleHandler("backup"));
+    CefRefPtr<MyOverlayRenderHandler> render_handler = new MyOverlayRenderHandler(backup_hwnd, width, height);
+    backup_handler->SetRenderHandler(render_handler);
+
+    std::cout << "💾 Backup overlay render handler set for HWND: " << backup_hwnd << std::endl;
+
+    bool result = CefBrowserHost::CreateBrowser(
+        window_info,
+        backup_handler,
+        "http://127.0.0.1:5137/backup",
+        settings,
+        nullptr,
+        CefRequestContext::GetGlobalContext()
+    );
+
+    if (result) {
+        std::cout << "✅ Backup overlay browser created with subprocess" << std::endl;
+        std::ofstream debugLog4("debug_output.log", std::ios::app);
+        debugLog4 << "✅ Backup overlay browser created with subprocess" << std::endl;
+        debugLog4.close();
+
+        LONG exStyle = GetWindowLong(backup_hwnd, GWL_EXSTYLE);
+        SetWindowLong(backup_hwnd, GWL_EXSTYLE, exStyle & ~WS_EX_TRANSPARENT);
+        std::ofstream debugLog6("debug_output.log", std::ios::app);
+        debugLog6 << "💾 Mouse input ENABLED for backup overlay HWND: " << backup_hwnd << std::endl;
+        debugLog6.close();
+    } else {
+        std::cout << "❌ Failed to create backup overlay browser" << std::endl;
+        std::ofstream debugLog5("debug_output.log", std::ios::app);
+        debugLog5 << "❌ Failed to create backup overlay browser" << std::endl;
         debugLog5.close();
     }
 }

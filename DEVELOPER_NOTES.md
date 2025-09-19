@@ -439,6 +439,40 @@ settings.javascript = STATE_ENABLED; // Keep JS enabled for functionality
 - **Consider code obfuscation** for additional protection
 - **Implement proper error handling** that doesn't expose internal details
 
+#### **Identity Check Migration Note:**
+
+**IMPORTANT**: The current identity backup check that runs on every app launch is a temporary development feature. In production:
+
+- **Identity backup verification will be moved to the installation/setup process**
+- **The backup modal will NOT run on every app launch**
+- **Users will complete wallet backup during initial setup, not during normal usage**
+- **This eliminates the need for the backup modal overlay system in production builds**
+
+This change will significantly improve app startup performance and user experience in production.
+
+#### **Known Issue: Backup Modal Rendering**
+
+**Current Status**: Backup modal overlay window opens but JSX content doesn't display in the HWND, despite React components rendering correctly.
+
+**Technical Details**:
+- ✅ React components work perfectly - BackupOverlayRoot and BackupModal render correctly
+- ✅ Identity data loads and displays properly in console logs
+- ✅ CEF browser is created and loads the `/backup` route successfully
+- ❌ CEF OnPaint method is never called, so content isn't painted to the HWND
+- ❌ Force repaint messages don't reach the C++ handler
+
+**Root Cause**: CEF rendering pipeline issue where the render handler isn't being called to paint React content to the overlay HWND. This appears to be a deeper CEF internals issue with the backup overlay process.
+
+**Workaround**: This functionality will be removed in production anyway (moved to installation process), so this is not blocking core development.
+
+**Debug Attempts Made**:
+- Added comprehensive logging to OnPaint, render handler, and React components
+- Implemented force repaint mechanism to trigger CEF invalidation
+- Verified React rendering pipeline is working correctly
+- Confirmed CEF browser creation and URL loading works
+
+**Future Investigation**: Would need to dive deeper into CEF rendering pipeline and process communication for overlay windows.
+
 ## Previous Session: Backup Modal Overlay HWND Issue
 
 ### Problem Statement

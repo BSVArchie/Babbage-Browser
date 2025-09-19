@@ -66,7 +66,7 @@ void MyOverlayRenderHandler::OnPaint(CefRefPtr<CefBrowser> browser,
                                      int width, int height) {
     CEF_REQUIRE_UI_THREAD();  // ✅ Confirm we're on the UI thread
 
-    // std::cout << "🧪 OnPaint — minimal test using constructor DC and bitmap\n";
+    std::cout << "🧪 OnPaint called for backup overlay - type: " << type << " size: " << width << "x" << height << std::endl;
 
     bool isMostlyTransparent = true;
     const uint8_t* alpha = reinterpret_cast<const uint8_t*>(buffer);
