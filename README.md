@@ -9,6 +9,8 @@ A custom Web3 browser built on the Chromium Embedded Framework (CEF) with native
 ## 🚀 Goals
 
 - ✅ CEF shell with secure wallet backend
+- ✅ Process-per-overlay architecture (settings, wallet, backup modals)
+- ✅ Complete identity system with Go daemon integration
 - 🧱 Build the UI from scratch using React + Vite
 - 🔐 Enforce native, secure signing (not in JavaScript)
 - ⚙️ Smart contract integration with sCrypt (or custom) and BRC-100/Authrite
@@ -18,9 +20,11 @@ A custom Web3 browser built on the Chromium Embedded Framework (CEF) with native
 
 | Layer | Technology | Notes |
 |-------|------------|-------|
-| Browser Shell | C++ / Chromium Embedded Framework | 🟡 *Future: Consider full Chromium build* |
-| UI | React + Vite (TypeScript) | 🟡 *Future: Consider React Native for mobile* |
-| Native Wallet | **Go** (bitcoin-sv/go-sdk) | 🟡 *Future: May migrate to Rust for maximum performance* |
+| Browser Shell | C++ / Chromium Embedded Framework | ✅ Process-per-overlay architecture implemented |
+| UI | React + Vite (TypeScript) | ✅ Multiple overlay routes (/settings, /wallet, /backup) |
+| Native Wallet | **Go** (bitcoin-sv/go-sdk) | ✅ Automatic daemon startup and HTTP API integration |
+| Overlay System | **Process-Per-Overlay** | ✅ Each overlay runs in isolated CEF subprocess |
+| Identity Management | **Complete System** | ✅ File-based identity with backup modal workflow |
 | Key Derivation | **PBKDF2** (temporary) | 🟡 *Future: Upgrade to Argon2 for production* |
 | Identity / Auth | BRC-100 (Authrite Protocol (Babbage)) | |
 | Smart Contracts | sCrypt (BSV) | |

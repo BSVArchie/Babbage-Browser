@@ -33,9 +33,18 @@ window.bitcoinBrowser.utxos.refresh(): Promise<void>
 window.bitcoinBrowser.address.generate(): Promise<string>
 ```
 
-### Overlay Panel Management
+### Process-Per-Overlay Management
 ```typescript
-// Overlay panel operations
+// Process-per-overlay operations (NEW ARCHITECTURE)
+window.cefMessage.send(messageName: string, args: any[]): void
+
+// Overlay-specific messages
+window.cefMessage.send('overlay_show_settings', []): void
+window.cefMessage.send('overlay_show_wallet', []): void
+window.cefMessage.send('overlay_show_backup', []): void
+window.cefMessage.send('overlay_close', []): void
+
+// Legacy overlay operations (DEPRECATED - being phased out)
 window.bitcoinBrowser.overlay.show(panelName: string): void
 window.bitcoinBrowser.overlay.hide(): void
 window.bitcoinBrowser.overlay.openPanel(panelName: string): void
@@ -48,6 +57,69 @@ window.bitcoinBrowser.navigation.navigate(url: string): void
 window.bitcoinBrowser.navigation.goBack(): void
 window.bitcoinBrowser.navigation.goForward(): void
 window.bitcoinBrowser.navigation.reload(): void
+```
+
+## 🔄 CEF Message System (UPDATED FOR PROCESS-PER-OVERLAY)
+
+### Process Message Types
+```cpp
+// CEF process messages for frontend-backend communication
+
+// Overlay Management (NEW ARCHITECTURE)
+"overlay_show_settings"    // Create settings overlay in separate process
+"overlay_show_wallet"      // Create wallet overlay in separate process
+"overlay_show_backup"      // Create backup modal overlay in separate process
+"overlay_close"           // Close current overlay window
+
+// Identity Management (NEW SYSTEM)
+"identity_status_check"        // Check if identity exists and needs backup
+"identity_status_check_response" // Response with identity status
+"create_identity"              // Create new identity via Go daemon
+"create_identity_response"     // Response with identity data
+"mark_identity_backed_up"      // Mark identity as backed up
+"mark_identity_backed_up_response" // Response confirmation
+
+// Utility Messages
+"force_repaint"           // Force CEF to repaint overlay content
+
+// Legacy Messages (DEPRECATED)
+"navigate"           // Navigate to URL
+"overlay_open_panel" // Open overlay panel (DEPRECATED)
+"overlay_show"       // Show overlay window (DEPRECATED)
+"overlay_hide"       // Hide overlay window (DEPRECATED)
+"overlay_input"      // Toggle mouse input
+"address_generate"   // Generate new address
+"identity_get"       // Get wallet identity (DEPRECATED)
+"identity_backup"    // Mark wallet as backed up (DEPRECATED)
+```
+
+### Message Response System
+```typescript
+// Frontend listens for responses via CustomEvent
+window.addEventListener('cefMessageResponse', (event) => {
+    const { message, args } = event.detail;
+
+    switch (message) {
+        case 'identity_status_check_response':
+            const status = JSON.parse(args[0]);
+            // Handle identity status
+            break;
+        case 'create_identity_response':
+            const identity = JSON.parse(args[0]);
+            // Handle identity creation
+            break;
+        case 'mark_identity_backed_up_response':
+            const result = JSON.parse(args[0]);
+            // Handle backup confirmation
+            break;
+    }
+});
+
+// API Ready Event
+window.addEventListener('bitcoinBrowserReady', () => {
+    // bitcoinBrowser API is fully injected and ready
+    // Safe to make API calls
+});
 ```
 
 ## 🔧 CEF ↔ Go Bridge APIs

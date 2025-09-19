@@ -9,6 +9,8 @@
 #include "base/cef_callback.h"
 #include "base/internal/cef_callback_internal.h"
 #include <fstream>
+#include <filesystem>
+#include <cstdlib>
 #include "../../include/core/WalletService.h"
 #include <windows.h>
 #include <iostream>
@@ -114,6 +116,13 @@ void SimpleHandler::OnLoadingStateChange(CefRefPtr<CefBrowser> browser,
 
     if (role_ == "overlay") {
         std::cout << "📡 Overlay URL: " << browser->GetMainFrame()->GetURL().ToString() << std::endl;
+    }
+
+    if (role_ == "backup") {
+        std::cout << "📡 Backup URL: " << browser->GetMainFrame()->GetURL().ToString() << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "📡 Backup URL: " << browser->GetMainFrame()->GetURL().ToString() << std::endl;
+        debugLog.close();
     }
 
     if (!isLoading) {
@@ -263,38 +272,219 @@ bool SimpleHandler::OnProcessMessageReceived(
         return true;
     }
 
-    if (message_name == "address_generate") {
-        std::cout << "🔑 Address generation requested via process message" << std::endl;
+    // Duplicate address_generate handler removed - keeping the one at line 489
 
-        // Generate address using WalletService
-        WalletService walletService;
-        nlohmann::json addressData = walletService.generateAddress();
 
-        std::cout << "✅ Address generated: " << addressData.dump() << std::endl;
+    if (message_name == "force_repaint") {
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "🔄 Force repaint requested for " << role_ << " browser" << std::endl;
+        debugLog.close();
 
-        // Send response back to the render process
-        CefRefPtr<CefProcessMessage> response = CefProcessMessage::Create("address_generate_response");
-        CefRefPtr<CefListValue> responseArgs = response->GetArgumentList();
+        if (browser) {
+            browser->GetHost()->Invalidate(PET_VIEW);
+            std::ofstream debugLog2("debug_output.log", std::ios::app);
+            debugLog2 << "🔄 Browser invalidated for " << role_ << " browser" << std::endl;
+            debugLog2.close();
+        }
+        return true;
+    }
 
-        // Create response object
-        nlohmann::json responseJson;
-        responseJson["success"] = true;
-        responseJson["data"] = addressData;
+    if (message_name == "identity_status_check") {
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "🔍 Identity status check requested" << std::endl;
+        debugLog << "🔍 Current working directory: " << std::filesystem::current_path().string() << std::endl;
 
-        responseArgs->SetString(0, responseJson.dump());
+        // Get the same path that the Go daemon uses
+        const char* homeDir = std::getenv("USERPROFILE");
+        std::string identityPath = std::string(homeDir) + "\\AppData\\Roaming\\BabbageBrowser\\identity.json";
+        debugLog << "🔍 Looking for identity file at: " << identityPath << std::endl;
+        debugLog.close();
 
-        // Send response back to the frame that requested it
-        frame->SendProcessMessage(PID_RENDERER, response);
+        nlohmann::json response;
+
+        // Check if identity.json file exists locally
+        std::ifstream identityFile(identityPath);
+        if (identityFile.good()) {
+            try {
+                // File exists - read it and check status
+                nlohmann::json identity;
+                identityFile >> identity;
+                identityFile.close();
+
+                bool backedUp = identity.value("backedUp", false);
+
+                response["exists"] = true;
+                response["needsBackup"] = !backedUp;
+                response["identity"] = identity;
+
+                std::ofstream debugLog2("debug_output.log", std::ios::app);
+                debugLog2 << "📁 Identity file exists, backedUp: " << (backedUp ? "YES" : "NO") << std::endl;
+                debugLog2.close();
+
+            } catch (const std::exception& e) {
+                identityFile.close();
+                // File exists but corrupted
+                response["exists"] = true;
+                response["needsBackup"] = true;
+                response["error"] = "Identity file corrupted: " + std::string(e.what());
+
+                std::ofstream debugLog3("debug_output.log", std::ios::app);
+                debugLog3 << "⚠️ Identity file corrupted: " << e.what() << std::endl;
+                debugLog3.close();
+            }
+        } else {
+            identityFile.close();
+            // File doesn't exist
+            response["exists"] = false;
+            response["needsBackup"] = true;
+
+            std::ofstream debugLog4("debug_output.log", std::ios::app);
+            debugLog4 << "📁 Identity file does not exist" << std::endl;
+            debugLog4.close();
+        }
+
+        // Send response back to frontend
+        CefRefPtr<CefProcessMessage> cefResponse = CefProcessMessage::Create("identity_status_check_response");
+        CefRefPtr<CefListValue> responseArgs = cefResponse->GetArgumentList();
+        responseArgs->SetString(0, response.dump());
+
+        browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, cefResponse);
+        std::ofstream debugLog5("debug_output.log", std::ios::app);
+        debugLog5 << "📤 Identity status sent: " << response.dump() << std::endl;
+        debugLog5.close();
 
         return true;
     }
 
+    if (message_name == "create_identity") {
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "🆕 Create identity requested" << std::endl;
+        debugLog.close();
 
-    if (message_name == "force_repaint") {
-        std::cout << "🔄 Force repaint requested for " << role_ << " browser" << std::endl;
-        if (browser) {
-            browser->GetHost()->Invalidate(PET_VIEW);
+        nlohmann::json response;
+
+        // Check if identity already exists
+        const char* homeDir = std::getenv("USERPROFILE");
+        std::string identityPath = std::string(homeDir) + "\\AppData\\Roaming\\BabbageBrowser\\identity.json";
+
+        std::ofstream debugLog2("debug_output.log", std::ios::app);
+        debugLog2 << "🔍 create_identity: Checking for existing identity at: " << identityPath << std::endl;
+        debugLog2 << "🔍 create_identity: File exists check: " << std::filesystem::exists(identityPath) << std::endl;
+        debugLog2.close();
+
+        std::ifstream identityFile(identityPath);
+        if (identityFile.good()) {
+            try {
+                // Identity already exists - return it
+                nlohmann::json existingIdentity;
+                identityFile >> existingIdentity;
+                identityFile.close();
+
+                response["success"] = true;
+                response["identity"] = existingIdentity;
+
+                std::cout << "📁 Identity already exists, returning existing identity" << std::endl;
+
+            } catch (const std::exception& e) {
+                identityFile.close();
+                response["success"] = false;
+                response["error"] = "Failed to read existing identity: " + std::string(e.what());
+
+                std::cout << "⚠️ Failed to read existing identity: " << e.what() << std::endl;
+            }
+        } else {
+            identityFile.close();
+
+            // Identity doesn't exist - create new one via WalletService
+            try {
+                WalletService walletService;
+
+                if (!walletService.isConnected()) {
+                    response["success"] = false;
+                    response["error"] = "Wallet daemon is not running. Please start the daemon manually.";
+
+                    std::cout << "❌ Cannot create identity - daemon not running" << std::endl;
+                } else {
+                    // Create new identity
+                    nlohmann::json newIdentity = walletService.getIdentity();
+
+                    response["success"] = true;
+                    response["identity"] = newIdentity;
+
+                    std::cout << "✅ New identity created successfully" << std::endl;
+                }
+
+            } catch (const std::exception& e) {
+                response["success"] = false;
+                response["error"] = "Failed to create identity: " + std::string(e.what());
+
+                std::cout << "💥 Error creating identity: " << e.what() << std::endl;
+            }
         }
+
+        // Send response back to frontend
+        CefRefPtr<CefProcessMessage> cefResponse = CefProcessMessage::Create("create_identity_response");
+        CefRefPtr<CefListValue> responseArgs = cefResponse->GetArgumentList();
+        responseArgs->SetString(0, response.dump());
+
+        browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, cefResponse);
+        std::cout << "📤 Create identity response sent: " << response.dump() << std::endl;
+
+        return true;
+    }
+
+    if (message_name == "mark_identity_backed_up") {
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "✅ Mark identity as backed up requested" << std::endl;
+        debugLog.close();
+
+        nlohmann::json response;
+
+        try {
+            // Read existing identity file
+            const char* homeDir = std::getenv("USERPROFILE");
+            std::string identityPath = std::string(homeDir) + "\\AppData\\Roaming\\BabbageBrowser\\identity.json";
+            std::ifstream identityFile(identityPath);
+            if (!identityFile.good()) {
+                identityFile.close();
+                response["success"] = false;
+                response["error"] = "Identity file not found";
+
+                std::cout << "❌ Cannot mark as backed up - identity file not found" << std::endl;
+            } else {
+                nlohmann::json identity;
+                identityFile >> identity;
+                identityFile.close();
+
+                // Update backedUp flag
+                identity["backedUp"] = true;
+
+                // Write back to file
+                std::ofstream outFile(identityPath);
+                outFile << identity.dump(4); // Pretty print with 4-space indentation
+                outFile.close();
+
+                response["success"] = true;
+                response["identity"] = identity;
+
+                std::cout << "✅ Identity marked as backed up successfully" << std::endl;
+            }
+
+        } catch (const std::exception& e) {
+            response["success"] = false;
+            response["error"] = "Failed to mark as backed up: " + std::string(e.what());
+
+            std::cout << "💥 Error marking identity as backed up: " << e.what() << std::endl;
+        }
+
+        // Send response back to frontend
+        CefRefPtr<CefProcessMessage> cefResponse = CefProcessMessage::Create("mark_identity_backed_up_response");
+        CefRefPtr<CefListValue> responseArgs = cefResponse->GetArgumentList();
+        responseArgs->SetString(0, response.dump());
+
+        browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, cefResponse);
+        std::cout << "📤 Mark backed up response sent: " << response.dump() << std::endl;
+
         return true;
     }
 

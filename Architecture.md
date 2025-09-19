@@ -47,13 +47,13 @@
 
 
 
-Communication Architecture
+Process-Per-Overlay Communication Architecture
 ┌─────────────────┐    V8 Injection    ┌─────────────────┐
 │   C++ Backend   │ ──────────────────→ │  Render Process │
 │                 │                     │                 │
 │ • Identity      │                     │ • window.bitcoinBrowser.identity.get() │
 │ • Navigation    │                     │ • window.bitcoinBrowser.navigation.navigate() │
-│ • Panel Control │                     │ • window.bitcoinBrowser.overlayPanel.open() │
+│ • Overlay Mgmt  │                     │ • window.cefMessage.send() │
 └─────────────────┘                     └─────────────────┘
          │                                        │
          │ Process Messages                       │ JavaScript Execution
@@ -62,10 +62,37 @@ Communication Architecture
 ┌─────────────────┐                     ┌─────────────────┐
 │ Browser Process │                     │   React App     │
 │ Message Handler │                     │                 │
-│                 │                     │ • Panel triggers │
-│ • navigate      │                     │ • State updates  │
-│ • overlay_open  │                     │ • UI rendering   │
+│                 │                     │ • Overlay triggers │
+│ • overlay_show_*│                     │ • State updates  │
+│ • overlay_close │                     │ • UI rendering   │
+│ • identity_*    │                     │ • Process isolation │
 └─────────────────┘                     └─────────────────┘
+
+Process Isolation Architecture
+┌─────────────────────────────────────────────────────────────┐
+│                    Main Browser Process                     │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐  │
+│  │   Header HWND   │  │  WebView HWND   │  │ Main Shell  │  │
+│  │ React App (/)   │  │ Web Content     │  │ Management  │  │
+│  └─────────────────┘  └─────────────────┘  └─────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│              Process-Per-Overlay Architecture               │
+│                                                             │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐  │
+│  │ Settings Overlay│  │  Wallet Overlay │  │Backup Modal │  │
+│  │   Process       │  │    Process      │  │   Process   │  │
+│  │                 │  │                 │  │             │  │
+│  │ ┌─────────────┐ │  │ ┌─────────────┐ │  │┌───────────┐│  │
+│  │ │Settings HWND│ │  │ │ Wallet HWND │ │  ││Backup HWND││  │
+│  │ │/settings    │ │  │ │ /wallet     │ │  ││/backup    ││  │
+│  │ │Fresh V8     │ │  │ │Fresh V8     │ │  ││Fresh V8   ││  │
+│  │ │Context      │ │  │ │Context      │ │  ││Context    ││  │
+│  │ └─────────────┘ │  │ └─────────────┘ │  │└───────────┘│  │
+│  └─────────────────┘  └─────────────────┘  └─────────────┘  │
+└─────────────────────────────────────────────────────────────┘
 
 
 
@@ -113,9 +140,10 @@ flowchart TD
     B3 --> B3c["Load Handler (OnLoadError, OnLoadingStateChange)"]
     B3 --> B3d["Process Message Handler (OnProcessMessageReceived)"]
 
-    B4 --> B4a["Overlay Window Management"]
-    B4 --> B4b["Custom Render Handler (MyOverlayRenderHandler)"]
-    B4 --> B4c["Panel Triggering (window.triggerPanel)"]
+    B4 --> B4a["Process-Per-Overlay System"]
+    B4 --> B4b["Dedicated HWND Management"]
+    B4 --> B4c["Custom Render Handler (MyOverlayRenderHandler)"]
+    B4 --> B4d["Window Message Handlers (WndProc)"]
 
     B5 --> B5a["Context Creation (OnContextCreated)"]
     B5 --> B5b["Native API Injection (window.bitcoinBrowser)"]
@@ -135,7 +163,9 @@ flowchart TD
 
     C2 --> C2a["Welcome (/welcome) - Initial wallet setup"]
     C2 --> C2b["Main Browser View (/) - Primary dashboard"]
-    C2 --> C2c["Overlay Root (/overlay) - Overlay panel system"]
+    C2 --> C2c["Settings Overlay (/settings) - Settings panel"]
+    C2 --> C2d["Wallet Overlay (/wallet) - Wallet panel"]
+    C2 --> C2e["Backup Modal (/backup) - Identity backup"]
 
     C3 --> C3a["Panels"]
     C3 --> C3b["Main Browser Interface"]

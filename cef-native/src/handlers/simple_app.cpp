@@ -473,7 +473,9 @@ void CreateBackupOverlayWithSeparateProcess(HINSTANCE hInstance) {
     CefRefPtr<MyOverlayRenderHandler> render_handler = new MyOverlayRenderHandler(backup_hwnd, width, height);
     backup_handler->SetRenderHandler(render_handler);
 
-    std::cout << "💾 Backup overlay render handler set for HWND: " << backup_hwnd << std::endl;
+    std::ofstream debugLog4("debug_output.log", std::ios::app);
+    debugLog4 << "💾 Backup overlay render handler set for HWND: " << backup_hwnd << std::endl;
+    debugLog4.close();
 
     bool result = CefBrowserHost::CreateBrowser(
         window_info,
@@ -495,6 +497,7 @@ void CreateBackupOverlayWithSeparateProcess(HINSTANCE hInstance) {
         std::ofstream debugLog6("debug_output.log", std::ios::app);
         debugLog6 << "💾 Mouse input ENABLED for backup overlay HWND: " << backup_hwnd << std::endl;
         debugLog6.close();
+
     } else {
         std::cout << "❌ Failed to create backup overlay browser" << std::endl;
         std::ofstream debugLog5("debug_output.log", std::ios::app);

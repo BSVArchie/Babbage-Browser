@@ -1,6 +1,7 @@
 #include "../../include/core/WalletService.h"
 #include <iostream>
 #include <sstream>
+#include <fstream>
 
 // Static instance for console handler
 static WalletService* g_walletService = nullptr;
@@ -44,15 +45,54 @@ WalletService::WalletService()
     SetConsoleCtrlHandler(ConsoleCtrlHandler, TRUE);
 
     // Try to connect to existing daemon first
+    std::cout << "🔍 Attempting to connect to existing Go daemon..." << std::endl;
+    std::ofstream debugLog("debug_output.log", std::ios::app);
+    debugLog << "🔍 Attempting to connect to existing Go daemon..." << std::endl;
+    debugLog.close();
+
     if (initializeConnection()) {
         std::cout << "✅ Connected to existing Go daemon" << std::endl;
+        std::ofstream debugLog2("debug_output.log", std::ios::app);
+        debugLog2 << "✅ Connected to existing Go daemon" << std::endl;
+        debugLog2.close();
     } else {
         // If connection fails, start our own daemon
         std::cout << "⚠️ No existing daemon found, starting new one..." << std::endl;
+        std::cout << "🔍 Daemon path: " << daemonPath_ << std::endl;
+        std::ofstream debugLog3("debug_output.log", std::ios::app);
+        debugLog3 << "⚠️ No existing daemon found, starting new one..." << std::endl;
+        debugLog3 << "🔍 Daemon path: " << daemonPath_ << std::endl;
+        debugLog3.close();
+
         if (startDaemon()) {
             // Wait a moment for daemon to start
+            std::cout << "⏳ Waiting for daemon to start..." << std::endl;
+            std::ofstream debugLog4("debug_output.log", std::ios::app);
+            debugLog4 << "⏳ Waiting for daemon to start..." << std::endl;
+            debugLog4.close();
+
             Sleep(2000);
-            initializeConnection();
+            std::cout << "🔍 Attempting to connect to newly started daemon..." << std::endl;
+            std::ofstream debugLog5("debug_output.log", std::ios::app);
+            debugLog5 << "🔍 Attempting to connect to newly started daemon..." << std::endl;
+            debugLog5.close();
+
+            if (initializeConnection()) {
+                std::cout << "✅ Successfully connected to newly started daemon" << std::endl;
+                std::ofstream debugLog6("debug_output.log", std::ios::app);
+                debugLog6 << "✅ Successfully connected to newly started daemon" << std::endl;
+                debugLog6.close();
+            } else {
+                std::cout << "❌ Failed to connect to newly started daemon" << std::endl;
+                std::ofstream debugLog7("debug_output.log", std::ios::app);
+                debugLog7 << "❌ Failed to connect to newly started daemon" << std::endl;
+                debugLog7.close();
+            }
+        } else {
+            std::cout << "❌ Failed to start daemon process" << std::endl;
+            std::ofstream debugLog8("debug_output.log", std::ios::app);
+            debugLog8 << "❌ Failed to start daemon process" << std::endl;
+            debugLog8.close();
         }
     }
 }

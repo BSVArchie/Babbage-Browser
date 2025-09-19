@@ -48,16 +48,23 @@ Traditional browser wallets face significant security challenges because they op
 2. **Enhanced Memory Protection**
    - Go daemon provides stronger memory protection than JavaScript
    - Can leverage hardware security features and modules (HSM) in future Rust implementation
+
+3. **Process-Per-Overlay Architecture** (NEW)
+   - Each overlay (settings, wallet, backup) runs in its own isolated CEF subprocess
+   - Complete V8 context isolation prevents state pollution between overlays
+   - Dedicated HWND windows with custom message handlers for each overlay type
+   - Mimics Brave Browser's security architecture for maximum isolation
    - Memory isolation between processes prevents cross-process data access
 
-3. **Cryptographic Library Integration**
+4. **Cryptographic Library Integration**
    - Direct access to Bitcoin SV Go SDK (bitcoin-sv/go-sdk) with BEEF and SPV support
    - Hardware security module (HSM) integration capabilities planned for production
    - Signing operations happen in isolated, controlled Go daemon environments
 
-4. **Controlled API Exposure**
+5. **Controlled API Exposure**
    - Only safe, high-level functions are exposed through `window.bitcoinBrowser`
    - The bridge API is carefully designed to prevent sensitive data leakage
+   - Process-per-overlay architecture ensures API isolation between different overlay contexts
    - All cryptographic operations remain in the isolated Go backend
 
 ### Security Architecture Benefits

@@ -136,17 +136,48 @@ const BackupModal: React.FC<Props> = ({ open, onClose, identity }) => {
           <Button
             onClick={async () => {
               try {
-                if (typeof window.bitcoinBrowser.identity?.markBackedUp === 'function') {
-                  const result = await window.bitcoinBrowser.identity.markBackedUp();
-                  console.log("📝 Backend update result:", result);
+                console.log("📝 Marking identity as backed up...");
+
+                // Set up response listener
+                const handleResponse = (event: any) => {
+                  if (event.detail.message === 'mark_identity_backed_up_response') {
+                    try {
+                      const response = JSON.parse(event.detail.args[0]);
+                      console.log("📝 Mark backed up response:", response);
+
+                      if (response.success) {
+                        console.log("✅ Identity successfully marked as backed up");
+                      } else {
+                        console.error("❌ Failed to mark identity as backed up:", response.error);
+                      }
+                    } catch (error) {
+                      console.error("💥 Error parsing mark backed up response:", error);
+                    }
+
+                    // Remove listener
+                    window.removeEventListener('cefMessageResponse', handleResponse);
+                  }
+                };
+
+                window.addEventListener('cefMessageResponse', handleResponse);
+
+                // Send mark backed up request
+                if (window.cefMessage?.send) {
+                  window.cefMessage.send('mark_identity_backed_up', []);
                 } else {
-                  console.warn("❌ markBackedUp is not a function.");
+                  console.error("❌ cefMessage not available");
                 }
+
+                // Cleanup listener after timeout
+                setTimeout(() => {
+                  window.removeEventListener('cefMessageResponse', handleResponse);
+                }, 5000);
+
               } catch (err) {
                 console.error("💥 Error marking wallet as backed up:", err);
               }
 
-              localStorage.setItem('identity_backed_up', 'true');
+              // Close modal regardless of success/failure
               onClose();
             }}
             variant="contained"

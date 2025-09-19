@@ -220,6 +220,22 @@ void SimpleRenderProcessHandler::OnContextCreated(
     // Create the send function for cefMessage
     CefRefPtr<CefV8Value> sendFunction = CefV8Value::CreateFunction("send", new CefMessageSendHandler());
     cefMessageObject->SetValue("send", sendFunction, V8_PROPERTY_ATTRIBUTE_NONE);
+
+    // For overlay browsers, add a delay to ensure React is ready before triggering any operations
+    if (isOverlayBrowser) {
+        std::string js = R"(
+            setTimeout(() => {
+                console.log("🎯 Overlay browser API ready - React can now use bitcoinBrowser");
+                // Dispatch a custom event to signal API is ready
+                window.dispatchEvent(new CustomEvent('bitcoinBrowserReady'));
+            }, 500);
+        )";
+        frame->ExecuteJavaScript(js, frame->GetURL(), 0);
+
+        std::ofstream debugLog6("debug_output.log", std::ios::app);
+        debugLog6 << "🎯 Added 500ms delay for overlay browser API readiness" << std::endl;
+        debugLog6.close();
+    }
 }
 
 bool SimpleRenderProcessHandler::OnProcessMessageReceived(
@@ -246,6 +262,51 @@ bool SimpleRenderProcessHandler::OnProcessMessageReceived(
 
         // Execute JavaScript to handle the response
         std::string js = "if (window.onAddressGenerated) { window.onAddressGenerated(" + addressDataJson + "); }";
+        frame->ExecuteJavaScript(js, frame->GetURL(), 0);
+
+        return true;
+    }
+
+    if (message_name == "identity_status_check_response") {
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        std::string responseJson = args->GetString(0);
+
+        std::cout << "✅ Identity status check response received: " << responseJson << std::endl;
+        std::cout << "🔍 Browser ID: " << browser->GetIdentifier() << std::endl;
+        std::cout << "🔍 Frame URL: " << frame->GetURL().ToString() << std::endl;
+
+        // Execute JavaScript to dispatch the response event
+        std::string js = "window.dispatchEvent(new CustomEvent('cefMessageResponse', { detail: { message: 'identity_status_check_response', args: ['" + responseJson + "'] } }));";
+        frame->ExecuteJavaScript(js, frame->GetURL(), 0);
+
+        return true;
+    }
+
+    if (message_name == "create_identity_response") {
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        std::string responseJson = args->GetString(0);
+
+        std::cout << "✅ Create identity response received: " << responseJson << std::endl;
+        std::cout << "🔍 Browser ID: " << browser->GetIdentifier() << std::endl;
+        std::cout << "🔍 Frame URL: " << frame->GetURL().ToString() << std::endl;
+
+        // Execute JavaScript to dispatch the response event
+        std::string js = "window.dispatchEvent(new CustomEvent('cefMessageResponse', { detail: { message: 'create_identity_response', args: ['" + responseJson + "'] } }));";
+        frame->ExecuteJavaScript(js, frame->GetURL(), 0);
+
+        return true;
+    }
+
+    if (message_name == "mark_identity_backed_up_response") {
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        std::string responseJson = args->GetString(0);
+
+        std::cout << "✅ Mark identity backed up response received: " << responseJson << std::endl;
+        std::cout << "🔍 Browser ID: " << browser->GetIdentifier() << std::endl;
+        std::cout << "🔍 Frame URL: " << frame->GetURL().ToString() << std::endl;
+
+        // Execute JavaScript to dispatch the response event
+        std::string js = "window.dispatchEvent(new CustomEvent('cefMessageResponse', { detail: { message: 'mark_identity_backed_up_response', args: ['" + responseJson + "'] } }));";
         frame->ExecuteJavaScript(js, frame->GetURL(), 0);
 
         return true;

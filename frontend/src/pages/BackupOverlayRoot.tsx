@@ -8,69 +8,95 @@ const BackupOverlayRoot: React.FC = () => {
 
   useEffect(() => {
     console.log("💾 BackupOverlayRoot mounted");
-    console.log("💾 cefMessage available:", !!window.cefMessage);
-    console.log("💾 cefMessage.send available:", !!(window.cefMessage?.send));
 
-    // Test cefMessage immediately
-    if (window.cefMessage?.send) {
-      console.log("💾 Testing cefMessage.send from backup overlay");
-      // Could add a test message here if needed
-    } else {
-      console.log("❌ cefMessage not available in backup overlay");
-    }
+    const createIdentity = async () => {
+      console.log("💾 Creating/getting identity for backup modal...");
 
-    // Get identity data for the backup modal FIRST
-    const getIdentity = async () => {
-      try {
-        console.log("💾 Getting identity for backup modal...");
-        const result = await window.bitcoinBrowser.identity.get();
-        console.log("💾 Identity received:", result);
-
-        if (result) {
-          setIdentity(result as IdentityData);
+      // Wait for bitcoinBrowser API to be ready
+      await new Promise((resolve) => {
+        if (window.bitcoinBrowser) {
+          resolve(true);
         } else {
-          // Identity doesn't exist yet - the backup modal will handle creating it
-          console.log("💾 No identity found, backup modal will create new one");
-          setIdentity({
-            address: "Creating...",
-            publicKey: "Creating...",
-            privateKey: "Creating..."
-          } as IdentityData);
+          window.addEventListener('bitcoinBrowserReady', resolve, { once: true });
+          // Fallback timeout
+          setTimeout(resolve, 1000);
         }
+      });
 
-        // Only show the modal AFTER we have identity data
-        console.log("💾 Identity loaded, now setting showBackupModal to true");
-        setShowBackupModal(true);
+      console.log("💾 bitcoinBrowser API ready, proceeding with identity creation");
 
-        // Force CEF to repaint after a short delay
-        setTimeout(() => {
-          console.log("💾 Forcing CEF repaint...");
-          window.cefMessage?.send('force_repaint', []);
-        }, 100);
+      // Set up response listener
+      const handleResponse = (event: any) => {
+        if (event.detail.message === 'create_identity_response') {
+          try {
+            const response = JSON.parse(event.detail.args[0]);
+            console.log("💾 Create identity response:", response);
 
-      } catch (err) {
-        console.error("💾 Error getting identity:", err);
-        // If there's an error, assume identity doesn't exist
+            if (response.success && response.identity) {
+              setIdentity(response.identity as IdentityData);
+              console.log("💾 Identity loaded, showing backup modal");
+              setShowBackupModal(true);
+
+              // Force CEF to repaint after modal shows
+              setTimeout(() => {
+                console.log("💾 Forcing CEF repaint...");
+                window.cefMessage?.send('force_repaint', []);
+              }, 800);
+            } else {
+              console.error("💾 Failed to create/get identity:", response.error);
+              // Show modal with error state
+              setIdentity({
+                address: "Error creating identity",
+                publicKey: response.error || "Unknown error",
+                privateKey: "Please try again"
+              } as IdentityData);
+              setShowBackupModal(true);
+            }
+          } catch (error) {
+            console.error("💾 Error parsing create identity response:", error);
+            // Show modal with error state
+            setIdentity({
+              address: "Error parsing response",
+              publicKey: "Unknown error",
+              privateKey: "Please try again"
+            } as IdentityData);
+            setShowBackupModal(true);
+          }
+
+          // Remove listener
+          window.removeEventListener('cefMessageResponse', handleResponse);
+        }
+      };
+
+      window.addEventListener('cefMessageResponse', handleResponse);
+
+      // Send create identity request
+      if (window.cefMessage?.send) {
+        window.cefMessage.send('create_identity', []);
+      } else {
+        console.error("💾 cefMessage not available");
         setIdentity({
-          address: "Creating...",
-          publicKey: "Creating...",
-          privateKey: "Creating..."
+          address: "cefMessage not available",
+          publicKey: "Backend not ready",
+          privateKey: "Please restart the app"
         } as IdentityData);
-
-        // Show modal even with error state
-        console.log("💾 Error state, setting showBackupModal to true");
         setShowBackupModal(true);
       }
+
+      // Cleanup listener after timeout
+      setTimeout(() => {
+        window.removeEventListener('cefMessageResponse', handleResponse);
+      }, 10000);
     };
 
-    getIdentity();
+    createIdentity();
   }, []);
 
   console.log("💾 BackupOverlayRoot render - showBackupModal:", showBackupModal, "identity:", identity);
 
   return (
     <>
-      {identity && (
+      {identity ? (
         <BackupModal
           open={showBackupModal}
           onClose={() => {
@@ -82,6 +108,29 @@ const BackupOverlayRoot: React.FC = () => {
           }}
           identity={identity}
         />
+      ) : (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'white',
+          fontSize: '24px',
+          fontFamily: 'Arial, sans-serif'
+        }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ marginBottom: '20px' }}>🔄</div>
+            <div>Creating Identity...</div>
+            <div style={{ fontSize: '16px', marginTop: '10px', opacity: 0.7 }}>
+              Please wait while we set up your wallet
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

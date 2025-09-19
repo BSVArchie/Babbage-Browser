@@ -1,4 +1,6 @@
 #include "../../include/core/IdentityHandler.h"
+#include <fstream>
+#include <cstdlib>
 
 CefRefPtr<CefV8Value> jsonToV8(const nlohmann::json& j) {
     if (j.is_object()) {
@@ -35,6 +37,32 @@ bool IdentityHandler::Execute(const CefString& name,
     std::string debugMsg = "💡 IdentityHandler started - Function: " + name.ToString();
     OutputDebugStringA(debugMsg.c_str());
     OutputDebugStringA("\n");
+
+    // For identity.get(), first check if local identity file exists
+    if (name == "get") {
+        const char* homeDir = std::getenv("USERPROFILE");
+        std::string identityPath = std::string(homeDir) + "\\AppData\\Roaming\\BabbageBrowser\\identity.json";
+        std::ifstream identityFile(identityPath);
+        if (identityFile.good()) {
+            std::cout << "📁 Local identity file exists, reading from file" << std::endl;
+            try {
+                nlohmann::json identity;
+                identityFile >> identity;
+                identityFile.close();
+
+                CefRefPtr<CefV8Value> identityObject = jsonToV8(identity);
+                retval = identityObject;
+                return true;
+            } catch (const std::exception& e) {
+                std::cerr << "💥 Error reading identity file: " << e.what() << std::endl;
+                identityFile.close();
+                // Fall through to daemon check
+            }
+        } else {
+            std::cout << "📁 No local identity file found, will check daemon" << std::endl;
+            identityFile.close();
+        }
+    }
 
     WalletService walletService;
 

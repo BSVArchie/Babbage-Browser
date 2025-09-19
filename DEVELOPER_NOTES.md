@@ -2,51 +2,46 @@
 
 ## 🚨 **CURRENT SESSION STATUS - READ THIS FIRST**
 
-### **Current State: Settings Overlay Implementation - PARTIALLY WORKING**
+### **Current State: Process-Per-Overlay Architecture - FULLY IMPLEMENTED ✅**
 
 **✅ WHAT'S WORKING:**
-1. **Settings Button**: Opens settings overlay window in separate process
-2. **Process Isolation**: Settings overlay runs in its own CEF subprocess (process-per-overlay architecture)
-3. **Window Creation**: Settings overlay window is created with dedicated `CEFSettingsOverlayWindow` class
-4. **API Injection**: `bitcoinBrowser.overlay.close()` method is properly injected into settings overlay
-5. **Message Handling**: `overlay_close` message is sent from frontend to native C++
+1. **Process-Per-Overlay Architecture**: Each overlay (settings, wallet, backup) runs in its own dedicated CEF subprocess
+2. **Settings Overlay**: Opens in separate process with proper window management and closing
+3. **Wallet Overlay**: Runs in isolated process with fresh V8 context
+4. **Backup Modal Overlay**: Complete identity creation and backup flow working
+5. **Window Management**: Each overlay has dedicated HWND with proper message handlers
+6. **API Injection**: `bitcoinBrowser` API properly injected into each overlay process
+7. **Message Handling**: All IPC messages working correctly between processes
+8. **Identity System**: Complete rebuild with proper file management and Go daemon integration
 
-**❌ CURRENT ISSUE:**
-- **Settings overlay window does not close** when clicking the close button
-- The window is created and renders correctly, but `DestroyWindow()` call isn't working
+**✅ ARCHITECTURE ACHIEVEMENTS:**
+- **Complete Process Isolation**: No more state pollution between overlays
+- **Dedicated HWNDs**: Each overlay type has its own window class and message handler
+- **Fresh V8 Context**: Each overlay gets clean JavaScript context
+- **Proper Cleanup**: Windows can be opened and closed multiple times
+- **DevTools Integration**: Right-click "Inspect Element" works for all overlays
 
 ### **Architecture Overview:**
 - **Main Browser**: React app running on `http://127.0.0.1:5137` (header browser)
-- **Settings Overlay**: Separate CEF process running on `http://127.0.0.1:5137/settings`
+- **Settings Overlay**: Separate CEF process on `http://127.0.0.1:5137/settings`
+- **Wallet Overlay**: Separate CEF process on `http://127.0.0.1:5137/wallet`
+- **Backup Modal Overlay**: Separate CEF process on `http://127.0.0.1:5137/backup`
 - **Communication**: Uses `cefMessage.send()` for IPC between processes
-- **Window Management**: Each overlay has its own HWND with dedicated message handlers
+- **Window Management**: Each overlay has dedicated HWND with custom WndProc handlers
 
-### **Key Files Modified:**
-1. **`cef-native/src/handlers/simple_handler.cpp`**:
-   - Added `overlay_show_settings` handler
-   - Added `overlay_close` handler (currently using `DestroyWindow()`)
-2. **`cef-native/src/handlers/simple_app.cpp`**:
-   - Added `CreateSettingsOverlayWithSeparateProcess()` function
-3. **`cef-native/cef_browser_shell.cpp`**:
-   - Added `SettingsOverlayWndProc` for mouse input handling
-4. **`frontend/src/pages/SettingsOverlayRoot.tsx`**:
-   - Settings overlay React component
-5. **`frontend/src/pages/MainBrowserView.tsx`**:
-   - Settings button handler
-
-### **Current Problem:**
-The settings overlay window is created successfully but won't close. The `overlay_close` message is being sent and received, but `DestroyWindow(settings_hwnd)` isn't working as expected.
-
-### **Next Steps Needed:**
-1. **Debug the close functionality** - investigate why `DestroyWindow()` isn't working
-2. **Test mouse input** - ensure left-click and right-click work on settings overlay
-3. **Verify process cleanup** - ensure CEF subprocess is properly terminated when window closes
+### **Key Architectural Changes:**
+1. **Removed Shared Overlay System**: Eliminated `g_overlay_hwnd` and shared overlay reuse
+2. **Process-Per-Overlay**: Each overlay type creates its own CEF subprocess
+3. **Dedicated Window Classes**: `CEFSettingsOverlayWindow`, `CEFWalletOverlayWindow`, `CEFBackupOverlayWindow`
+4. **Custom Message Handlers**: Each overlay has its own `WndProc` for mouse input and window management
+5. **Identity System Rebuild**: Complete rewrite with proper file management and Go daemon integration
 
 ### **Technical Context:**
 - **CEF Version**: Using CEF binaries with process-per-overlay architecture
-- **React**: Frontend running on Vite dev server
+- **React**: Frontend running on Vite dev server with React Strict Mode disabled
 - **Build System**: CMake with Visual Studio
 - **Debug Logging**: All native logs go to `debug_output.log`
+- **Go Daemon**: Wallet backend with automatic startup and HTTP API integration
 
 ---
 
@@ -311,14 +306,16 @@ window.bitcoinBrowser.overlay.show = (overlayType: string) => {
 ## 📋 Next Development Priorities
 
 ### 🔧 Immediate Fixes (Next Session)
-1. **Process-Per-Overlay Implementation**: Start with settings button
-   - Implement `CreateSettingsOverlayWithSeparateProcess()`
-   - Create settings-specific React route
-   - Test settings button opens overlay correctly
-2. **Console Shutdown Issue**: Fix console window not responding to X button
-   - Add Console Control Handler for graceful shutdown
-   - Ensure daemon process cleanup on app exit
-   - Improve user experience for development
+1. **Address Generation Functionality**: Get address generation fully working in wallet overlay
+   - Fix address generation button getting stuck in "generating" state
+   - Ensure proper response handling from Go daemon
+   - Test address display and clipboard functionality
+2. **Elegant Shutdown Implementation**: Implement proper shutdown for all components
+   - CEF browser process cleanup and destruction
+   - HWND window management and proper destruction
+   - Go daemon graceful shutdown integration
+   - Event listener cleanup to prevent memory leaks
+   - Console control handler for graceful app termination
 
 ### 🚀 Feature Development (Next Phase)
 1. **Enhanced Wallet Features**:
@@ -328,10 +325,10 @@ window.bitcoinBrowser.overlay.show = (overlayType: string) => {
    - Multiple wallet support
 
 2. **UI/UX Improvements**:
-   - Fix overlay HWND React loading issues
-   - Improve backup modal functionality
    - Add wallet status indicators
-   - Better error messaging
+   - Better error messaging and user feedback
+   - Improve overlay window positioning and sizing
+   - Add loading states for all async operations
 
 3. **Security Enhancements**:
    - Implement proper key derivation (PBKDF2)
@@ -351,6 +348,11 @@ window.bitcoinBrowser.overlay.show = (overlayType: string) => {
 - **HTTP Communication**: Windows HTTP API client ✅
 - **Identity Management**: Full CRUD operations ✅
 - **Error Handling**: Robust error recovery ✅
+- **Process-Per-Overlay Architecture**: Complete implementation ✅
+- **Identity System Rebuild**: Complete rewrite with proper file management ✅
+- **Backup Modal System**: Full identity creation and backup flow ✅
+- **Settings Overlay**: Dedicated process with proper window management ✅
+- **Wallet Overlay**: Isolated process with fresh V8 context ✅
 
 ---
 
