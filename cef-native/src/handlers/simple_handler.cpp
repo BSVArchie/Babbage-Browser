@@ -39,6 +39,7 @@ CefRefPtr<CefLoadHandler> SimpleHandler::GetLoadHandler() {
 }
 
 CefRefPtr<CefBrowser> SimpleHandler::webview_browser_ = nullptr;
+CefRefPtr<CefBrowser> SimpleHandler::header_browser_ = nullptr;
 CefRefPtr<CefBrowser> SimpleHandler::overlay_browser_ = nullptr;
 CefRefPtr<CefBrowser> SimpleHandler::settings_browser_ = nullptr;
 CefRefPtr<CefBrowser> SimpleHandler::wallet_browser_ = nullptr;
@@ -46,6 +47,14 @@ CefRefPtr<CefBrowser> SimpleHandler::backup_browser_ = nullptr;
 CefRefPtr<CefBrowser> SimpleHandler::GetOverlayBrowser() {
     return overlay_browser_;
 }
+CefRefPtr<CefBrowser> SimpleHandler::GetHeaderBrowser() {
+    return header_browser_;
+}
+
+CefRefPtr<CefBrowser> SimpleHandler::GetWebviewBrowser() {
+    return webview_browser_;
+}
+
 CefRefPtr<CefBrowser> SimpleHandler::GetSettingsBrowser() {
     return settings_browser_;
 }
@@ -203,6 +212,7 @@ void SimpleHandler::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
         debugLog << "📡 WebView browser reference stored. ID: " << browser->GetIdentifier() << std::endl;
         debugLog.close();
     } else if (role_ == "header") {
+        header_browser_ = browser;
         std::cout << "🧭 header browser initialized." << std::endl;
         std::ofstream debugLog("debug_output.log", std::ios::app);
         debugLog << "🧭 header browser initialized. ID: " << browser->GetIdentifier() << std::endl;

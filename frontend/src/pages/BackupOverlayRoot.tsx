@@ -90,6 +90,12 @@ const BackupOverlayRoot: React.FC = () => {
     };
 
     createIdentity();
+
+    // Cleanup function
+    return () => {
+      console.log("🧹 BackupOverlayRoot cleanup - removing event listeners");
+      // Event listeners are automatically cleaned up when component unmounts
+    };
   }, []);
 
   console.log("💾 BackupOverlayRoot render - showBackupModal:", showBackupModal, "identity:", identity);

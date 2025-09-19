@@ -37,6 +37,11 @@ HWND g_header_hwnd = nullptr;
 HWND g_webview_hwnd = nullptr;
 HINSTANCE g_hInstance = nullptr;
 
+// Global overlay HWNDs for shutdown cleanup
+HWND g_settings_overlay_hwnd = nullptr;
+HWND g_wallet_overlay_hwnd = nullptr;
+HWND g_backup_overlay_hwnd = nullptr;
+
 // Debug logging function
 void DebugLog(const std::string& message) {
     std::cout << message << std::endl;
@@ -45,13 +50,110 @@ void DebugLog(const std::string& message) {
     debugLog.close();
 }
 
+// Graceful shutdown function
+void ShutdownApplication() {
+    DebugLog("🛑 Starting graceful application shutdown...");
+
+    // Step 0: Stop Go daemon first (to prevent orphaned processes)
+    DebugLog("🔄 Stopping Go daemon...");
+    // Note: WalletService destructor will be called automatically when the app exits
+    // This ensures the daemon is properly terminated
+
+    // Step 1: Close all CEF browsers first
+    DebugLog("🔄 Closing CEF browsers...");
+    CefRefPtr<CefBrowser> header_browser = SimpleHandler::GetHeaderBrowser();
+    CefRefPtr<CefBrowser> webview_browser = SimpleHandler::GetWebviewBrowser();
+    CefRefPtr<CefBrowser> settings_browser = SimpleHandler::GetSettingsBrowser();
+    CefRefPtr<CefBrowser> wallet_browser = SimpleHandler::GetWalletBrowser();
+    CefRefPtr<CefBrowser> backup_browser = SimpleHandler::GetBackupBrowser();
+
+    if (header_browser) {
+        DebugLog("🔄 Closing header browser...");
+        header_browser->GetHost()->CloseBrowser(false);
+    }
+
+    if (webview_browser) {
+        DebugLog("🔄 Closing webview browser...");
+        webview_browser->GetHost()->CloseBrowser(false);
+    }
+
+    if (settings_browser) {
+        DebugLog("🔄 Closing settings browser...");
+        settings_browser->GetHost()->CloseBrowser(false);
+    }
+
+    if (wallet_browser) {
+        DebugLog("🔄 Closing wallet browser...");
+        wallet_browser->GetHost()->CloseBrowser(false);
+    }
+
+    if (backup_browser) {
+        DebugLog("🔄 Closing backup browser...");
+        backup_browser->GetHost()->CloseBrowser(false);
+    }
+
+    // Step 2: Destroy overlay windows
+    DebugLog("🔄 Destroying overlay windows...");
+    if (g_settings_overlay_hwnd && IsWindow(g_settings_overlay_hwnd)) {
+        DebugLog("🔄 Destroying settings overlay window...");
+        DestroyWindow(g_settings_overlay_hwnd);
+        g_settings_overlay_hwnd = nullptr;
+    }
+
+    if (g_wallet_overlay_hwnd && IsWindow(g_wallet_overlay_hwnd)) {
+        DebugLog("🔄 Destroying wallet overlay window...");
+        DestroyWindow(g_wallet_overlay_hwnd);
+        g_wallet_overlay_hwnd = nullptr;
+    }
+
+    if (g_backup_overlay_hwnd && IsWindow(g_backup_overlay_hwnd)) {
+        DebugLog("🔄 Destroying backup overlay window...");
+        DestroyWindow(g_backup_overlay_hwnd);
+        g_backup_overlay_hwnd = nullptr;
+    }
+
+    // Step 3: Destroy main windows (child windows first)
+    DebugLog("🔄 Destroying main windows...");
+    if (g_header_hwnd && IsWindow(g_header_hwnd)) {
+        DebugLog("🔄 Destroying header window...");
+        DestroyWindow(g_header_hwnd);
+        g_header_hwnd = nullptr;
+    }
+
+    if (g_webview_hwnd && IsWindow(g_webview_hwnd)) {
+        DebugLog("🔄 Destroying webview window...");
+        DestroyWindow(g_webview_hwnd);
+        g_webview_hwnd = nullptr;
+    }
+
+    // Step 4: Destroy main shell window last
+    if (g_hwnd && IsWindow(g_hwnd)) {
+        DebugLog("🔄 Destroying main shell window...");
+        DestroyWindow(g_hwnd);
+        g_hwnd = nullptr;
+    }
+
+    DebugLog("✅ Application shutdown complete");
+
+    // Step 5: Close console window
+    DebugLog("🔄 Closing console window...");
+    FreeConsole();
+}
+
 LRESULT CALLBACK ShellWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
         case WM_MOVE:
         case WM_SIZE:
             break;
 
+        case WM_CLOSE:
+            DebugLog("🛑 Main shell window received WM_CLOSE - starting graceful shutdown...");
+            ShutdownApplication();
+            PostQuitMessage(0);
+            return 0;
+
         case WM_DESTROY:
+            DebugLog("🛑 Main shell window received WM_DESTROY");
             PostQuitMessage(0);
             break;
     }

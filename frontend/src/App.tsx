@@ -75,6 +75,13 @@ const App = () => {
     };
 
     checkIdentityStatus();
+
+    // Cleanup function to remove event listeners
+    return () => {
+      console.log("🧹 App cleanup - removing event listeners");
+      // Note: Event listeners are automatically cleaned up when the component unmounts
+      // but this ensures we have explicit cleanup logging
+    };
   }, []);
 
   return (

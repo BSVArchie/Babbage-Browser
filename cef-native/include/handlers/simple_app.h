@@ -13,6 +13,11 @@ extern HWND g_hwnd;
 extern HWND g_header_hwnd;
 extern HWND g_webview_hwnd;
 
+// Global overlay HWNDs for shutdown cleanup
+extern HWND g_settings_overlay_hwnd;
+extern HWND g_wallet_overlay_hwnd;
+extern HWND g_backup_overlay_hwnd;
+
 // globals.h
 extern HINSTANCE g_hInstance;
 

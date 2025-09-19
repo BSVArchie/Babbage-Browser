@@ -10,6 +10,11 @@
 #include <iostream>
 #include <fstream>
 
+// External global HWND declarations for shutdown cleanup
+extern HWND g_settings_overlay_hwnd;
+extern HWND g_wallet_overlay_hwnd;
+extern HWND g_backup_overlay_hwnd;
+
 SimpleApp::SimpleApp()
     : render_process_handler_(new SimpleRenderProcessHandler()) {
     std::cout << "🔧 SimpleApp constructor called!" << std::endl;
@@ -286,6 +291,9 @@ void CreateSettingsOverlayWithSeparateProcess(HINSTANCE hInstance) {
     }
 
     std::cout << "✅ Settings overlay HWND created: " << settings_hwnd << std::endl;
+
+    // Store HWND for shutdown cleanup
+    g_settings_overlay_hwnd = settings_hwnd;
     std::ofstream debugLog3("debug_output.log", std::ios::app);
     debugLog3 << "✅ Settings overlay HWND created: " << settings_hwnd << std::endl;
     debugLog3.close();
@@ -371,6 +379,10 @@ void CreateWalletOverlayWithSeparateProcess(HINSTANCE hInstance) {
     }
 
     std::cout << "✅ Wallet overlay HWND created: " << wallet_hwnd << std::endl;
+
+    // Store HWND for shutdown cleanup
+    g_wallet_overlay_hwnd = wallet_hwnd;
+
     std::ofstream debugLog3("debug_output.log", std::ios::app);
     debugLog3 << "✅ Wallet overlay HWND created: " << wallet_hwnd << std::endl;
     debugLog3.close();
@@ -454,6 +466,10 @@ void CreateBackupOverlayWithSeparateProcess(HINSTANCE hInstance) {
     }
 
     std::cout << "✅ Backup overlay HWND created: " << backup_hwnd << std::endl;
+
+    // Store HWND for shutdown cleanup
+    g_backup_overlay_hwnd = backup_hwnd;
+
     std::ofstream debugLog3("debug_output.log", std::ios::app);
     debugLog3 << "✅ Backup overlay HWND created: " << backup_hwnd << std::endl;
     debugLog3.close();
