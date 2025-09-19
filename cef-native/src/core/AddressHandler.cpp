@@ -45,9 +45,12 @@ bool AddressHandler::Execute(const CefString& name,
                 std::string frameUrl = frame->GetURL().ToString();
                 std::cout << "🔍 Frame URL: " << frameUrl << std::endl;
 
-                // Check if this is the overlay browser
-                if (frameUrl.find("/overlay") != std::string::npos) {
-                    std::cout << "🎯 This is the overlay browser - using direct V8 communication" << std::endl;
+                // Check if this is an overlay browser (wallet, settings, backup)
+                if (frameUrl.find("/wallet") != std::string::npos ||
+                    frameUrl.find("/settings") != std::string::npos ||
+                    frameUrl.find("/backup") != std::string::npos ||
+                    frameUrl.find("/overlay") != std::string::npos) {
+                    std::cout << "🎯 This is an overlay browser - using direct V8 communication" << std::endl;
 
                     // For overlay browser, use direct V8 communication
                     try {

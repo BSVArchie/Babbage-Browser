@@ -23,8 +23,46 @@ export function useBitcoinBrowser() {
     if (!window.bitcoinBrowser?.address?.generate) {
       throw new Error('bitcoinBrowser.address.generate not available');
     }
-    const result = await window.bitcoinBrowser.address.generate();
-    return result;
+
+    // Check if we're in an overlay (wallet, settings, backup) - direct V8 call
+    const currentPath = window.location.pathname;
+    if (currentPath.includes('/wallet') || currentPath.includes('/settings') || currentPath.includes('/backup')) {
+      console.log('🔑 Direct V8 call for overlay browser');
+      const result = await window.bitcoinBrowser.address.generate();
+      return result;
+    }
+
+    // For main browser, use message-based communication
+    console.log('🔑 Message-based call for main browser');
+
+    return new Promise((resolve, reject) => {
+      const handleResponse = (event: any) => {
+        if (event.detail.message === 'address_generate_response') {
+          try {
+            const addressData = JSON.parse(event.detail.args[0]);
+            window.removeEventListener('cefMessageResponse', handleResponse);
+            resolve(addressData);
+          } catch (err) {
+            window.removeEventListener('cefMessageResponse', handleResponse);
+            reject(err);
+          }
+        } else if (event.detail.message === 'address_generate_error') {
+          window.removeEventListener('cefMessageResponse', handleResponse);
+          reject(new Error(event.detail.args[0]));
+        }
+      };
+
+      window.addEventListener('cefMessageResponse', handleResponse);
+
+      // Call the V8 function which will send a message for main browser
+      window.bitcoinBrowser.address.generate().catch(reject);
+
+      // Timeout after 10 seconds
+      setTimeout(() => {
+        window.removeEventListener('cefMessageResponse', handleResponse);
+        reject(new Error('Address generation timeout'));
+      }, 10000);
+    });
   }, []);
 
   const navigate = useCallback((path: string): void => {

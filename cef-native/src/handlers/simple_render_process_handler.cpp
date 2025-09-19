@@ -260,12 +260,12 @@ bool SimpleRenderProcessHandler::OnProcessMessageReceived(
             std::cout << "🔍 Browser ID: " << browser->GetIdentifier() << std::endl;
             std::cout << "🔍 Frame URL: " << frame->GetURL().ToString() << std::endl;
 
-        // Execute JavaScript to handle the response
-        std::string js = "if (window.onAddressGenerated) { window.onAddressGenerated(" + addressDataJson + "); }";
-        frame->ExecuteJavaScript(js, frame->GetURL(), 0);
+            // Execute JavaScript to dispatch the response event
+            std::string js = "window.dispatchEvent(new CustomEvent('cefMessageResponse', { detail: { message: 'address_generate_response', args: ['" + addressDataJson + "'] } }));";
+            frame->ExecuteJavaScript(js, frame->GetURL(), 0);
 
-        return true;
-    }
+            return true;
+        }
 
     if (message_name == "identity_status_check_response") {
         CefRefPtr<CefListValue> args = message->GetArgumentList();

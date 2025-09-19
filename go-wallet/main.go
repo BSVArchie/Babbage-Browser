@@ -30,6 +30,7 @@ type AddressData struct {
 	Index      int    `json:"index"`
 }
 
+
 // Wallet represents our Bitcoin SV wallet
 type Wallet struct {
 	identity *IdentityData
@@ -151,7 +152,7 @@ func (w *Wallet) GenerateAddress() (*AddressData, error) {
 		Address:    address.AddressString,
 		PublicKey:  hex.EncodeToString(publicKey.Compressed()),
 		PrivateKey: hex.EncodeToString(privateKey.Serialize()),
-		Index:      0, // For now, we'll use 0. In a real wallet, this would be incremental
+		Index:      0, // Frontend will handle the display index
 	}
 
 	w.logger.Info("Address generated successfully")

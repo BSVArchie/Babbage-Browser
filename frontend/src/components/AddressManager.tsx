@@ -94,26 +94,31 @@ const AddressManager: React.FC = () => {
           <p className="no-addresses">No addresses generated yet. Click "Generate New Address" to create one.</p>
         ) : (
           <div className="addresses">
-            {addresses.map((address, index) => (
-              <div key={index} className="address-item">
-                <div className="address-header">
-                  <span className="address-index">#{address.index + 1}</span>
-                  <button
-                    onClick={() => copyToClipboard(address.address)}
-                    className="copy-btn"
-                    title="Copy address"
-                  >
-                    📋
-                  </button>
+            {addresses.map((address, index) => {
+              console.log(`🔍 Address ${index}:`, address);
+              console.log(`🔍 Address.address:`, address.address);
+              console.log(`🔍 Address type:`, typeof address.address);
+              return (
+                <div key={index} className="address-item">
+                  <div className="address-header">
+                    <span className="address-index">#{index + 1}</span>
+                    <button
+                      onClick={() => copyToClipboard(address.address)}
+                      className="copy-btn"
+                      title="Copy address"
+                    >
+                      📋
+                    </button>
+                  </div>
+                  <div className="address-value" title={address.address}>
+                    {address.address || 'NO ADDRESS FOUND'}
+                  </div>
+                  <div className="address-details">
+                    <small>Public Key: {address.publicKey.substring(0, 20)}...</small>
+                  </div>
                 </div>
-                <div className="address-value" title={address.address}>
-                  {address.address}
-                </div>
-                <div className="address-details">
-                  <small>Public Key: {address.publicKey.substring(0, 20)}...</small>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -223,6 +228,7 @@ const AddressManager: React.FC = () => {
           font-size: 14px;
           word-break: break-all;
           background: white;
+          color: #333;
           padding: 8px;
           border-radius: 4px;
           border: 1px solid #dee2e6;
