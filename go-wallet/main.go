@@ -24,17 +24,53 @@ type IdentityData struct {
 
 // AddressData represents a generated address
 type AddressData struct {
-	Address    string `json:"address"`
-	PublicKey  string `json:"publicKey"`
-	PrivateKey string `json:"privateKey"` // Will be encrypted in production
-	Index      int    `json:"index"`
+	Address   string `json:"address"`
+	PublicKey string `json:"publicKey"`
+	Index     int    `json:"index"`
+	// Note: Private key is NOT included for security reasons
+}
+
+// TransactionRequest represents a transaction creation request
+type TransactionRequest struct {
+	SenderAddress    string `json:"senderAddress,omitempty"`    // Optional: if not provided, uses wallet identity
+	RecipientAddress string `json:"recipientAddress"`
+	Amount          int64  `json:"amount"` // in satoshis
+	FeeRate         int64  `json:"feeRate"` // satoshis per byte
+	Message         string `json:"message,omitempty"` // Optional OP_RETURN message
+}
+
+// UTXO represents an unspent transaction output
+type UTXO struct {
+	TxID    string `json:"txid"`
+	Vout    uint32 `json:"vout"`
+	Amount  int64  `json:"amount"`
+	Script  string `json:"script"`
+}
+
+// TransactionResponse represents a transaction operation response
+type TransactionResponse struct {
+	TxID        string `json:"txid"`
+	RawTx       string `json:"rawTx"`
+	Fee         int64  `json:"fee"`
+	Status      string `json:"status"`
+	Broadcasted bool   `json:"broadcasted"`
+}
+
+// BroadcastResult represents the result of broadcasting to multiple miners
+type BroadcastResult struct {
+	TxID       string            `json:"txid"`
+	Success    bool              `json:"success"`
+	Miners     map[string]string `json:"miners"` // miner name -> response
+	Error      string            `json:"error,omitempty"`
 }
 
 
 // Wallet represents our Bitcoin SV wallet
 type Wallet struct {
-	identity *IdentityData
-	logger   *logrus.Logger
+	identity           *IdentityData
+	logger             *logrus.Logger
+	transactionBuilder *TransactionBuilder
+	broadcaster        *TransactionBroadcaster
 }
 
 // NewWallet creates a new wallet instance
@@ -42,9 +78,15 @@ func NewWallet() *Wallet {
 	logger := logrus.New()
 	logger.SetLevel(logrus.InfoLevel)
 
-	return &Wallet{
+	wallet := &Wallet{
 		logger: logger,
 	}
+
+	// Initialize transaction components
+	wallet.transactionBuilder = NewTransactionBuilder(wallet)
+	wallet.broadcaster = NewTransactionBroadcaster()
+
+	return wallet
 }
 
 // CreateIdentity generates a new Bitcoin SV identity
@@ -149,10 +191,10 @@ func (w *Wallet) GenerateAddress() (*AddressData, error) {
 	}
 
 	addressData := &AddressData{
-		Address:    address.AddressString,
-		PublicKey:  hex.EncodeToString(publicKey.Compressed()),
-		PrivateKey: hex.EncodeToString(privateKey.Serialize()),
-		Index:      0, // Frontend will handle the display index
+		Address:   address.AddressString,
+		PublicKey: hex.EncodeToString(publicKey.Compressed()),
+		Index:     0, // Frontend will handle the display index
+		// Note: Private key is NOT included for security reasons
 	}
 
 	w.logger.Info("Address generated successfully")
@@ -254,6 +296,112 @@ func main() {
 		json.NewEncoder(w).Encode(address)
 	})
 
+	// UTXO testing endpoint
+	http.HandleFunc("/utxo/fetch", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Get address from query parameter
+		address := r.URL.Query().Get("address")
+		if address == "" {
+			http.Error(w, "address parameter is required", http.StatusBadRequest)
+			return
+		}
+
+		// Fetch UTXOs using UTXO manager
+		utxos, err := wallet.transactionBuilder.utxoManager.FetchUTXOs(address)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to fetch UTXOs: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(utxos)
+	})
+
+	// Transaction endpoints
+	http.HandleFunc("/transaction/create", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req TransactionRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+			return
+		}
+
+		// Create transaction using transaction builder
+		response, err := wallet.transactionBuilder.CreateTransaction(&req)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to create transaction: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	})
+
+	http.HandleFunc("/transaction/sign", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req struct {
+			RawTx string `json:"rawTx"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+			return
+		}
+
+		// Get private key from wallet identity
+		identity, err := wallet.LoadIdentity(GetIdentityPath())
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to load identity: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		// Sign transaction using transaction builder
+		response, err := wallet.transactionBuilder.SignTransaction(req.RawTx, identity.PrivateKey)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to sign transaction: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	})
+
+	http.HandleFunc("/transaction/broadcast", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req struct {
+			SignedTx string `json:"signedTx"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+			return
+		}
+
+		// Broadcast transaction using broadcaster
+		response, err := wallet.broadcaster.BroadcastTransaction(req.SignedTx)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to broadcast transaction: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	})
+
 	// Start HTTP server
 	port := "8080"
 	fmt.Printf("🌐 Wallet daemon listening on port %s\n", port)
@@ -262,6 +410,10 @@ func main() {
 	fmt.Println("  GET  /identity/get - Get wallet identity")
 	fmt.Println("  POST /identity/markBackedUp - Mark wallet as backed up")
 	fmt.Println("  GET  /address/generate - Generate new Bitcoin address")
+	fmt.Println("  GET  /utxo/fetch?address=ADDRESS - Fetch UTXOs for address")
+	fmt.Println("  POST /transaction/create - Create unsigned transaction")
+	fmt.Println("  POST /transaction/sign - Sign transaction")
+	fmt.Println("  POST /transaction/broadcast - Broadcast transaction to BSV network")
 
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
