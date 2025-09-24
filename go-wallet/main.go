@@ -402,6 +402,21 @@ func main() {
 		json.NewEncoder(w).Encode(response)
 	})
 
+	// Transaction history endpoint (placeholder - returns empty array for now)
+	http.HandleFunc("/transaction/history", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// For now, return empty array - in production this would query a database
+		// or blockchain explorer for transaction history
+		history := []map[string]interface{}{}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(history)
+	})
+
 	// Start HTTP server
 	port := "8080"
 	fmt.Printf("🌐 Wallet daemon listening on port %s\n", port)
@@ -414,6 +429,7 @@ func main() {
 	fmt.Println("  POST /transaction/create - Create unsigned transaction")
 	fmt.Println("  POST /transaction/sign - Sign transaction")
 	fmt.Println("  POST /transaction/broadcast - Broadcast transaction to BSV network")
+	fmt.Println("  GET  /transaction/history - Get transaction history")
 
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }

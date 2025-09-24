@@ -18,6 +18,13 @@ public:
     bool markBackedUp();
     nlohmann::json generateAddress();
 
+    // Transaction Methods
+    nlohmann::json createTransaction(const nlohmann::json& transactionData);
+    nlohmann::json signTransaction(const nlohmann::json& transactionData);
+    nlohmann::json broadcastTransaction(const nlohmann::json& transactionData);
+    nlohmann::json getBalance(const nlohmann::json& balanceData);
+    nlohmann::json getTransactionHistory();
+
     // Connection management
     bool isConnected();
     void setBaseUrl(const std::string& url);

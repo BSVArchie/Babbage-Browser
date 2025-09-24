@@ -688,6 +688,9 @@ bool SimpleHandler::OnProcessMessageReceived(
 
     if (message_name == "address_generate") {
         std::cout << "🔑 Address generation requested from browser ID: " << browser->GetIdentifier() << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "🔑 Address generation requested from browser ID: " << browser->GetIdentifier() << std::endl;
+        debugLog.close();
 
         try {
             // Call WalletService to generate address
@@ -695,6 +698,9 @@ bool SimpleHandler::OnProcessMessageReceived(
             nlohmann::json addressData = walletService.generateAddress();
 
             std::cout << "✅ Address generated successfully: " << addressData.dump() << std::endl;
+            std::ofstream debugLog2("debug_output.log", std::ios::app);
+            debugLog2 << "✅ Address generated successfully: " << addressData.dump() << std::endl;
+            debugLog2.close();
 
             // Send result back to the requesting browser
             CefRefPtr<CefProcessMessage> response = CefProcessMessage::Create("address_generate_response");
@@ -703,8 +709,11 @@ bool SimpleHandler::OnProcessMessageReceived(
 
             browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, response);
             std::cout << "📤 Address data sent back to browser" << std::endl;
-            std::cout << "🔍 Browser ID: " << browser->GetIdentifier() << std::endl;
-            std::cout << "🔍 Frame URL: " << browser->GetMainFrame()->GetURL().ToString() << std::endl;
+            std::ofstream debugLog3("debug_output.log", std::ios::app);
+            debugLog3 << "📤 Address data sent back to browser" << std::endl;
+            debugLog3 << "🔍 Browser ID: " << browser->GetIdentifier() << std::endl;
+            debugLog3 << "🔍 Frame URL: " << browser->GetMainFrame()->GetURL().ToString() << std::endl;
+            debugLog3.close();
 
         } catch (const std::exception& e) {
             std::cout << "❌ Address generation failed: " << e.what() << std::endl;
@@ -713,6 +722,291 @@ bool SimpleHandler::OnProcessMessageReceived(
             CefRefPtr<CefProcessMessage> response = CefProcessMessage::Create("address_generate_error");
             CefRefPtr<CefListValue> responseArgs = response->GetArgumentList();
             responseArgs->SetString(0, e.what());
+
+            browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, response);
+        }
+
+        return true;
+    }
+
+    // Transaction Message Handlers
+
+    if (message_name == "create_transaction") {
+        std::cout << "💰 Create transaction requested from browser ID: " << browser->GetIdentifier() << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "💰 Create transaction requested from browser ID: " << browser->GetIdentifier() << std::endl;
+        debugLog.close();
+
+        try {
+            // Parse transaction data from message arguments
+            CefRefPtr<CefListValue> args = message->GetArgumentList();
+            if (args->GetSize() > 0) {
+                std::string transactionDataJson = args->GetString(0);
+                nlohmann::json transactionData = nlohmann::json::parse(transactionDataJson);
+
+                // Call WalletService to create transaction
+                WalletService walletService;
+                nlohmann::json result = walletService.createTransaction(transactionData);
+
+                std::cout << "✅ Transaction creation result: " << result.dump() << std::endl;
+                std::ofstream debugLog2("debug_output.log", std::ios::app);
+                debugLog2 << "✅ Transaction creation result: " << result.dump() << std::endl;
+                debugLog2.close();
+
+                // Send result back to the requesting browser
+                CefRefPtr<CefProcessMessage> response = CefProcessMessage::Create("create_transaction_response");
+                CefRefPtr<CefListValue> responseArgs = response->GetArgumentList();
+                responseArgs->SetString(0, result.dump());
+
+                browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, response);
+                std::cout << "📤 Transaction creation response sent back to browser" << std::endl;
+                std::ofstream debugLog3("debug_output.log", std::ios::app);
+                debugLog3 << "📤 Transaction creation response sent back to browser" << std::endl;
+                debugLog3.close();
+            } else {
+                throw std::runtime_error("No transaction data provided");
+            }
+
+        } catch (const std::exception& e) {
+            std::cout << "❌ Transaction creation failed: " << e.what() << std::endl;
+            std::ofstream debugLog4("debug_output.log", std::ios::app);
+            debugLog4 << "❌ Transaction creation failed: " << e.what() << std::endl;
+            debugLog4.close();
+
+            // Send error response
+            nlohmann::json errorResponse;
+            errorResponse["error"] = e.what();
+
+            CefRefPtr<CefProcessMessage> response = CefProcessMessage::Create("create_transaction_error");
+            CefRefPtr<CefListValue> responseArgs = response->GetArgumentList();
+            responseArgs->SetString(0, errorResponse.dump());
+
+            browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, response);
+        }
+
+        return true;
+    }
+
+    if (message_name == "sign_transaction") {
+        std::cout << "✍️ Sign transaction requested from browser ID: " << browser->GetIdentifier() << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "✍️ Sign transaction requested from browser ID: " << browser->GetIdentifier() << std::endl;
+        debugLog.close();
+
+        try {
+            // Parse transaction data from message arguments
+            CefRefPtr<CefListValue> args = message->GetArgumentList();
+            if (args->GetSize() > 0) {
+                std::string transactionDataJson = args->GetString(0);
+                nlohmann::json transactionData = nlohmann::json::parse(transactionDataJson);
+
+                // Call WalletService to sign transaction
+                WalletService walletService;
+                nlohmann::json result = walletService.signTransaction(transactionData);
+
+                std::cout << "✅ Transaction signing result: " << result.dump() << std::endl;
+                std::ofstream debugLog2("debug_output.log", std::ios::app);
+                debugLog2 << "✅ Transaction signing result: " << result.dump() << std::endl;
+                debugLog2.close();
+
+                // Send result back to the requesting browser
+                CefRefPtr<CefProcessMessage> response = CefProcessMessage::Create("sign_transaction_response");
+                CefRefPtr<CefListValue> responseArgs = response->GetArgumentList();
+                responseArgs->SetString(0, result.dump());
+
+                browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, response);
+                std::cout << "📤 Transaction signing response sent back to browser" << std::endl;
+                std::ofstream debugLog3("debug_output.log", std::ios::app);
+                debugLog3 << "📤 Transaction signing response sent back to browser" << std::endl;
+                debugLog3.close();
+            } else {
+                throw std::runtime_error("No transaction data provided");
+            }
+
+        } catch (const std::exception& e) {
+            std::cout << "❌ Transaction signing failed: " << e.what() << std::endl;
+            std::ofstream debugLog4("debug_output.log", std::ios::app);
+            debugLog4 << "❌ Transaction signing failed: " << e.what() << std::endl;
+            debugLog4.close();
+
+            // Send error response
+            nlohmann::json errorResponse;
+            errorResponse["error"] = e.what();
+
+            CefRefPtr<CefProcessMessage> response = CefProcessMessage::Create("sign_transaction_error");
+            CefRefPtr<CefListValue> responseArgs = response->GetArgumentList();
+            responseArgs->SetString(0, errorResponse.dump());
+
+            browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, response);
+        }
+
+        return true;
+    }
+
+    if (message_name == "broadcast_transaction") {
+        std::cout << "📡 Broadcast transaction requested from browser ID: " << browser->GetIdentifier() << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "📡 Broadcast transaction requested from browser ID: " << browser->GetIdentifier() << std::endl;
+        debugLog.close();
+
+        try {
+            // Parse transaction data from message arguments
+            CefRefPtr<CefListValue> args = message->GetArgumentList();
+            if (args->GetSize() > 0) {
+                std::string transactionDataJson = args->GetString(0);
+                nlohmann::json transactionData = nlohmann::json::parse(transactionDataJson);
+
+                // Call WalletService to broadcast transaction
+                WalletService walletService;
+                nlohmann::json result = walletService.broadcastTransaction(transactionData);
+
+                std::cout << "✅ Transaction broadcast result: " << result.dump() << std::endl;
+                std::ofstream debugLog2("debug_output.log", std::ios::app);
+                debugLog2 << "✅ Transaction broadcast result: " << result.dump() << std::endl;
+                debugLog2.close();
+
+                // Send result back to the requesting browser
+                CefRefPtr<CefProcessMessage> response = CefProcessMessage::Create("broadcast_transaction_response");
+                CefRefPtr<CefListValue> responseArgs = response->GetArgumentList();
+                responseArgs->SetString(0, result.dump());
+
+                browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, response);
+                std::cout << "📤 Transaction broadcast response sent back to browser" << std::endl;
+                std::ofstream debugLog3("debug_output.log", std::ios::app);
+                debugLog3 << "📤 Transaction broadcast response sent back to browser" << std::endl;
+                debugLog3.close();
+            } else {
+                throw std::runtime_error("No transaction data provided");
+            }
+
+        } catch (const std::exception& e) {
+            std::cout << "❌ Transaction broadcast failed: " << e.what() << std::endl;
+            std::ofstream debugLog4("debug_output.log", std::ios::app);
+            debugLog4 << "❌ Transaction broadcast failed: " << e.what() << std::endl;
+            debugLog4.close();
+
+            // Send error response
+            nlohmann::json errorResponse;
+            errorResponse["error"] = e.what();
+
+            CefRefPtr<CefProcessMessage> response = CefProcessMessage::Create("broadcast_transaction_error");
+            CefRefPtr<CefListValue> responseArgs = response->GetArgumentList();
+            responseArgs->SetString(0, errorResponse.dump());
+
+            browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, response);
+        }
+
+        return true;
+    }
+
+
+        if (message_name == "get_balance") {
+        std::cout << "💰 Get balance requested from browser ID: " << browser->GetIdentifier() << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "💰 Get balance requested from browser ID: " << browser->GetIdentifier() << std::endl;
+        debugLog.close();
+
+        try {
+            // Parse balance data from message arguments
+            CefRefPtr<CefListValue> args = message->GetArgumentList();
+            std::ofstream debugLog("debug_output.log", std::ios::app);
+            debugLog << "🔍 get_balance: args->GetSize() = " << args->GetSize() << std::endl;
+            debugLog.close();
+
+            if (args->GetSize() > 0) {
+                std::string balanceDataJson = args->GetString(0);
+                std::ofstream debugLog2("debug_output.log", std::ios::app);
+                debugLog2 << "🔍 get_balance: received JSON = " << balanceDataJson << std::endl;
+                debugLog2.close();
+
+                nlohmann::json balanceData = nlohmann::json::parse(balanceDataJson);
+
+                // Call WalletService to get balance
+                WalletService walletService;
+                nlohmann::json result = walletService.getBalance(balanceData);
+
+                std::cout << "✅ Balance result: " << result.dump() << std::endl;
+                std::ofstream debugLog3("debug_output.log", std::ios::app);
+                debugLog3 << "✅ Balance result: " << result.dump() << std::endl;
+                debugLog3.close();
+
+                // Send result back to the requesting browser
+                CefRefPtr<CefProcessMessage> response = CefProcessMessage::Create("get_balance_response");
+                CefRefPtr<CefListValue> responseArgs = response->GetArgumentList();
+                responseArgs->SetString(0, result.dump());
+
+                browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, response);
+                std::cout << "📤 Balance response sent back to browser" << std::endl;
+                std::ofstream debugLog6("debug_output.log", std::ios::app);
+                debugLog6 << "📤 Balance response sent back to browser" << std::endl;
+                debugLog6.close();
+            } else {
+                std::ofstream debugLog4("debug_output.log", std::ios::app);
+                debugLog4 << "❌ get_balance: No arguments provided, args->GetSize() = " << args->GetSize() << std::endl;
+                debugLog4.close();
+                throw std::runtime_error("No balance data provided");
+            }
+
+        } catch (const std::exception& e) {
+            std::cout << "❌ Get balance failed: " << e.what() << std::endl;
+            std::ofstream debugLog5("debug_output.log", std::ios::app);
+            debugLog5 << "❌ Get balance failed: " << e.what() << std::endl;
+            debugLog5.close();
+
+            // Send error response
+            nlohmann::json errorResponse;
+            errorResponse["error"] = e.what();
+
+            CefRefPtr<CefProcessMessage> response = CefProcessMessage::Create("get_balance_error");
+            CefRefPtr<CefListValue> responseArgs = response->GetArgumentList();
+            responseArgs->SetString(0, errorResponse.dump());
+
+            browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, response);
+        }
+
+        return true;
+    }
+
+    if (message_name == "get_transaction_history") {
+        std::cout << "📜 Get transaction history requested from browser ID: " << browser->GetIdentifier() << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "📜 Get transaction history requested from browser ID: " << browser->GetIdentifier() << std::endl;
+        debugLog.close();
+
+        try {
+            // Call WalletService to get transaction history
+            WalletService walletService;
+            nlohmann::json result = walletService.getTransactionHistory();
+
+            std::cout << "✅ Transaction history result: " << result.dump() << std::endl;
+            std::ofstream debugLog2("debug_output.log", std::ios::app);
+            debugLog2 << "✅ Transaction history result: " << result.dump() << std::endl;
+            debugLog2.close();
+
+            // Send result back to the requesting browser
+            CefRefPtr<CefProcessMessage> response = CefProcessMessage::Create("get_transaction_history_response");
+            CefRefPtr<CefListValue> responseArgs = response->GetArgumentList();
+            responseArgs->SetString(0, result.dump());
+
+            browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, response);
+            std::cout << "📤 Transaction history response sent back to browser" << std::endl;
+            std::ofstream debugLog3("debug_output.log", std::ios::app);
+            debugLog3 << "📤 Transaction history response sent back to browser" << std::endl;
+            debugLog3.close();
+
+        } catch (const std::exception& e) {
+            std::cout << "❌ Get transaction history failed: " << e.what() << std::endl;
+            std::ofstream debugLog4("debug_output.log", std::ios::app);
+            debugLog4 << "❌ Get transaction history failed: " << e.what() << std::endl;
+            debugLog4.close();
+
+            // Send error response
+            nlohmann::json errorResponse;
+            errorResponse["error"] = e.what();
+
+            CefRefPtr<CefProcessMessage> response = CefProcessMessage::Create("get_transaction_history_error");
+            CefRefPtr<CefListValue> responseArgs = response->GetArgumentList();
+            responseArgs->SetString(0, errorResponse.dump());
 
             browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, response);
         }

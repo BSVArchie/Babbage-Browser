@@ -64,28 +64,141 @@ if (!window.bitcoinBrowser.overlay?.close) {
   };
 }
 
-if (!window.bitcoinBrowser.address) {
-  window.bitcoinBrowser.address = {
-    generate: () => {
-      console.log("🔑 JS: Sending address_generate to native");
+console.log("🔍 initWindowBridge: Setting up bitcoinBrowser.address");
+console.log("🔍 initWindowBridge: window.bitcoinBrowser.address exists:", !!window.bitcoinBrowser.address);
+
+// Force override the existing function
+console.log("🔍 initWindowBridge: Forcing override of address.generate function");
+window.bitcoinBrowser.address.generate = () => {
+  console.log("🔑 JS: Sending address_generate to native");
+  return new Promise((resolve, reject) => {
+    // Set up response handlers
+    window.onAddressGenerated = (data: any) => {
+      console.log("✅ Address generated:", data);
+      resolve(data);
+      delete window.onAddressGenerated;
+      delete window.onAddressError;
+    };
+
+    window.onAddressError = (error: string) => {
+      console.error("❌ Address generation error:", error);
+      reject(new Error(error));
+      delete window.onAddressGenerated;
+      delete window.onAddressError;
+    };
+
+    // Send the request
+    window.cefMessage?.send('address_generate', []);
+  });
+};
+
+        // Transaction methods
+        if (!window.bitcoinAPI) {
+          window.bitcoinAPI = {
+            createTransaction: (data: any) => {
+      console.log("💰 JS: Sending create_transaction to native");
       return new Promise((resolve, reject) => {
-        // Set up response handlers
-        window.onAddressGenerated = (data: any) => {
-          console.log("✅ Address generated:", data);
+        window.onCreateTransactionResponse = (data: any) => {
+          console.log("✅ Transaction created:", data);
           resolve(data);
-          delete window.onAddressGenerated;
-          delete window.onAddressError;
+          delete window.onCreateTransactionResponse;
+          delete window.onCreateTransactionError;
         };
 
-        window.onAddressError = (error: string) => {
-          console.error("❌ Address generation error:", error);
+        window.onCreateTransactionError = (error: string) => {
+          console.error("❌ Transaction creation error:", error);
           reject(new Error(error));
-          delete window.onAddressGenerated;
-          delete window.onAddressError;
+          delete window.onCreateTransactionResponse;
+          delete window.onCreateTransactionError;
         };
 
-        // Send the request
-        window.cefMessage?.send('address_generate', []);
+        window.cefMessage?.send('create_transaction', [JSON.stringify(data)]);
+      });
+    },
+
+    signTransaction: (data: any) => {
+      console.log("✍️ JS: Sending sign_transaction to native");
+      return new Promise((resolve, reject) => {
+        window.onSignTransactionResponse = (data: any) => {
+          console.log("✅ Transaction signed:", data);
+          resolve(data);
+          delete window.onSignTransactionResponse;
+          delete window.onSignTransactionError;
+        };
+
+        window.onSignTransactionError = (error: string) => {
+          console.error("❌ Transaction signing error:", error);
+          reject(new Error(error));
+          delete window.onSignTransactionResponse;
+          delete window.onSignTransactionError;
+        };
+
+        window.cefMessage?.send('sign_transaction', [JSON.stringify(data)]);
+      });
+    },
+
+    broadcastTransaction: (data: any) => {
+      console.log("📡 JS: Sending broadcast_transaction to native");
+      return new Promise((resolve, reject) => {
+        window.onBroadcastTransactionResponse = (data: any) => {
+          console.log("✅ Transaction broadcasted:", data);
+          resolve(data);
+          delete window.onBroadcastTransactionResponse;
+          delete window.onBroadcastTransactionError;
+        };
+
+        window.onBroadcastTransactionError = (error: string) => {
+          console.error("❌ Transaction broadcast error:", error);
+          reject(new Error(error));
+          delete window.onBroadcastTransactionResponse;
+          delete window.onBroadcastTransactionError;
+        };
+
+        window.cefMessage?.send('broadcast_transaction', [JSON.stringify(data)]);
+      });
+    },
+
+    getBalance: (data: any) => {
+      console.log("💳 JS: Sending get_balance to native");
+      console.log("💳 JS: Data being sent:", data);
+      console.log("💳 JS: JSON.stringify(data):", JSON.stringify(data));
+      return new Promise((resolve, reject) => {
+        window.onGetBalanceResponse = (data: any) => {
+          console.log("✅ Balance retrieved:", data);
+          resolve(data);
+          delete window.onGetBalanceResponse;
+          delete window.onGetBalanceError;
+        };
+
+        window.onGetBalanceError = (error: string) => {
+          console.error("❌ Balance retrieval error:", error);
+          reject(new Error(error));
+          delete window.onGetBalanceResponse;
+          delete window.onGetBalanceError;
+        };
+
+        window.cefMessage?.send('get_balance', [JSON.stringify(data)]);
+      });
+    },
+
+    getTransactionHistory: () => {
+      console.log("📜 JS: Sending get_transaction_history to native");
+      return new Promise((resolve, reject) => {
+        window.onGetTransactionHistoryResponse = (data: any) => {
+          console.log("✅ Transaction history retrieved:", data);
+          resolve(data);
+          delete window.onGetTransactionHistoryResponse;
+          delete window.onGetTransactionHistoryError;
+        };
+
+        window.onGetTransactionHistoryError = (error: string) => {
+          console.error("❌ Transaction history error:", error);
+          reject(new Error(error));
+          delete window.onGetTransactionHistoryResponse;
+          delete window.onGetTransactionHistoryError;
+        };
+
+        window.cefMessage?.send('get_transaction_history', []);
       });
     }
   };

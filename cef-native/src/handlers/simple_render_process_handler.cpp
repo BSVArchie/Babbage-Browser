@@ -36,7 +36,7 @@ public:
         CefRefPtr<CefProcessMessage> message = CefProcessMessage::Create(messageName);
         CefRefPtr<CefListValue> args = message->GetArgumentList();
 
-        // Add arguments if provided
+        // Add arguments if provided (skip first argument which is the message name)
         for (size_t i = 1; i < arguments.size(); i++) {
             if (arguments[i]->IsString()) {
                 args->SetString(i - 1, arguments[i]->GetStringValue());
@@ -46,6 +46,15 @@ public:
                 args->SetInt(i - 1, arguments[i]->GetIntValue());
             } else if (arguments[i]->IsDouble()) {
                 args->SetDouble(i - 1, arguments[i]->GetDoubleValue());
+            } else if (arguments[i]->IsArray()) {
+                // Handle array arguments - extract the first element if it's a string
+                CefRefPtr<CefV8Value> array = arguments[i];
+                if (array->GetArrayLength() > 0) {
+                    CefRefPtr<CefV8Value> firstElement = array->GetValue(0);
+                    if (firstElement->IsString()) {
+                        args->SetString(i - 1, firstElement->GetStringValue());
+                    }
+                }
             }
         }
 
@@ -257,11 +266,12 @@ bool SimpleRenderProcessHandler::OnProcessMessageReceived(
             std::string addressDataJson = args->GetString(0);
 
             std::cout << "✅ Address generation response received: " << addressDataJson << std::endl;
-            std::cout << "🔍 Browser ID: " << browser->GetIdentifier() << std::endl;
-            std::cout << "🔍 Frame URL: " << frame->GetURL().ToString() << std::endl;
+            std::ofstream debugLog("debug_output.log", std::ios::app);
+            debugLog << "✅ Address generation response received: " << addressDataJson << std::endl;
+            debugLog.close();
 
-            // Execute JavaScript to dispatch the response event
-            std::string js = "window.dispatchEvent(new CustomEvent('cefMessageResponse', { detail: { message: 'address_generate_response', args: ['" + addressDataJson + "'] } }));";
+            // Execute JavaScript to call the callback function directly
+            std::string js = "if (window.onAddressGenerated) { window.onAddressGenerated(" + addressDataJson + "); }";
             frame->ExecuteJavaScript(js, frame->GetURL(), 0);
 
             return true;
@@ -320,6 +330,220 @@ bool SimpleRenderProcessHandler::OnProcessMessageReceived(
 
         // Execute JavaScript to handle the error
         std::string js = "if (window.onAddressError) { window.onAddressError('" + errorMessage + "'); }";
+        frame->ExecuteJavaScript(js, frame->GetURL(), 0);
+
+        return true;
+    }
+
+    // Transaction Response Handlers
+
+        if (message_name == "address_generate_response") {
+            CefRefPtr<CefListValue> args = message->GetArgumentList();
+            std::string responseJson = args->GetString(0);
+
+            std::cout << "✅ Address generation response received: " << responseJson << std::endl;
+            std::ofstream debugLog("debug_output.log", std::ios::app);
+            debugLog << "✅ Address generation response received: " << responseJson << std::endl;
+            debugLog.close();
+
+            // Execute JavaScript to call the callback function directly
+            std::string js = "if (window.onAddressGenerated) { window.onAddressGenerated(" + responseJson + "); }";
+            frame->ExecuteJavaScript(js, frame->GetURL(), 0);
+
+            return true;
+        }
+
+        if (message_name == "address_generate_error") {
+            CefRefPtr<CefListValue> args = message->GetArgumentList();
+            std::string errorJson = args->GetString(0);
+
+            std::cout << "❌ Address generation error received: " << errorJson << std::endl;
+            std::ofstream debugLog("debug_output.log", std::ios::app);
+            debugLog << "❌ Address generation error received: " << errorJson << std::endl;
+            debugLog.close();
+
+            // Execute JavaScript to call the error callback function directly
+            std::string js = "if (window.onAddressError) { window.onAddressError(" + errorJson + "); }";
+            frame->ExecuteJavaScript(js, frame->GetURL(), 0);
+
+            return true;
+        }
+
+        if (message_name == "create_transaction_response") {
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        std::string responseJson = args->GetString(0);
+
+        std::cout << "✅ Create transaction response received: " << responseJson << std::endl;
+        std::cout << "🔍 Browser ID: " << browser->GetIdentifier() << std::endl;
+        std::cout << "🔍 Frame URL: " << frame->GetURL().ToString() << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "✅ Create transaction response received: " << responseJson << std::endl;
+        debugLog << "🔍 Browser ID: " << browser->GetIdentifier() << std::endl;
+        debugLog << "🔍 Frame URL: " << frame->GetURL().ToString() << std::endl;
+        debugLog.close();
+
+        // Execute JavaScript to call the callback function directly
+        std::string js = "if (window.onCreateTransactionResponse) { window.onCreateTransactionResponse(" + responseJson + "); }";
+        frame->ExecuteJavaScript(js, frame->GetURL(), 0);
+
+        return true;
+    }
+
+    if (message_name == "create_transaction_error") {
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        std::string errorMessage = args->GetString(0);
+
+        std::cout << "❌ Create transaction error received: " << errorMessage << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "❌ Create transaction error received: " << errorMessage << std::endl;
+        debugLog.close();
+
+        // Execute JavaScript to handle the error
+        std::string js = "if (window.onCreateTransactionError) { window.onCreateTransactionError('" + errorMessage + "'); }";
+        frame->ExecuteJavaScript(js, frame->GetURL(), 0);
+
+        return true;
+    }
+
+    if (message_name == "sign_transaction_response") {
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        std::string responseJson = args->GetString(0);
+
+        std::cout << "✅ Sign transaction response received: " << responseJson << std::endl;
+        std::cout << "🔍 Browser ID: " << browser->GetIdentifier() << std::endl;
+        std::cout << "🔍 Frame URL: " << frame->GetURL().ToString() << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "✅ Sign transaction response received: " << responseJson << std::endl;
+        debugLog << "🔍 Browser ID: " << browser->GetIdentifier() << std::endl;
+        debugLog << "🔍 Frame URL: " << frame->GetURL().ToString() << std::endl;
+        debugLog.close();
+
+        // Execute JavaScript to dispatch the response event
+        std::string js = "window.dispatchEvent(new CustomEvent('cefMessageResponse', { detail: { message: 'sign_transaction_response', args: ['" + responseJson + "'] } }));";
+        frame->ExecuteJavaScript(js, frame->GetURL(), 0);
+
+        return true;
+    }
+
+    if (message_name == "sign_transaction_error") {
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        std::string errorMessage = args->GetString(0);
+
+        std::cout << "❌ Sign transaction error received: " << errorMessage << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "❌ Sign transaction error received: " << errorMessage << std::endl;
+        debugLog.close();
+
+        // Execute JavaScript to handle the error
+        std::string js = "if (window.onSignTransactionError) { window.onSignTransactionError('" + errorMessage + "'); }";
+        frame->ExecuteJavaScript(js, frame->GetURL(), 0);
+
+        return true;
+    }
+
+    if (message_name == "broadcast_transaction_response") {
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        std::string responseJson = args->GetString(0);
+
+        std::cout << "✅ Broadcast transaction response received: " << responseJson << std::endl;
+        std::cout << "🔍 Browser ID: " << browser->GetIdentifier() << std::endl;
+        std::cout << "🔍 Frame URL: " << frame->GetURL().ToString() << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "✅ Broadcast transaction response received: " << responseJson << std::endl;
+        debugLog << "🔍 Browser ID: " << browser->GetIdentifier() << std::endl;
+        debugLog << "🔍 Frame URL: " << frame->GetURL().ToString() << std::endl;
+        debugLog.close();
+
+        // Execute JavaScript to dispatch the response event
+        std::string js = "window.dispatchEvent(new CustomEvent('cefMessageResponse', { detail: { message: 'broadcast_transaction_response', args: ['" + responseJson + "'] } }));";
+        frame->ExecuteJavaScript(js, frame->GetURL(), 0);
+
+        return true;
+    }
+
+    if (message_name == "broadcast_transaction_error") {
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        std::string errorMessage = args->GetString(0);
+
+        std::cout << "❌ Broadcast transaction error received: " << errorMessage << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "❌ Broadcast transaction error received: " << errorMessage << std::endl;
+        debugLog.close();
+
+        // Execute JavaScript to handle the error
+        std::string js = "if (window.onBroadcastTransactionError) { window.onBroadcastTransactionError('" + errorMessage + "'); }";
+        frame->ExecuteJavaScript(js, frame->GetURL(), 0);
+
+        return true;
+    }
+
+    if (message_name == "get_balance_response") {
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        std::string responseJson = args->GetString(0);
+
+        std::cout << "✅ Get balance response received: " << responseJson << std::endl;
+        std::cout << "🔍 Browser ID: " << browser->GetIdentifier() << std::endl;
+        std::cout << "🔍 Frame URL: " << frame->GetURL().ToString() << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "✅ Get balance response received: " << responseJson << std::endl;
+        debugLog << "🔍 Browser ID: " << browser->GetIdentifier() << std::endl;
+        debugLog << "🔍 Frame URL: " << frame->GetURL().ToString() << std::endl;
+        debugLog.close();
+
+        // Execute JavaScript to call the callback function directly
+        std::string js = "if (window.onGetBalanceResponse) { window.onGetBalanceResponse(" + responseJson + "); }";
+        frame->ExecuteJavaScript(js, frame->GetURL(), 0);
+
+        return true;
+    }
+
+    if (message_name == "get_balance_error") {
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        std::string errorMessage = args->GetString(0);
+
+        std::cout << "❌ Get balance error received: " << errorMessage << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "❌ Get balance error received: " << errorMessage << std::endl;
+        debugLog.close();
+
+        // Execute JavaScript to handle the error
+        std::string js = "if (window.onGetBalanceError) { window.onGetBalanceError('" + errorMessage + "'); }";
+        frame->ExecuteJavaScript(js, frame->GetURL(), 0);
+
+        return true;
+    }
+
+    if (message_name == "get_transaction_history_response") {
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        std::string responseJson = args->GetString(0);
+
+        std::cout << "✅ Get transaction history response received: " << responseJson << std::endl;
+        std::cout << "🔍 Browser ID: " << browser->GetIdentifier() << std::endl;
+        std::cout << "🔍 Frame URL: " << frame->GetURL().ToString() << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "✅ Get transaction history response received: " << responseJson << std::endl;
+        debugLog << "🔍 Browser ID: " << browser->GetIdentifier() << std::endl;
+        debugLog << "🔍 Frame URL: " << frame->GetURL().ToString() << std::endl;
+        debugLog.close();
+
+        // Execute JavaScript to dispatch the response event
+        std::string js = "window.dispatchEvent(new CustomEvent('cefMessageResponse', { detail: { message: 'get_transaction_history_response', args: ['" + responseJson + "'] } }));";
+        frame->ExecuteJavaScript(js, frame->GetURL(), 0);
+
+        return true;
+    }
+
+    if (message_name == "get_transaction_history_error") {
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        std::string errorMessage = args->GetString(0);
+
+        std::cout << "❌ Get transaction history error received: " << errorMessage << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "❌ Get transaction history error received: " << errorMessage << std::endl;
+        debugLog.close();
+
+        // Execute JavaScript to handle the error
+        std::string js = "if (window.onGetTransactionHistoryError) { window.onGetTransactionHistoryError('" + errorMessage + "'); }";
         frame->ExecuteJavaScript(js, frame->GetURL(), 0);
 
         return true;

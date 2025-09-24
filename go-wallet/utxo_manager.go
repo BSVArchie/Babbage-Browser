@@ -32,8 +32,8 @@ func NewUTXOManager() *UTXOManager {
 // BSV API response structures for different APIs
 type WhatsOnChainResponse []WhatsOnChainUTXO
 type WhatsOnChainUTXO struct {
-	TxID   string `json:"txid"`
-	Vout   uint32 `json:"vout"`
+	TxID   string `json:"tx_hash"`
+	Vout   uint32 `json:"tx_pos"`
 	Value  int64  `json:"value"`
 	Script string `json:"script"`
 }
