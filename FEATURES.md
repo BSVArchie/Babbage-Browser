@@ -2,7 +2,7 @@
 
 ## ✅ Completed Features
 
-### Core Integration (Phase 1-3)
+### Core Integration (Phase 1-3) ✅ COMPLETE
 - [x] C++ HTTP client integration with Go daemon
 - [x] Wallet service class for API communication
 - [x] Identity management (create, get, mark backed up)
@@ -11,51 +11,108 @@
 - [x] Overlay system with backup modal
 - [x] Complete pipeline: React → C++ → Go → Response
 
+### HD Wallet System (Phase 4) ✅ COMPLETE
+- [x] **BIP44 Hierarchical Deterministic Wallet**
+  - [x] Mnemonic generation and storage
+  - [x] HD key derivation (BIP44 standard)
+  - [x] Address generation with proper indexing
+  - [x] Wallet file storage (wallet.json)
+  - [x] Private key management and security
+
+### Transaction Management (Phase 4) ✅ COMPLETE
+- [x] **Complete Transaction Flow**
+  - [x] Transaction creation with UTXO selection
+  - [x] Transaction signing using BSV SDK
+  - [x] Transaction broadcasting to multiple miners
+  - [x] Real transaction ID extraction and display
+  - [x] On-chain verification via WhatsOnChain
+  - [x] Unified `/transaction/send` endpoint
+
+### Balance & UTXO Management (Phase 4) ✅ COMPLETE
+- [x] **Real-time Balance Display**
+  - [x] Total balance calculation across all addresses
+  - [x] Live UTXO fetching from WhatsOnChain API
+  - [x] USD price conversion using CryptoCompare API
+  - [x] Balance updates after transactions
+  - [x] Multi-address balance aggregation
+
+### Address Management (Phase 4) ✅ COMPLETE
+- [x] **HD Address Generation**
+  - [x] Generate new addresses on demand
+  - [x] Address indexing and storage
+  - [x] Clipboard integration for address copying
+  - [x] Address display in wallet UI
+  - [x] Current address retrieval
+
+### Frontend Integration (Phase 4) ✅ COMPLETE
+- [x] **React UI Components**
+  - [x] Transaction forms with validation
+  - [x] Balance display with USD conversion
+  - [x] Address generation interface
+  - [x] Transaction confirmation modals
+  - [x] Success/error message handling
+  - [x] Real-time UI updates
+
+### Process Architecture (Phase 4) ✅ COMPLETE
+- [x] **Process-Per-Overlay System**
+  - [x] Each overlay runs in dedicated CEF subprocess
+  - [x] Fresh V8 context for each overlay
+  - [x] Process isolation and security
+  - [x] Message handling between processes
+  - [x] Window management and cleanup
+
 ## 🚀 Next Phase Features
 
-### Phase 4: Enhanced Wallet Functionality
-- [ ] **Transaction Management**
-  - [ ] Send Bitcoin SV transactions
-  - [ ] Receive Bitcoin SV transactions
-  - [ ] Transaction history
+### Phase 5: Window Management & UI Improvements (Priority #1)
+- [ ] **Window Management**
+  - [ ] Fix keyboard commands in overlays
+  - [ ] Fix overlay HWND movement with main window
+  - [ ] Implement proper minimize/maximize/restore behavior
+  - [ ] Add window state synchronization
+
+- [ ] **Transaction Receipt UI**
+  - [ ] Improve transaction confirmation modal
+  - [ ] Add transaction details (amount, fee, recipient, timestamp)
+  - [ ] Improve WhatsOnChain link display and styling
+  - [ ] Add transaction status indicators
+
+- [ ] **Design Aesthetics**
+  - [ ] Update color schemes and typography
+  - [ ] Improve button styles and interactions
+  - [ ] Add loading states and animations
+  - [ ] Review overall UI/UX design
+
+### Phase 6: BRC-100 Authentication Integration (Priority #2)
+- [ ] **BRC-100 Protocol Implementation**
+  - [ ] Implement BRC-100 authentication protocol
+  - [ ] Create identity management endpoints
+  - [ ] Integrate with existing HD wallet system
+  - [ ] Create authentication challenge/response system
+
+- [ ] **Frontend Integration**
+  - [ ] Create BRC-100 authentication UI components
+  - [ ] Implement identity management interface
+  - [ ] Add authentication status indicators
+  - [ ] Integrate with existing wallet UI
+
+### Phase 7: Advanced Features (Future)
+- [ ] **Transaction History**
+  - [ ] Local transaction storage
+  - [ ] Transaction categorization and filtering
+  - [ ] Search and export functionality
   - [ ] Transaction details view
-  - [ ] Transaction status tracking
 
-- [ ] **Address Management**
-  - [ ] Generate new addresses
-  - [ ] Address book/contacts
-  - [ ] QR code generation for addresses
-  - [ ] Address validation
+- [ ] **Advanced Address Management**
+  - [ ] Gap limit implementation (20-address standard)
+  - [ ] Address pruning and cleanup
+  - [ ] High-volume address generation
+  - [ ] Privacy-preserving UTXO consolidation
+  - [ ] Address usage tracking
 
-- [ ] **Balance & UTXO Management**
-  - [ ] Real-time balance display
-  - [ ] UTXO management
-  - [ ] Balance history
-  - [ ] Multi-address balance aggregation
-
-### Phase 5: User Interface Enhancements
-- [ ] **Main Wallet Interface**
-  - [ ] Dashboard with balance overview
-  - [ ] Send/Receive buttons
-  - [ ] Transaction list
-  - [ ] Settings panel
-
-- [ ] **Send Money Flow**
-  - [ ] Recipient address input
-  - [ ] Amount input with currency conversion
-  - [ ] Transaction fee selection
-  - [ ] Transaction preview
-  - [ ] Transaction confirmation
-
-- [ ] **Receive Money Flow**
-  - [ ] QR code display
-  - [ ] Address copy functionality
-  - [ ] Payment request generation
-  - [ ] Payment notifications
-
-### Phase 6: Security & Backup
-- [ ] **Backup & Recovery**
-  - [ ] Seed phrase generation
+- [ ] **SPV Verification**
+  - [ ] Simplified Payment Verification implementation
+  - [ ] Merkle proof verification
+  - [ ] Transaction validation without full node
   - [ ] Seed phrase verification
   - [ ] Wallet export/import
   - [ ] Backup file encryption

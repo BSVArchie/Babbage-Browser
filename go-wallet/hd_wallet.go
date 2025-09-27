@@ -237,19 +237,40 @@ func (wm *WalletManager) GetPrivateKeyForAddress(address string) (string, error)
 	return hex.EncodeToString(privateKeyBytes), nil
 }
 
-// GetTotalBalance calculates the total balance across all addresses
+// GetTotalBalance calculates the total balance across all addresses by fetching live UTXOs
 func (wm *WalletManager) GetTotalBalance() (int64, error) {
 	if wm.wallet == nil {
 		return 0, fmt.Errorf("wallet not initialized")
 	}
 
 	totalBalance := int64(0)
+	utxoManager := NewUTXOManager()
+
 	for i := range wm.wallet.Addresses {
-		// TODO: Implement actual balance fetching for each address
-		// For now, just return the stored balance
-		totalBalance += wm.wallet.Addresses[i].Balance
+		address := wm.wallet.Addresses[i].Address
+
+		// Fetch live UTXOs for this address
+		utxos, err := utxoManager.FetchUTXOs(address)
+		if err != nil {
+			// Log error but continue with other addresses
+			fmt.Printf("Warning: Failed to fetch UTXOs for address %s: %v\n", address, err)
+			continue
+		}
+
+		// Sum UTXOs for this address
+		addressBalance := int64(0)
+		for _, utxo := range utxos {
+			addressBalance += utxo.Amount
+		}
+
+		// Update stored balance
+		wm.wallet.Addresses[i].Balance = addressBalance
+		totalBalance += addressBalance
+
+		fmt.Printf("Address %s: %d satoshis (%d UTXOs)\n", address, addressBalance, len(utxos))
 	}
 
+	fmt.Printf("Total balance across all addresses: %d satoshis\n", totalBalance)
 	return totalBalance, nil
 }
 

@@ -1059,6 +1059,55 @@ bool SimpleHandler::OnProcessMessageReceived(
         return true;
     }
 
+    if (message_name == "send_transaction") {
+        LOG_DEBUG_BROWSER("🚀 Send transaction requested from browser ID: " + std::to_string(browser->GetIdentifier()));
+
+        try {
+            // Parse transaction data from message arguments
+            CefRefPtr<CefListValue> args = message->GetArgumentList();
+            LOG_DEBUG_BROWSER("🔍 send_transaction: args->GetSize() = " + std::to_string(args->GetSize()));
+
+            if (args->GetSize() > 0) {
+                std::string transactionDataJson = args->GetString(0);
+                LOG_DEBUG_BROWSER("🔍 send_transaction: received JSON = " + transactionDataJson);
+
+                nlohmann::json transactionData = nlohmann::json::parse(transactionDataJson);
+
+                // Call WalletService to send transaction
+                WalletService walletService;
+                nlohmann::json result = walletService.sendTransaction(transactionData);
+
+                LOG_DEBUG_BROWSER("✅ Transaction result: " + result.dump());
+
+                // Send result back to the requesting browser
+                CefRefPtr<CefProcessMessage> response = CefProcessMessage::Create("send_transaction_response");
+                CefRefPtr<CefListValue> responseArgs = response->GetArgumentList();
+                responseArgs->SetString(0, result.dump());
+
+                browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, response);
+                LOG_DEBUG_BROWSER("📤 Transaction response sent back to browser");
+            } else {
+                LOG_DEBUG_BROWSER("❌ send_transaction: No arguments provided, args->GetSize() = " + std::to_string(args->GetSize()));
+                throw std::runtime_error("No transaction data provided");
+            }
+
+        } catch (const std::exception& e) {
+            LOG_DEBUG_BROWSER("❌ Send transaction failed: " + std::string(e.what()));
+
+            // Send error response
+            nlohmann::json errorResponse;
+            errorResponse["error"] = e.what();
+
+            CefRefPtr<CefProcessMessage> response = CefProcessMessage::Create("send_transaction_error");
+            CefRefPtr<CefListValue> responseArgs = response->GetArgumentList();
+            responseArgs->SetString(0, errorResponse.dump());
+
+            browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, response);
+        }
+
+        return true;
+    }
+
     if (message_name == "get_transaction_history") {
         LOG_DEBUG_BROWSER("📜 Get transaction history requested from browser ID: " + std::to_string(browser->GetIdentifier()));
 

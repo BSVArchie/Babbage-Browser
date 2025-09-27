@@ -43,6 +43,7 @@ declare global {
       createTransaction: (data: any) => Promise<TransactionResponse>;
       signTransaction: (data: any) => Promise<TransactionResponse>;
       broadcastTransaction: (data: any) => Promise<BroadcastResponse>;
+      sendTransaction: (data: any) => Promise<TransactionResponse>;
       getBalance: (data: any) => Promise<{ balance: number }>;
       getTransactionHistory: () => Promise<any[]>;
     };
@@ -52,6 +53,8 @@ declare global {
     onSignTransactionError?: (error: string) => void;
     onBroadcastTransactionResponse?: (data: BroadcastResponse) => void;
     onBroadcastTransactionError?: (error: string) => void;
+    onSendTransactionResponse?: (data: TransactionResponse) => void;
+    onSendTransactionError?: (error: string) => void;
     onGetBalanceResponse?: (data: { balance: number }) => void;
     onGetBalanceError?: (error: string) => void;
     onGetTransactionHistoryResponse?: (data: any[]) => void;

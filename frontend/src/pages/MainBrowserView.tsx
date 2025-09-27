@@ -117,16 +117,6 @@ const MainBrowserView: React.FC = () => {
                     <MoreVertIcon />
                 </IconButton>
             </Toolbar>
-
-            {/* Main Content */}
-            <Box p={3}>
-            <Typography variant="h5">Welcome to Bitcoin Browser</Typography>
-            <Typography variant="body1" mt={2}>
-                Address bar, tabs, and stuff will go here.
-            </Typography>
-            </Box>
-
-            {/* Settings panel is now rendered in separate overlay process */}
         </Box>
     );
 };

@@ -2,47 +2,52 @@
 |        React UI Layer     |
 |  - Panels / Pages / Hooks |
 |  - TypeScript + Vite      |
-|  🟡 Future: React Native   |
+|  - Transaction Forms      |
+|  - Balance Display        |
+|  - Address Management     |
 +----------------------------+
             ↓
 +----------------------------+
 |   JS ↔ Native Bridge Layer |
 |  - window.bitcoinBrowser   |
-|  - window.identity         |
+|  - window.cefMessage       |
+|  - Process Communication   |
 +----------------------------+
             ↓
 +----------------------------+
 |     Native CEF Shell       |
 |  - C++ / Chromium          |
 |  - CEF Handlers            |
-|  🟡 Future: Full Chromium  |
+|  - Process-Per-Overlay     |
+|  - Message Routing         |
 +----------------------------+
             ↓
 +----------------------------+
 |   Go Wallet Backend        |
 |  - bitcoin-sv/go-sdk       |
-|  - BEEF Transaction Support|
-|  - SPV Verification        |
-|  - Secure Key Management   |
-|  🟡 Future: May migrate to |
-|     Rust for max perf      |
+|  - HD Wallet (BIP44)       |
+|  - Transaction Creation    |
+|  - Transaction Signing     |
+|  - Transaction Broadcasting|
+|  - UTXO Management         |
+|  - Real Blockchain APIs    |
 +----------------------------+
             ↓
 +----------------------------+
-| Identity & Auth Layer      |
+| Bitcoin SV Blockchain      |
+|  - WhatsOnChain API        |
+|  - GorillaPool mAPI        |
+|  - Real Transaction IDs    |
+|  - On-chain Verification   |
++----------------------------+
+            ↓
++----------------------------+
+| Identity & Auth Layer      | 🚧 FUTURE
 |  - BRC-100 Auth Framework  |
 |  - BRC-52/103 Certificates |
 |  - Type-42 Key Derivation  |
 |  - Selective Disclosure    |
 |  - SPV Identity Validation |
-|  - BEEF Atomic Transactions|
-+----------------------------+
-            ↓
-+----------------------------+
-| Bitcoin SV Blockchain      |
-|  - TAAL, GorillaPool       |
-|  - Terranode, ARC Formats  |
-|  🟡 Multi-platform builds  |
 +----------------------------+
 
 
@@ -51,9 +56,10 @@ Process-Per-Overlay Communication Architecture
 ┌─────────────────┐    V8 Injection    ┌─────────────────┐
 │   C++ Backend   │ ──────────────────→ │  Render Process │
 │                 │                     │                 │
-│ • Identity      │                     │ • window.bitcoinBrowser.identity.get() │
-│ • Navigation    │                     │ • window.bitcoinBrowser.navigation.navigate() │
+│ • Wallet APIs   │                     │ • window.bitcoinAPI.sendTransaction() │
+│ • Address Mgmt  │                     │ • window.bitcoinAPI.getBalance() │
 │ • Overlay Mgmt  │                     │ • window.cefMessage.send() │
+│ • Message Handlers│                   │ • window.bitcoinBrowser.address.* │
 └─────────────────┘                     └─────────────────┘
          │                                        │
          │ Process Messages                       │ JavaScript Execution
@@ -62,13 +68,30 @@ Process-Per-Overlay Communication Architecture
 ┌─────────────────┐                     ┌─────────────────┐
 │ Browser Process │                     │   React App     │
 │ Message Handler │                     │                 │
-│                 │                     │ • Overlay triggers │
-│ • overlay_show_*│                     │ • State updates  │
-│ • overlay_close │                     │ • UI rendering   │
-│ • identity_*    │                     │ • Process isolation │
+│                 │                     │ • Transaction UI │
+│ • send_transaction│                   │ • Balance Display│
+│ • get_balance   │                     │ • Address Gen   │
+│ • overlay_show_*│                     │ • Process isolation │
+│ • overlay_close │                     │ • Real-time Updates│
 └─────────────────┘                     └─────────────────┘
 
-Process Isolation Architecture
+## 🔄 Transaction Flow Architecture
+
+### Complete Transaction Pipeline
+```
+React UI → C++ Bridge → Go Daemon → Blockchain
+    ↓           ↓           ↓           ↓
+1. User Input  2. Message   3. Create    4. Broadcast
+   (Amount)    Routing      Transaction  to Miners
+    ↓           ↓           ↓           ↓
+5. Confirmation 6. Response 7. Sign     8. Real TxID
+   Modal        Handling    Transaction  Returned
+    ↓           ↓           ↓           ↓
+9. Success     10. UI      11. UTXO    12. On-chain
+   Display      Update      Selection   Verification
+```
+
+### Process Isolation Architecture
 ┌─────────────────────────────────────────────────────────────┐
 │                    Main Browser Process                     │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐  │
@@ -175,80 +198,19 @@ flowchart TD
     C3a --> C3a3["Settings Panel Layout (SettingsPanelLayout.tsx)"]
     C3a --> C3a4["Backup Modal (BackupModal.tsx)"]
 
-    C3b --> C3b1["Navigation Toolbar"]
-    C3b --> C3b2["Address Bar"]
-    C3b --> C3b3["Wallet Button"]
-    C3b --> C3b4["Settings Button"]
+### ✅ Completed Components
+- **React UI Layer**: Complete with transaction forms, balance display, address management
+- **C++ Bridge Layer**: Full message handling and API injection
+- **Go Wallet Daemon**: Complete HD wallet with transaction processing
+- **Process Isolation**: Each overlay runs in dedicated CEF subprocess
+- **Blockchain Integration**: Working with real Bitcoin SV network
 
-    C4 --> C4a["useBitcoinBrowser - Native API integration"]
+### 🚧 In Development
+- **Window Management**: Keyboard commands and overlay HWND movement
+- **Transaction Receipt UI**: Improved confirmation and receipt display
+- **BRC-100 Authentication**: Identity management system integration
 
-    C5 --> C5a["bitcoinBrowser.d.ts - Native API types"]
-    C5 --> C5b["identity.d.ts - Identity data types"]
-
-    C6 --> C6a["initWindowBridge.ts - Native communication setup"]
-
-    C7 --> C7a["Vite Configuration (vite.config.ts)"]
-    C7 --> C7b["TypeScript Config (tsconfig.json)"]
-    C7 --> C7c["ESLint Configuration (eslint.config.js)"]
-
-    D --> D1["Main Configuration (CMakeLists.txt)"]
-    D --> D2["Source Compilation"]
-    D --> D3["Dependencies"]
-    D --> D4["CEF Integration"]
-    D --> D5["Build Outputs"]
-    D --> D6["Module Subdirectories"]
-
-    D2 --> D2a["C++ Source Files"]
-    D2 --> D2b["Header Files"]
-    D2 --> D2c["Test Files"]
-
-    D3 --> D3a["OpenSSL (via vcpkg)"]
-    D3 --> D3b["nlohmann/json (via vcpkg)"]
-    D3 --> D3c["Windows System Libraries"]
-
-    D4 --> D4a["Binary Distribution Paths"]
-    D4 --> D4b["Wrapper Library Linking"]
-    D4 --> D4c["Runtime File Copying"]
-
-    D5 --> D5a["BitcoinBrowserShell.exe"]
-    D5 --> D5b["CEF Runtime Files"]
-    D5 --> D5c["Debug/Release Artifacts"]
-
-    D6 --> D6a["src/core/ (CMakeLists.txt)"]
-    D6 --> D6b["tests/ (CMakeLists.txt)"]
-
-    E --> E1["CEF (Chromium Embedded Framework)"]
-    E --> E2["Cryptography"]
-    E --> E3["Windows System"]
-    E --> E4["Package Management"]
-
-    E1 --> E1a["Binary Distribution"]
-    E1 --> E1b["Header Files"]
-    E1 --> E1c["Wrapper Library (libcef_dll_wrapper)"]
-    E1 --> E1d["Runtime DLLs (libcef.dll, cef_sandbox.lib)"]
-    E1 --> E1e["Resources & Locales"]
-
-    E2 --> E2a["OpenSSL (AES, EC, SHA, RIPEMD)"]
-    E2 --> E2b["nlohmann/json (JSON parsing)"]
-
-    E3 --> E3a["user32, gdi32, ole32, oleaut32"]
-    E3 --> E3b["comdlg32, shlwapi, uuid, winmm"]
-    E3 --> E3c["dbghelp, delayimp, shell32"]
-    E3 --> E3d["advapi32, dwmapi, version"]
-
-    E4 --> E4a["vcpkg (C++ dependency manager)"]
-
-    F --> F1["README.md - Project overview and setup"]
-    F --> F2["Architecture.md - System architecture diagram"]
-    F --> F3["BRC-100 - Protocol compatibility documentation"]
-
-    G --> G1[".gitignore - Version control exclusions"]
-    G --> G2[".vscode/ - VS Code workspace settings"]
-    G --> G3["Build Artifacts"]
-
-    G2 --> G2a["settings.json - Editor configuration"]
-    G2 --> G2b["c_cpp_properties.json - C++ IntelliSense"]
-
-    G3 --> G3a["cef-native/build/ - CMake build output"]
-    G3 --> G3b["cef-binaries/ - CEF distribution (gitignored)"]
-    G3 --> G3c["frontend/node_modules/ - npm dependencies (gitignored)"]
+### 📋 Future Components
+- **Transaction History**: Local storage and display
+- **Advanced Address Management**: Gap limit, pruning, high-volume generation
+- **SPV Verification**: Simplified Payment Verification implementation

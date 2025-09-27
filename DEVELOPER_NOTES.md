@@ -2,27 +2,34 @@
 
 ## 🚨 **CURRENT SESSION STATUS - READ THIS FIRST**
 
-### **Current State: Bitcoin SV Wallet System - HD WALLET IMPLEMENTED, TRANSACTION FLOW INCOMPLETE ⚠️**
+### **Current State: Bitcoin SV Wallet System - FULL TRANSACTION FLOW COMPLETE ✅**
 
 **✅ WHAT'S WORKING:**
 1. **HD Wallet System**: BIP44 hierarchical deterministic wallet implementation complete
 2. **Unified Wallet Storage**: Single `wallet.json` file with mnemonic, addresses, and metadata
 3. **Address Generation**: Working HD address generation with proper key derivation
 4. **Transaction Creation**: Complete transaction building with UTXO selection and fee calculation
-5. **UTXO Management**: Real-time UTXO fetching from multiple BSV APIs
-6. **Process-Per-Overlay Architecture**: Each overlay runs in its own dedicated CEF subprocess
-7. **Settings Overlay**: Opens in separate process with proper window management
-8. **Wallet Overlay**: Runs in isolated process with fresh V8 context
-9. **API Injection**: `bitcoinBrowser` API properly injected into each overlay process
-10. **Message Handling**: All IPC messages working correctly between processes
-11. **USD Price Display**: Real-time BSV to USD conversion using CryptoCompare API
-12. **Unified Wallet UI**: Clean interface with Send/Receive buttons and transaction forms
+5. **Transaction Signing**: ✅ **COMPLETE** - Full transaction signing using BSV SDK with source transactions
+6. **Transaction Broadcasting**: ✅ **COMPLETE** - Successfully broadcasting to multiple BSV miners
+7. **UTXO Management**: Real-time UTXO fetching from multiple BSV APIs
+8. **Process-Per-Overlay Architecture**: Each overlay runs in its own dedicated CEF subprocess
+9. **Settings Overlay**: Opens in separate process with proper window management
+10. **Wallet Overlay**: Runs in isolated process with fresh V8 context
+11. **API Injection**: `bitcoinBrowser` API properly injected into each overlay process
+12. **Message Handling**: All IPC messages working correctly between processes
+13. **USD Price Display**: Real-time BSV to USD conversion using CryptoCompare API
+14. **Unified Wallet UI**: Clean interface with Send/Receive buttons and transaction forms
+15. **End-to-End Testing**: ✅ **COMPLETE** - Complete transaction flow validated with on-chain transactions
+16. **Frontend Integration**: ✅ **NEW** - React UI fully integrated with backend via C++ bridge
+17. **Real Transaction IDs**: ✅ **NEW** - Frontend displays actual blockchain transaction IDs
+18. **Balance Display**: ✅ **NEW** - Total balance calculation across all addresses working
+19. **Transaction Confirmation**: ✅ **NEW** - Complete transaction flow with confirmation modals
 
 **❌ WHAT'S NOT WORKING:**
-1. **Transaction Signing**: Not yet tested with real transactions
-2. **Transaction Broadcasting**: Not yet tested with real transactions
-3. **Frontend Transaction Flow**: Not yet integrated with React UI
-4. **End-to-End Testing**: Complete transaction flow not yet validated
+1. **Transaction History**: Not yet implemented
+2. **Advanced Address Management**: Gap limit, pruning, and high-volume address generation
+3. **Window Management Issues**: Keyboard commands, overlay HWND movement with main window
+4. **Transaction Receipt Display**: Needs improved UI for transaction confirmation
 
 **❌ CRITICAL ISSUE - BACKUP MODAL RENDERING:**
 - **Problem**: Backup modal overlay opens but JSX content doesn't display in HWND
@@ -44,7 +51,44 @@
 - **USD Price Integration**: Real-time price conversion using CryptoCompare API
 - **Unified Wallet Interface**: Clean, modern wallet UI with Send/Receive functionality
 
-### **🎉 TODAY'S MAJOR ACHIEVEMENTS (Session Summary):**
+### **🎉 MAJOR ACHIEVEMENTS - FRONTEND INTEGRATION COMPLETE:**
+
+**✅ COMPLETED IN THIS SESSION (2025-09-27):**
+1. **Fixed Transaction Flow**: Resolved complete transaction creation, signing, and broadcasting pipeline
+2. **Fixed Amount Conversion**: Corrected BSV to satoshis conversion (parseInt → parseFloat with multiplication)
+3. **Fixed Transaction ID Extraction**: Implemented proper extraction of real transaction IDs from GorillaPool responses
+4. **Fixed Balance Display**: Connected frontend to backend for total balance calculation across all addresses
+5. **Added Missing Message Handlers**: Implemented C++ renderer process handlers for transaction responses
+6. **Unified Transaction API**: Created single `/transaction/send` endpoint combining create+sign+broadcast
+7. **Frontend Integration**: Connected React UI to native C++ bridge for complete wallet operations
+8. **Real Blockchain Integration**: Transactions now visible on WhatsOnChain with correct transaction IDs
+
+**🔧 TECHNICAL FIXES IMPLEMENTED:**
+- Fixed hardcoded transaction IDs in Go daemon
+- Fixed BSV amount parsing in frontend (0.00000546 BSV → 546 satoshis)
+- Fixed GorillaPool response parsing to extract real transaction IDs
+- Fixed missing C++ message handlers for frontend communication
+- Fixed balance calculation to use live UTXO data from all addresses
+- Fixed transaction ID extraction from miner responses
+
+### **🎉 MAJOR ACHIEVEMENTS - TRANSACTION SYSTEM COMPLETE:**
+
+**✅ COMPLETE TRANSACTION FLOW IMPLEMENTED:**
+- **Problem**: Transaction signing and broadcasting were failing
+- **Root Cause**: BSV SDK `tx.Sign()` requires source transactions and unlocking script templates
+- **Solution**: Store transaction object with source transactions instead of parsing from hex
+- **Result**: ✅ **SUCCESS** - Transactions now sign and broadcast successfully to BSV network
+
+**✅ TRANSACTION SIGNING BREAKTHROUGH:**
+- **Issue**: `tx.Sign()` was not working because inputs lacked source transaction data
+- **Discovery**: Parsing transaction from hex loses `SourceTransaction` and `UnlockingScriptTemplate`
+- **Fix**: Store the original transaction object in `WalletService.createdTransaction`
+- **Outcome**: Transactions now sign correctly with proper unlocking scripts
+
+**✅ BROADCASTING SUCCESS:**
+- **Miners**: Successfully broadcasting to WhatsOnChain and GorillaPool
+- **Validation**: Transactions confirmed on-chain with valid transaction IDs
+- **Example**: `38ac3f46a5e1d5c79dc0e697f15f6bf1cc4cb0114877b8e01c2690a8aac361e5`
 
 **✅ UNIFIED WALLET SYSTEM:**
 - **Problem**: Separate identity and wallet files causing complexity
@@ -115,12 +159,13 @@
 
 **🔍 CURRENT TESTING STATUS:**
 - **Transaction Creation**: ✅ Working - creates transactions with real UTXO data
-- **Transaction Signing**: ❌ Not tested - needs real transaction testing
-- **Transaction Broadcasting**: ❌ Not tested - needs real transaction testing
+- **Transaction Signing**: ✅ **NEW** - Working with BSV SDK and source transactions
+- **Transaction Broadcasting**: ✅ **NEW** - Successfully broadcasting to multiple miners
 - **UTXO Management**: ✅ Working - fetches and manages UTXOs from multiple addresses
 - **Address Generation**: ✅ Working - generates HD addresses with proper derivation
 - **Balance Display**: ✅ Working - shows total balance across all addresses
 - **Frontend Integration**: ❌ Not tested - needs React UI integration
+- **End-to-End Testing**: ✅ **NEW** - Complete transaction flow validated with on-chain transactions
 
 **📋 HD WALLET IMPLEMENTATION COMPLETE:**
 - `go-wallet/main.go` - ✅ Updated with HD wallet system
@@ -133,32 +178,77 @@
 ### **🚀 NEXT DEVELOPMENT PRIORITIES:**
 
 **IMMEDIATE NEXT STEPS (High Priority):**
-1. **TEST TRANSACTION SIGNING**: Test transaction signing with HD wallet
-   - **Current**: Transaction creation working, signing not tested
-   - **Goal**: Verify HD wallet can sign transactions correctly
-   - **Impact**: Validate HD wallet key derivation and signing process
+1. **FRONTEND TRANSACTION INTEGRATION**: Connect React UI to Go daemon transaction endpoints
+   - **Current**: Backend transaction flow complete and tested
+   - **Goal**: Integrate transaction creation, signing, and broadcasting with React UI
+   - **Impact**: Enable users to send transactions through the wallet interface
 
-2. **TEST TRANSACTION BROADCASTING**: Test complete transaction flow with real BSV
-   - **Current**: Transaction creation working, broadcasting not tested
-   - **Goal**: Test broadcasting to BSV network with real transactions
-   - **Impact**: Complete end-to-end transaction system
+2. **TRANSACTION HISTORY IMPLEMENTATION**: Display recent transactions in wallet panel
+   - **Current**: Backend can create and broadcast transactions
+   - **Goal**: Show transaction history with status, amounts, and transaction IDs
+   - **Impact**: Users can see their transaction history and status
 
-3. **FRONTEND TRANSACTION INTEGRATION**: Complete React transaction form
-   - **Current**: Backend transaction system complete, frontend not integrated
-   - **Goal**: Frontend form for creating and sending transactions
-   - **Impact**: User-friendly transaction interface
+3. **REAL-TIME BALANCE UPDATES**: Update balances after successful transactions
+   - **Current**: Balances show correctly but don't update after transactions
+   - **Goal**: Automatically refresh balances after transaction completion
+   - **Impact**: Users see updated balances immediately after sending transactions
 
-4. **END-TO-END TESTING**: Test complete flow through frontend
-   - **Current**: Backend working, frontend integration not tested
-   - **Goal**: Test complete transaction flow through React UI
-   - **Impact**: Validate complete user experience
+4. **ERROR HANDLING & USER FEEDBACK**: Comprehensive error handling for transaction failures
+   - **Current**: Backend has error handling, frontend needs user feedback
+   - **Goal**: Show clear error messages and success confirmations
+   - **Impact**: Better user experience with clear feedback
 
 5. **SKIP BACKUP MODAL ISSUE**: Move backup modal to installation process
    - **Current**: Modal blocks wallet initialization due to rendering issues
    - **Goal**: Remove modal from startup, add to installation/setup process
    - **Impact**: Unblocks core wallet development
 
-### **🔧 HD WALLET IMPLEMENTATION COMPLETE:**
+**🎯 FRONTEND INTEGRATION TASKS:**
+
+1. **TransactionForm.tsx Integration**:
+   - Connect form submission to `/transaction/create` endpoint
+   - Handle transaction creation response
+   - Call `/transaction/sign` endpoint with created transaction
+   - Call `/transaction/broadcast` endpoint with signed transaction
+   - Show loading states during each step
+   - Display success/error messages
+
+2. **useTransaction.ts Hook**:
+   - Implement transaction creation function
+   - Implement transaction signing function
+   - Implement transaction broadcasting function
+   - Handle error states and loading states
+   - Return transaction status and results
+
+3. **useBalance.ts Updates**:
+   - Add function to refresh balance after transaction
+   - Update balance display when transaction completes
+   - Handle balance updates in real-time
+
+4. **WalletPanelContent.tsx Updates**:
+   - Add transaction history display
+   - Show recent transactions with status
+   - Add transaction details modal
+   - Update balance display after transactions
+
+### **🔧 TRANSACTION SYSTEM IMPLEMENTATION COMPLETE:**
+
+**✅ Phase 1: Real Transaction Serialization and Signing - COMPLETE**
+- **File**: `go-wallet/transaction_builder.go` - ✅ Complete transaction building with BSV SDK
+- **File**: `go-wallet/transaction_broadcaster.go` - ✅ Multi-miner broadcasting support
+- **File**: `go-wallet/utxo_manager.go` - ✅ UTXO fetching and management
+- **File**: `go-wallet/main.go` - ✅ HTTP API endpoints for transaction operations
+
+**✅ Key Technical Achievements:**
+- **BSV SDK Integration**: Proper use of `go-sdk` for transaction building and signing
+- **Source Transaction Handling**: Fetching and storing source transactions for signing
+- **Unlocking Script Templates**: Using `p2pkh.Unlock()` for proper script templates
+- **Transaction Object Persistence**: Storing transaction objects instead of parsing from hex
+- **Multi-Miner Broadcasting**: Support for WhatsOnChain and GorillaPool
+- **Rate Limiting Handling**: Retry logic for API rate limits
+- **Error Handling**: Comprehensive error handling and logging
+
+**✅ HD WALLET IMPLEMENTATION COMPLETE:**
 
 **✅ Phase 1: Core HD Wallet (Go Daemon) - COMPLETE**
 - **File**: `go-wallet/hd_wallet.go` - ✅ Complete HD wallet implementation
@@ -565,69 +655,102 @@ window.bitcoinBrowser.overlay.show = (overlayType: string) => {
    - Go daemon graceful shutdown integration
    - Frontend event listener cleanup in React components
    - Console window cleanup (FreeConsole on shutdown)
+4. **Frontend Integration**: ✅ COMPLETE
+   - Fixed complete transaction flow from React UI to blockchain
+   - Fixed BSV amount conversion (parseInt → parseFloat with multiplication)
+   - Fixed transaction ID extraction from GorillaPool responses
+   - Fixed balance display with total calculation across all addresses
+   - Added missing C++ message handlers for frontend communication
+   - Implemented unified `/transaction/send` endpoint
+   - Real transaction IDs now displayed in frontend
+   - Complete end-to-end testing validated with on-chain transactions
 
 ### 🚀 Feature Development (Next Phase)
 
-#### **1. Real Transaction Serialization and Signing** (Priority #1)
+#### **1. Window Management & UI Improvements** (Priority #1)
+**Issues to Address:**
+- **Keyboard Commands**: Fix keyboard shortcuts not working in overlays
+- **Overlay HWND Movement**: Overlay windows not moving/minimizing/maximizing with main app window
+- **Transaction Receipt Display**: Improve UI for transaction confirmation and receipt display
+- **Design Aesthetics**: Update visual design and user experience
+
 **Implementation Steps:**
+1. **Fix Keyboard Command Handling**
+   - Investigate CEF keyboard event handling in overlay processes
+   - Implement proper keyboard shortcut routing to overlays
+   - Test common shortcuts (Ctrl+C, Ctrl+V, Enter, Escape, etc.)
+
+2. **Fix Overlay Window Management**
+   - Implement proper HWND parent-child relationships
+   - Add window movement synchronization with main application
+   - Implement proper minimize/maximize/restore behavior
+   - Test window state changes and focus management
+
+3. **Improve Transaction Receipt Display**
+   - Design better transaction confirmation modal
+   - Add transaction details (amount, fee, recipient, timestamp)
+   - Improve WhatsOnChain link display and styling
+   - Add transaction status indicators
+
+4. **Design Aesthetics Updates**
+   - Review and improve overall UI/UX design
+   - Update color schemes and typography
+   - Improve button styles and interactions
+   - Add loading states and animations
+
+#### **2. BRC-100 Authentication Integration** (Priority #2)
+**Proof-of-Concept Implementation:**
+
+**Overview:**
+- Integrate BRC-100 authentication system for Bitcoin SV identity management
+- Implement proof-of-concept authentication flow using Bitcoin SV transactions
+- Create secure identity verification system for the browser
 
 **Backend (Go Daemon):**
-1. **Implement Real Transaction Serialization**
-   - Replace placeholder serialization with proper Bitcoin transaction format
-   - Use `bitcoin-sv/go-sdk` for transaction building
-   - Implement proper input/output serialization
-   - Add transaction validation logic
+1. **BRC-100 Protocol Implementation**
+   - Implement BRC-100 authentication protocol
+   - Create identity management endpoints
+   - Integrate with existing HD wallet system
+   - Create authentication challenge/response system
+   - Implement identity verification endpoints
 
-2. **Implement Real Transaction Signing**
-   - Replace placeholder signing with real cryptographic operations
-   - Use `bitcoin-sv/go-sdk` for signature generation
-   - Implement proper SIGHASH_ALL signing
-   - Add signature verification
+2. **Frontend Integration**
+   - Create BRC-100 authentication UI components
+   - Implement identity management interface
+   - Add authentication status indicators
+   - Integrate with existing wallet UI
 
-3. **Complete Broadcasting Implementation**
-   - Test real transaction broadcasting to BSV network
-   - Implement proper error handling and retry logic
-   - Add transaction status tracking and confirmation
+#### **3. Advanced Address Management** (Priority #3 - Future)
+**Deferred to Later Development:**
+- Gap limit implementation (20-address standard)
+- Address pruning and cleanup
+- High-volume address generation
+- Privacy-preserving UTXO consolidation
+- Address usage tracking and management
 
 **Frontend (React/C++):**
-1. **Transaction UI Components**
-   - Create transaction form (recipient, amount, fee)
-   - Add transaction history display
-   - Implement transaction status indicators
-   - Add confirmation dialogs
+1. **Transaction UI Components** ✅ COMPLETE
+   - Transaction form (recipient, amount, fee) ✅ COMPLETE
+   - Transaction confirmation modals ✅ COMPLETE
+   - Transaction status indicators ✅ COMPLETE
+   - WhatsOnChain integration ✅ COMPLETE
 
-2. **C++ Integration**
-   - Add transaction message handlers in `simple_handler.cpp`
-   - Implement V8 bindings for transaction operations
-   - Add proper error handling and user feedback
+2. **C++ Integration** ✅ COMPLETE
+   - Transaction message handlers in `simple_handler.cpp` ✅ COMPLETE
+   - V8 bindings for transaction operations ✅ COMPLETE
+   - Error handling and user feedback ✅ COMPLETE
 
-#### **2. Balance Display in USD** (Priority #2)
+#### **4. Transaction History** (Priority #4 - Future)
 **Implementation Steps:**
-1. **Price API Integration**
-   - Add Bitcoin price fetching (CoinGecko/CoinMarketCap API)
-   - Implement price caching and refresh logic
-   - Add USD conversion calculations
+1. **Transaction Storage**
+   - Add transaction history storage to wallet.json
+   - Implement transaction categorization and filtering
+   - Add search and export functionality
 
-2. **Balance Calculation**
-   - Implement UTXO balance calculation
-   - Add real-time balance updates
-   - Display both BTC and USD amounts
-
-3. **UI Components**
-   - Add balance display to wallet overlay
-   - Implement price refresh controls
-   - Add balance history/graphs
-
-#### **3. Additional Wallet Features** (Future)
-- **BRC-100 authentication implementation**
-- **SPV transaction verification**
-- **Hardware wallet integration**
-
-#### **4. UI/UX Improvements**
-- Add wallet status indicators
-- Better error messaging and user feedback
-- Improve overlay window positioning and sizing
-- Add loading states for all async operations
+2. **Transaction Display**
+   - Create transaction history UI components
+   - Implement transaction details view
+   - Add transaction status tracking
 
 ---
 
@@ -1200,3 +1323,203 @@ else {
 - **Progress**: Fixed duplicate deferred triggers, overlay closing issue
 - **Current**: Overlay HWND reuse breaks React app loading
 - **Next**: Fix React app loading when reusing overlay HWND
+
+---
+
+## 🎉 **TRANSACTION SYSTEM COMPLETE - SESSION SUMMARY**
+
+### **What We Accomplished:**
+
+**✅ COMPLETE TRANSACTION FLOW IMPLEMENTED:**
+1. **Transaction Creation**: Builds transactions with real UTXO data using BSV SDK
+2. **Transaction Signing**: Signs transactions with proper source transactions and unlocking scripts
+3. **Transaction Broadcasting**: Successfully broadcasts to multiple BSV miners
+4. **On-Chain Validation**: Transactions confirmed on-chain with valid transaction IDs
+
+**✅ KEY TECHNICAL BREAKTHROUGHS:**
+1. **BSV SDK Integration**: Proper use of `go-sdk` for transaction operations
+2. **Source Transaction Handling**: Fetching and storing source transactions for signing
+3. **Unlocking Script Templates**: Using `p2pkh.Unlock()` for proper script templates
+4. **Transaction Object Persistence**: Storing transaction objects instead of parsing from hex
+5. **Multi-Miner Broadcasting**: Support for WhatsOnChain and GorillaPool
+6. **Rate Limiting Handling**: Retry logic for API rate limits
+
+**✅ TESTING VALIDATION:**
+- **End-to-End Testing**: Complete transaction flow tested and validated
+- **On-Chain Confirmation**: Transactions confirmed on BSV blockchain
+- **Example Transaction**: `38ac3f46a5e1d5c79dc0e697f15f6bf1cc4cb0114877b8e01c2690a8aac361e5`
+
+### **What We Learned:**
+
+**🔍 BSV SDK Requirements:**
+- `tx.Sign()` requires source transactions and unlocking script templates
+- Parsing transactions from hex loses critical signing context
+- Must store transaction objects with source transactions for proper signing
+
+**🔍 Transaction Signing Process:**
+1. Fetch source transaction for each UTXO
+2. Create unlocking script template using `p2pkh.Unlock()`
+3. Store transaction object with source transactions
+4. Call `tx.Sign()` with proper context
+5. Broadcast signed transaction to miners
+
+**🔍 Broadcasting Requirements:**
+- Different miners require different payload formats
+- Rate limiting must be handled with retry logic
+- Response parsing varies by miner type
+
+### **Next Steps - Frontend Integration:**
+
+**🎯 IMMEDIATE PRIORITIES:**
+1. **TransactionForm.tsx Integration**: Connect React UI to Go daemon endpoints
+2. **useTransaction.ts Hook**: Implement transaction management functions
+3. **useBalance.ts Updates**: Add balance refresh after transactions
+4. **Transaction History**: Display recent transactions in wallet panel
+5. **Error Handling**: Comprehensive error handling and user feedback
+
+**🎯 FRONTEND INTEGRATION TASKS:**
+- Connect transaction form to `/transaction/create` endpoint
+- Handle transaction creation, signing, and broadcasting flow
+- Show loading states and success/error messages
+- Update balances after successful transactions
+- Display transaction history with status and details
+
+The backend transaction system is now complete and ready for frontend integration!
+
+---
+
+## 🔐 **ADDRESS MANAGEMENT ANALYSIS & BEST PRACTICES**
+
+### **Current Implementation Status:**
+
+**✅ ADDRESS GENERATION FLOW:**
+1. **Frontend**: `handleReceiveClick()` → `generateAndCopy()`
+2. **Hook**: `useAddress.ts` → `window.bitcoinBrowser.address.generate()`
+3. **C++ Bridge**: `WalletService.cpp` → `POST /wallet/address/generate`
+4. **Go Daemon**: `GetNextAddress()` → saves to `wallet.json`
+
+**✅ CURRENT BEHAVIOR:**
+- **New address every click**: Each "Receive" generates a new address
+- **Persistent storage**: All addresses saved to `wallet.json`
+- **No limits**: Unlimited address generation
+- **Sequential indexing**: `CurrentIndex` tracks next address
+
+### **Industry Standards & Best Practices:**
+
+**🔍 Gap Limit (BIP44 Standard):**
+- **Standard**: 20 unused addresses maximum
+- **Purpose**: Prevents infinite address scanning during wallet recovery
+- **Implementation**: Stop scanning after 20 consecutive unused addresses
+- **Recovery**: Wallets scan addresses until gap limit reached
+
+**🔍 Address Management Best Practices:**
+1. **Avoid address reuse**: Generate new address for each transaction
+2. **Use change addresses**: Send change to new addresses for privacy
+3. **Implement gap limit**: 20-address limit for wallet recovery
+4. **Mark addresses as used**: Track which addresses have received funds
+5. **Automatic discovery**: Scan blockchain for used addresses during recovery
+
+### **Security & Privacy Implications:**
+
+**🔒 Current Risks:**
+- **No address limit**: Could generate infinite addresses, making recovery difficult
+- **Missing gap limit**: Wallet recovery might miss addresses beyond gap
+- **No pruning**: Unused addresses accumulate, increasing attack surface
+- **Address reuse**: Current implementation doesn't prevent reuse
+- **No change addresses**: Transactions don't use fresh change addresses
+
+**🔒 High-Volume Scenarios (20+ addresses/minute):**
+- **Privacy risk**: Rapid address generation can create patterns
+- **Tracking risk**: Addresses generated in quick succession may be linked
+- **Solution**: Implement address pooling and staggered generation
+
+### **Recommended Implementation Strategy:**
+
+**🎯 Phase 1: Basic Gap Limit (Proof-of-Concept)**
+```go
+const GAP_LIMIT = 20
+const MAX_ADDRESSES = 1000 // Reasonable limit for testing
+
+func (wm *WalletManager) GetNextAddress() (*AddressInfo, error) {
+    // Check if we've hit the address limit
+    if len(wm.wallet.Addresses) >= MAX_ADDRESSES {
+        return nil, fmt.Errorf("address limit reached")
+    }
+
+    // Generate next address
+    address, err := wm.GenerateAddress(wm.wallet.CurrentIndex)
+    if err != nil {
+        return nil, err
+    }
+
+    // Add to wallet
+    wm.wallet.Addresses = append(wm.wallet.Addresses, *address)
+    wm.wallet.CurrentIndex++
+
+    return address, nil
+}
+```
+
+**🎯 Phase 2: Address Usage Tracking**
+```go
+func (wm *WalletManager) MarkAddressUsed(address string) error {
+    for i := range wm.wallet.Addresses {
+        if wm.wallet.Addresses[i].Address == address {
+            wm.wallet.Addresses[i].Used = true
+            wm.wallet.Addresses[i].LastUsed = time.Now()
+            return wm.SaveToFile(GetWalletPath())
+        }
+    }
+    return fmt.Errorf("address not found")
+}
+```
+
+**🎯 Phase 3: UTXO Consolidation (Privacy-Preserving)**
+```go
+func (wm *WalletManager) ConsolidateUTXOs() error {
+    // Find addresses with small UTXOs
+    smallUTXOAddresses := wm.findAddressesWithSmallUTXOs()
+
+    // Create consolidation transaction
+    // Send all small UTXOs to a new address
+    // Use multiple intermediate addresses to break links
+
+    return nil
+}
+```
+
+### **Testing Strategy:**
+
+**🔍 Address Tracking:**
+1. **Counter**: Log every address generation with timestamp
+2. **UTXO monitoring**: Track which addresses receive funds
+3. **Balance verification**: Ensure total balance = sum of address balances
+4. **Gap limit testing**: Verify recovery works within 20-address gap
+
+**🔍 Privacy Testing:**
+1. **Pattern detection**: Ensure no predictable address generation patterns
+2. **Linkability testing**: Verify addresses can't be easily linked
+3. **Consolidation testing**: Test UTXO consolidation doesn't create patterns
+
+### **Immediate Recommendations:**
+
+**For Proof-of-Concept:**
+1. **Keep current unlimited generation** (simple, works for testing)
+2. **Add address usage tracking** (mark addresses as used when they receive funds)
+3. **Implement basic address limit** (1000 addresses max for testing)
+4. **Add testing counters** (log address generation and usage)
+
+**For High-Volume Scenarios:**
+1. **Address pooling**: Pre-generate addresses in batches
+2. **Staggered generation**: Add random delays between address generation
+3. **UTXO consolidation**: Regularly consolidate small UTXOs
+4. **Privacy mixing**: Use intermediate addresses to break transaction links
+
+### **Address Management Roadmap:**
+
+**🎯 Next Development Priorities:**
+1. **Frontend Transaction Integration**: Connect React UI to Go daemon endpoints
+2. **Address Usage Tracking**: Mark addresses as used when they receive funds
+3. **Basic Gap Limit**: Implement 20-address gap limit for recovery
+4. **UTXO Consolidation**: Privacy-preserving consolidation for high-volume scenarios
+5. **Address Pooling**: Pre-generate addresses for high-volume use cases

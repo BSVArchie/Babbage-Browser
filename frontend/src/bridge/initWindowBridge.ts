@@ -200,6 +200,28 @@ window.bitcoinBrowser.address.generate = () => {
 
         window.cefMessage?.send('get_transaction_history', []);
       });
+    },
+
+    sendTransaction: (data: any) => {
+      console.log("🚀 JS: Sending send_transaction to native");
+      console.log("🚀 JS: Data being sent:", data);
+      return new Promise((resolve, reject) => {
+        window.onSendTransactionResponse = (data: any) => {
+          console.log("✅ Transaction sent:", data);
+          resolve(data);
+          delete window.onSendTransactionResponse;
+          delete window.onSendTransactionError;
+        };
+
+        window.onSendTransactionError = (error: string) => {
+          console.error("❌ Transaction error:", error);
+          reject(new Error(error));
+          delete window.onSendTransactionResponse;
+          delete window.onSendTransactionError;
+        };
+
+        window.cefMessage?.send('send_transaction', [JSON.stringify(data)]);
+      });
     }
   };
 }

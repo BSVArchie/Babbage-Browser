@@ -435,6 +435,63 @@ func main() {
 		json.NewEncoder(w).Encode(response)
 	})
 
+	// Complete transaction send endpoint (create + sign + broadcast)
+	http.HandleFunc("/transaction/send", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req struct {
+			ToAddress string `json:"toAddress"`
+			Amount    int64  `json:"amount"`
+			FeeRate   int64  `json:"feeRate"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		// Create transaction
+		createReq := &TransactionRequest{
+			RecipientAddress: req.ToAddress,
+			Amount:          req.Amount,
+			FeeRate:         req.FeeRate,
+		}
+
+		_, err := walletService.transactionBuilder.CreateTransaction(createReq)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to create transaction: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		// Sign transaction (uses stored transaction object and UTXOs)
+		signResp, err := walletService.transactionBuilder.SignTransaction("", "", walletService.selectedUTXOs)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to sign transaction: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		// Broadcast transaction
+		broadcastResp, err := walletService.broadcaster.BroadcastTransaction(signResp.RawTx)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to broadcast transaction: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		// Return success response with WhatsOnChain link
+		response := map[string]interface{}{
+			"success":         true,
+			"txid":           broadcastResp.TxID,
+			"whatsOnChainUrl": fmt.Sprintf("https://whatsonchain.com/tx/%s", broadcastResp.TxID),
+			"message":        "Transaction sent successfully",
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	})
+
 	// Start HTTP server
 	port := "8080"
 	fmt.Printf("🌐 Wallet daemon listening on port %s\n", port)
@@ -444,6 +501,7 @@ func main() {
 	fmt.Println("  POST /transaction/create - Create unsigned transaction")
 	fmt.Println("  POST /transaction/sign - Sign transaction")
 	fmt.Println("  POST /transaction/broadcast - Broadcast transaction to BSV network")
+	fmt.Println("  POST /transaction/send - Send complete transaction (create + sign + broadcast)")
 	fmt.Println("  GET  /transaction/history - Get transaction history")
 	fmt.Println("  GET  /wallet/status - Check if unified wallet exists")
 	fmt.Println("  POST /wallet/create - Create new unified wallet")

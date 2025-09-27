@@ -15,22 +15,59 @@ window.bitcoinBrowser.identity.markBackedUp(): Promise<boolean>
 window.bitcoinBrowser.identity.authenticate(challenge: string): Promise<AuthResponse>
 ```
 
-### Transaction Management
+### Transaction Management ✅ COMPLETE
 ```typescript
-// Transaction operations
+// Unified transaction operations (create + sign + broadcast)
+window.bitcoinAPI.sendTransaction(data: TransactionData): Promise<TransactionResponse>
+
+// Transaction data structure
+interface TransactionData {
+  toAddress: string;
+  amount: number;        // in satoshis
+  feeRate: number;       // sat/byte
+}
+
+// Transaction response structure
+interface TransactionResponse {
+  success: boolean;
+  txid: string;
+  message: string;
+  whatsOnChainUrl: string;
+}
+
+// Legacy transaction operations (DEPRECATED - use sendTransaction instead)
 window.bitcoinBrowser.transactions.create(txData: TransactionData): Promise<Transaction>
 window.bitcoinBrowser.transactions.sign(txId: string): Promise<Signature>
 window.bitcoinBrowser.transactions.broadcast(tx: Transaction): Promise<BroadcastResult>
 window.bitcoinBrowser.transactions.getHistory(): Promise<Transaction[]>
 ```
 
-### Balance & UTXO Management
+### Balance & UTXO Management ✅ COMPLETE
 ```typescript
-// Balance and UTXO operations
-window.bitcoinBrowser.balance.get(): Promise<number>
+// Balance operations (total across all addresses)
+window.bitcoinAPI.getBalance(): Promise<BalanceResponse>
+
+// Balance response structure
+interface BalanceResponse {
+  balance: number;        // total balance in satoshis
+  usdValue?: number;      // USD equivalent (if price available)
+}
+
+// Address operations
+window.bitcoinBrowser.address.generate(): Promise<AddressData>
+window.bitcoinBrowser.address.getCurrent(): Promise<string>
+window.bitcoinBrowser.address.getAll(): Promise<AddressData[]>
+
+// Address data structure
+interface AddressData {
+  address: string;
+  index: number;
+  balance: number;        // balance for this specific address
+}
+
+// Legacy UTXO operations (DEPRECATED - use getBalance for total balance)
 window.bitcoinBrowser.utxos.list(): Promise<UTXO[]>
 window.bitcoinBrowser.utxos.refresh(): Promise<void>
-window.bitcoinBrowser.address.generate(): Promise<string>
 ```
 
 ### Process-Per-Overlay Management
@@ -236,24 +273,73 @@ func (h *SPVHandler) VerifyMerkleProof(proof map[string]interface{}) (bool, erro
 }
 ```
 
-## 🌐 Bitcoin SV Blockchain APIs
+## 🔗 Go Daemon HTTP APIs ✅ COMPLETE
 
-### Miner Integration
-
-#### TAAL Miner
+### Wallet Management
 ```http
-POST https://api.taal.com/arc/tx
+# Get total balance across all addresses
+GET /wallet/balance
+Response: {"balance": 29391}
+
+# Generate new HD address
+POST /wallet/address/generate
+Response: {"address": "1ABC...", "index": 5}
+
+# Get current address
+GET /wallet/address/current
+Response: {"address": "1ABC...", "index": 5}
+
+# Get all addresses
+GET /wallet/addresses
+Response: [{"address": "1ABC...", "index": 0, "balance": 1000}, ...]
+```
+
+### Transaction Management
+```http
+# Send complete transaction (create + sign + broadcast)
+POST /transaction/send
 Content-Type: application/json
 
 {
-  "rawtx": "hex_encoded_transaction",
-  "format": "beef"
+  "toAddress": "1ABC...",
+  "amount": 1000,
+  "feeRate": 5
+}
+
+Response: {
+  "success": true,
+  "txid": "bf089bece19a7fac4d7977ba95361075ecc0b87b76a5a68be3ed0e32e0b36286",
+  "message": "Transaction sent successfully",
+  "whatsOnChainUrl": "https://whatsonchain.com/tx/bf089bece19a7fac4d7977ba95361075ecc0b87b76a5a68be3ed0e32e0b36286"
 }
 ```
 
-#### GorillaPool Miner
+### UTXO Management
 ```http
-POST https://api.gorillapool.io/api/v1/transactions
+# Fetch UTXOs for specific address
+GET /utxos/{address}
+Response: [{"txid": "abc...", "vout": 0, "amount": 1000, "script": "76a9..."}]
+
+# Get UTXO manager status
+GET /utxos/status
+Response: {"status": "active", "lastUpdate": "2025-09-27T12:43:16Z"}
+```
+
+## 🌐 Bitcoin SV Blockchain APIs
+
+### Miner Integration ✅ WORKING
+
+#### WhatsOnChain (Primary)
+```http
+POST https://api.whatsonchain.com/v1/bsv/main/tx/raw
+Content-Type: application/json
+
+"hex_encoded_transaction"
+```
+
+#### GorillaPool mAPI (Secondary)
+```http
+POST https://mapi.gorillapool.io/mapi/tx
 Content-Type: application/json
 
 {
@@ -261,40 +347,82 @@ Content-Type: application/json
 }
 ```
 
-#### Terranode Miner
+#### Legacy Miners (Deprecated)
 ```http
+# TAAL Miner (deprecated - endpoint changed)
+POST https://api.taal.com/arc/tx
+
+# Terranode Miner (deprecated - endpoint changed)
 POST https://api.terranode.io/v1/transactions
-Content-Type: application/json
-
-{
-  "rawtx": "hex_encoded_transaction",
-  "format": "arc"
-}
 ```
 
-### Balance & UTXO Queries
+### Balance & UTXO Queries ✅ WORKING
 
-#### Address Balance
+#### Address Balance (WhatsOnChain)
 ```http
+GET https://api.whatsonchain.com/v1/bsv/main/address/{address}/balance
+Response: {"balance": 29391, "unconfirmed": 0}
+```
+
+#### UTXO List (WhatsOnChain)
+```http
+GET https://api.whatsonchain.com/v1/bsv/main/address/{address}/unspent
+Response: [{"txid": "abc...", "vout": 0, "amount": 1000, "script": "76a9..."}]
+```
+
+#### Transaction Details (WhatsOnChain)
+```http
+GET https://api.whatsonchain.com/v1/bsv/main/tx/{txid}/hex
+Response: "0100000001..."
+```
+
+#### Legacy APIs (Deprecated)
+```http
+# TAAL Miner (deprecated)
 GET https://api.taal.com/arc/address/{address}/balance
-```
-
-#### UTXO List
-```http
 GET https://api.taal.com/arc/address/{address}/utxos
 ```
 
-#### Transaction History
-```http
-GET https://api.taal.com/arc/address/{address}/history
+## 🔄 Message Flow Architecture ✅ COMPLETE
+
+### Frontend → C++ Bridge → Go Daemon
+```typescript
+// 1. Frontend calls unified API
+const result = await window.bitcoinAPI.sendTransaction({
+  toAddress: "1ABC...",
+  amount: 1000,
+  feeRate: 5
+});
+
+// 2. C++ bridge processes message
+window.cefMessage.send('send_transaction', [JSON.stringify(data)]);
+
+// 3. Go daemon handles complete transaction flow
+POST /transaction/send → Create → Sign → Broadcast → Response
 ```
 
-### Transaction Status
-```http
-GET https://api.taal.com/arc/tx/{txid}
-```
+## 📊 Current Implementation Status
 
-## 🔐 BRC-100 Protocol APIs
+### ✅ Completed Features
+- **HD Wallet System**: BIP44 hierarchical deterministic wallet
+- **Transaction Flow**: Complete create + sign + broadcast pipeline
+- **Balance Management**: Total balance calculation across all addresses
+- **Address Generation**: HD address generation with proper indexing
+- **Real Blockchain Integration**: Working with WhatsOnChain and GorillaPool
+- **Frontend Integration**: React UI fully connected to backend
+- **Process Isolation**: Each overlay runs in dedicated CEF subprocess
+
+### 🚧 In Development
+- **Window Management**: Keyboard commands and overlay HWND movement
+- **Transaction Receipt UI**: Improved confirmation and receipt display
+- **BRC-100 Authentication**: Identity management system integration
+
+### 📋 Future Features
+- **Transaction History**: Local storage and display
+- **Advanced Address Management**: Gap limit, pruning, high-volume generation
+- **SPV Verification**: Simplified Payment Verification implementation
+
+## 🔐 BRC-100 Protocol APIs (Future)
 
 ### Authentication Flow
 ```typescript

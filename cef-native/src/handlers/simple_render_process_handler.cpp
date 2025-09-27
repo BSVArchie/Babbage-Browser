@@ -492,6 +492,38 @@ bool SimpleRenderProcessHandler::OnProcessMessageReceived(
         return true;
     }
 
+    if (message_name == "send_transaction_response") {
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        std::string responseJson = args->GetString(0);
+
+        std::cout << "✅ Send transaction response received: " << responseJson << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "✅ Send transaction response received: " << responseJson << std::endl;
+        debugLog.close();
+
+        // Execute JavaScript to call the callback function directly
+        std::string js = "if (window.onSendTransactionResponse) { window.onSendTransactionResponse(" + responseJson + "); }";
+        frame->ExecuteJavaScript(js, frame->GetURL(), 0);
+
+        return true;
+    }
+
+    if (message_name == "send_transaction_error") {
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        std::string errorMessage = args->GetString(0);
+
+        std::cout << "❌ Send transaction error received: " << errorMessage << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "❌ Send transaction error received: " << errorMessage << std::endl;
+        debugLog.close();
+
+        // Execute JavaScript to handle the error
+        std::string js = "if (window.onSendTransactionError) { window.onSendTransactionError('" + errorMessage + "'); }";
+        frame->ExecuteJavaScript(js, frame->GetURL(), 0);
+
+        return true;
+    }
+
     if (message_name == "get_balance_response") {
         CefRefPtr<CefListValue> args = message->GetArgumentList();
         std::string responseJson = args->GetString(0);

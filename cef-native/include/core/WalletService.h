@@ -31,6 +31,7 @@ public:
     nlohmann::json createTransaction(const nlohmann::json& transactionData);
     nlohmann::json signTransaction(const nlohmann::json& transactionData);
     nlohmann::json broadcastTransaction(const nlohmann::json& transactionData);
+    nlohmann::json sendTransaction(const nlohmann::json& transactionData);
     nlohmann::json getBalance(const nlohmann::json& balanceData);
     nlohmann::json getTransactionHistory();
 

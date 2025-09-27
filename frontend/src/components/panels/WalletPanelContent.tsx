@@ -11,11 +11,13 @@ import '../../components/TransactionComponents.css';
 
 const WalletPanel = () => {
   const { balance, usdValue, isLoading: balanceLoading, refreshBalance } = useBalance();
-  const { isLoading: transactionLoading, error: transactionError } = useTransaction();
+  const { isLoading: transactionLoading, error: transactionError, sendTransaction } = useTransaction();
   const { currentAddress, isGenerating, generateAndCopy } = useAddress();
 
   const [showSendForm, setShowSendForm] = useState(false);
-  const [lastTransaction, setLastTransaction] = useState<TransactionResponse | null>(null);
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [transactionData, setTransactionData] = useState<any>(null);
+  const [transactionResult, setTransactionResult] = useState<TransactionResponse | null>(null);
   const [showReceiveAddress, setShowReceiveAddress] = useState(false);
   const [addressCopiedMessage, setAddressCopiedMessage] = useState<string | null>(null);
 
@@ -47,11 +49,24 @@ const WalletPanel = () => {
     }
   };
 
-  const handleTransactionCreated = (result: TransactionResponse) => {
-    setLastTransaction(result);
-    setShowSendForm(false); // Hide form after successful transaction
-    // Refresh balance after transaction
-    refreshBalance().catch(err => console.error('Balance refresh failed:', err));
+  const handleSendSubmit = (data: any) => {
+    setTransactionData(data);
+    setShowConfirmation(true);
+  };
+
+  const handleConfirmSend = async () => {
+    if (!transactionData) return;
+
+    try {
+      const result = await sendTransaction(transactionData);
+      setTransactionResult(result);
+      setShowConfirmation(false);
+      setShowSendForm(false);
+      // Refresh balance after successful transaction
+      refreshBalance();
+    } catch (error) {
+      console.error('Transaction failed:', error);
+    }
   };
 
   return (
@@ -76,10 +91,6 @@ const WalletPanel = () => {
         <div className="wallet-right-panel">
           {/* Top Section */}
           <div className="wallet-top-section">
-            {/* Logo Area */}
-            <div className="wallet-logo">
-              <div className="logo-placeholder">Cool logo or something</div>
-            </div>
 
             {/* Balance Display */}
             <div className="wallet-balance">
@@ -114,7 +125,7 @@ const WalletPanel = () => {
             {showSendForm && (
               <div className="send-form-container">
                 <TransactionForm
-                  onTransactionCreated={handleTransactionCreated}
+                  onTransactionCreated={handleSendSubmit}
                   balance={balance}
                   isLoading={transactionLoading}
                   error={transactionError}
@@ -144,19 +155,55 @@ const WalletPanel = () => {
                       </div>
                     )}
 
-            {lastTransaction && (
-              <div className="success-message">
-                <strong>✅ Transaction Created Successfully!</strong>
-                <br />
-                <strong>Transaction ID:</strong> {lastTransaction.txid}
-                <br />
-                <strong>Fee:</strong> {lastTransaction.fee} satoshis
-                <br />
-                <strong>Status:</strong> {lastTransaction.status}
+            {/* Confirmation Modal */}
+            {showConfirmation && transactionData && (
+              <div className="confirmation-modal">
+                <div className="modal-content">
+                  <h3>Confirm Transaction</h3>
+                  <div className="transaction-details">
+                    <p><strong>To:</strong> {transactionData.recipient}</p>
+                    <p><strong>Amount:</strong> {transactionData.amount} satoshis</p>
+                    <p><strong>Fee Rate:</strong> {transactionData.feeRate} sat/byte</p>
+                  </div>
+                  <div className="modal-buttons">
+                    <button onClick={handleConfirmSend} className="confirm-button">
+                      Confirm Send
+                    </button>
+                    <button onClick={() => setShowConfirmation(false)} className="cancel-button">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 
-            {!showSendForm && !showReceiveAddress && !lastTransaction && (
+            {/* Success Modal */}
+            {transactionResult && (
+              <div className="success-modal">
+                <div className="modal-content">
+                  <h3>✅ Transaction Sent!</h3>
+                  <div className="transaction-details">
+                    <p><strong>TxID:</strong> {transactionResult.txid}</p>
+                    <p><strong>Status:</strong> {transactionResult.message}</p>
+                  </div>
+                  {transactionResult.whatsOnChainUrl && (
+                    <a
+                      href={transactionResult.whatsOnChainUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="whatsonchain-link"
+                    >
+                      View on WhatsOnChain
+                    </a>
+                  )}
+                  <button onClick={() => setTransactionResult(null)} className="close-button">
+                    Close
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!showSendForm && !showReceiveAddress && !transactionResult && (
               <div className="content-placeholder">
                 {addressCopiedMessage ? (
                   <div className="address-copied-message">

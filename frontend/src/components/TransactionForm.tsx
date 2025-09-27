@@ -1,6 +1,5 @@
 import React, { useState, useCallback } from 'react';
 import { useTransaction } from '../hooks/useTransaction';
-import { useWallet } from '../hooks/useWallet';
 import type { TransactionData, TransactionResponse } from '../types/transaction';
 
 interface TransactionFormProps {
@@ -16,7 +15,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
   isLoading = false,
   error
 }) => {
-  const { createTransaction, signTransaction, broadcastTransaction } = useTransaction();
+  const { sendTransaction } = useTransaction();
   // Private key is handled by the Go daemon using the identity file
   const [formData, setFormData] = useState<TransactionData>({
     recipient: '',
@@ -78,32 +77,14 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
 
     setIsSubmitting(true);
     try {
-      console.log('🚀 Form: Starting complete transaction flow with:', formData);
+      console.log('🚀 Form: Starting transaction send with:', formData);
 
-      // Step 1: Create transaction
-      console.log('📝 Step 1: Creating transaction...');
-      const createResult = await createTransaction(formData);
-      console.log('✅ Step 1: Transaction created:', createResult);
+      // Send transaction (create + sign + broadcast in one call)
+      console.log('📝 Sending transaction...');
+      const result = await sendTransaction(formData);
+      console.log('✅ Transaction sent successfully:', result);
 
-      // Step 2: Sign transaction
-      console.log('✍️ Step 2: Signing transaction...');
-      const signResult = await signTransaction(createResult.rawTx); // Private key handled by Go daemon
-      console.log('✅ Step 2: Transaction signed:', signResult);
-
-      // Step 3: Broadcast transaction
-      console.log('📡 Step 3: Broadcasting transaction...');
-      const broadcastResult = await broadcastTransaction(signResult.rawTx);
-      console.log('✅ Step 3: Transaction broadcasted:', broadcastResult);
-
-      // Create final result with all steps
-      const finalResult = {
-        ...createResult,
-        signed: true,
-        broadcasted: broadcastResult.success,
-        miners: broadcastResult.miners
-      };
-
-      console.log('🎉 Complete transaction flow successful:', finalResult);
+      console.log('🎉 Transaction send successful:', result);
 
       // Reset form immediately (don't wait for callback)
       setFormData({
@@ -116,10 +97,10 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
       setErrors({});
       console.log('✅ Form: Errors cleared');
 
-      // Call callback with final result
+      // Call callback with result
       try {
-        onTransactionCreated(finalResult);
-        console.log('🔄 Form: onTransactionCreated called with final result');
+        onTransactionCreated(result);
+        console.log('🔄 Form: onTransactionCreated called with result');
       } catch (err) {
         console.error('❌ Form: Callback failed:', err);
       }
@@ -129,7 +110,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
       console.log('🏁 Form: Setting isSubmitting to false');
       setIsSubmitting(false);
     }
-  }, [formData, validateForm, createTransaction, signTransaction, broadcastTransaction, onTransactionCreated]);
+  }, [formData, validateForm, sendTransaction, onTransactionCreated]);
 
   const formatBalance = useCallback((satoshis: number): string => {
     const bsv = satoshis / 100000000;

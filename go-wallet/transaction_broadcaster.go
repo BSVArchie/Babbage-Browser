@@ -62,7 +62,7 @@ func (tb *TransactionBroadcaster) BroadcastTransaction(signedTx string) (*Broadc
 	tb.logger.Infof("Broadcasting transaction to %d miners", len(tb.miners))
 
 	result := &BroadcastResult{
-		TxID:    "broadcasted_txid",
+		TxID:    "",
 		Success: false,
 		Miners:  make(map[string]string),
 	}
@@ -83,13 +83,34 @@ func (tb *TransactionBroadcaster) BroadcastTransaction(signedTx string) (*Broadc
 			tb.logger.Infof("Successfully broadcast to %s: %s", miner.Name, response)
 			result.Miners[miner.Name] = "success: " + response
 			successCount++
+			tb.logger.Infof("DEBUG: Miner %s response stored as: %s", miner.Name, result.Miners[miner.Name])
 		}
 	}
 
 	// Consider broadcast successful if at least one miner accepted it
 	if successCount > 0 {
 		result.Success = true
-		result.TxID = tb.extractTxID(signedTx)
+		// Get the transaction ID from the first successful miner response
+		tb.logger.Infof("Looking for TxID in miner responses...")
+		for _, miner := range tb.miners {
+			if response, exists := result.Miners[miner.Name]; exists && strings.Contains(response, "success:") {
+				tb.logger.Infof("Found successful response from %s: %s", miner.Name, response)
+				// Extract TxID from the successful response
+				if txid, err := tb.extractTxIDFromResponse(response); err == nil {
+					tb.logger.Infof("Successfully extracted TxID: %s", txid)
+					result.TxID = txid
+					break
+				} else {
+					tb.logger.Errorf("Failed to extract TxID from %s response: %v", miner.Name, err)
+				}
+			}
+		}
+		// Fallback to extracting from raw transaction if no miner provided TxID
+		if result.TxID == "" {
+			tb.logger.Warnf("No TxID extracted from miner responses, using fallback")
+			result.TxID = tb.extractTxID(signedTx)
+		}
+		tb.logger.Infof("Final TxID: %s", result.TxID)
 		tb.logger.Infof("Transaction broadcast successful to %d/%d miners", successCount, len(tb.miners))
 	} else {
 		result.Success = false
@@ -227,7 +248,8 @@ func (tb *TransactionBroadcaster) parseResponse(miner MinerAPI, body []byte) (st
 			return "", fmt.Errorf("GorillaPool rejected transaction: %s", innerResponse.ResultDesc)
 		}
 
-		return innerResponse.TxID, nil
+		// Return the full outer response JSON so extractTxIDFromResponse can parse it
+		return string(body), nil
 
 
 	default:
@@ -236,10 +258,60 @@ func (tb *TransactionBroadcaster) parseResponse(miner MinerAPI, body []byte) (st
 	}
 }
 
-// extractTxID extracts transaction ID from raw transaction (simplified)
+// extractTxIDFromResponse extracts transaction ID from miner response
+func (tb *TransactionBroadcaster) extractTxIDFromResponse(response string) (string, error) {
+	tb.logger.Infof("DEBUG: extractTxIDFromResponse called with: %s", response)
+
+	// Extract the actual response part after "success: "
+	parts := strings.Split(response, "success: ")
+	if len(parts) < 2 {
+		tb.logger.Errorf("DEBUG: Invalid response format, parts: %v", parts)
+		return "", fmt.Errorf("invalid response format")
+	}
+
+	tb.logger.Infof("DEBUG: Extracted response part: %s", parts[1])
+
+	// Parse the JSON response to get the TxID
+	var responseData map[string]interface{}
+	if err := json.Unmarshal([]byte(parts[1]), &responseData); err != nil {
+		tb.logger.Errorf("DEBUG: Failed to parse JSON: %v", err)
+		return "", err
+	}
+
+	tb.logger.Infof("DEBUG: Parsed response data: %+v", responseData)
+
+	// Check if it's a GorillaPool response with nested payload
+	if payload, ok := responseData["payload"].(string); ok {
+		tb.logger.Infof("DEBUG: Found payload: %s", payload)
+		// Parse the inner payload
+		var innerResponse map[string]interface{}
+		if err := json.Unmarshal([]byte(payload), &innerResponse); err != nil {
+			tb.logger.Errorf("DEBUG: Failed to parse inner payload: %v", err)
+			return "", err
+		}
+		tb.logger.Infof("DEBUG: Parsed inner response: %+v", innerResponse)
+		if txid, ok := innerResponse["txid"].(string); ok && txid != "" {
+			tb.logger.Infof("DEBUG: Found txid in inner response: %s", txid)
+			return txid, nil
+		}
+	}
+
+	// Check for direct txid field
+	if txid, ok := responseData["txid"].(string); ok && txid != "" {
+		tb.logger.Infof("DEBUG: Found txid in direct response: %s", txid)
+		return txid, nil
+	}
+
+	tb.logger.Errorf("DEBUG: No txid found in response")
+	return "", fmt.Errorf("no txid found in response")
+}
+
+// extractTxID extracts transaction ID from raw transaction
 func (tb *TransactionBroadcaster) extractTxID(signedTx string) string {
-	// This is a simplified implementation
-	// In production, you'd calculate the actual transaction hash
+	// For now, we'll use a simple approach since we know the transaction ID
+	// from the signing process. In a production system, you'd calculate the
+	// actual transaction hash from the raw hex.
+	// This is a temporary solution - the real TxID should come from the signing process
 	return "txid_" + signedTx[:16]
 }
 

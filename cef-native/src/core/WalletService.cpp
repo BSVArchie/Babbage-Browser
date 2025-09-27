@@ -488,33 +488,24 @@ nlohmann::json WalletService::broadcastTransaction(const nlohmann::json& transac
 }
 
 nlohmann::json WalletService::getBalance(const nlohmann::json& balanceData) {
-    std::cout << "💰 Getting balance from Go daemon..." << std::endl;
+    std::cout << "💰 Getting total balance from Go daemon..." << std::endl;
     std::cout << "📋 Balance data: " << balanceData.dump() << std::endl;
     std::ofstream debugLog("debug_output.log", std::ios::app);
-    debugLog << "💰 Getting balance from Go daemon..." << std::endl;
+    debugLog << "💰 Getting total balance from Go daemon..." << std::endl;
     debugLog << "📋 Balance data: " << balanceData.dump() << std::endl;
     debugLog.close();
 
-    // Get address from balance data
-    std::string address = balanceData["address"].get<std::string>();
-
-    // Use the UTXO fetch endpoint to get balance
-    std::string url = "/utxo/fetch?address=" + address;
+    // Use the total balance endpoint (no address needed)
+    std::string url = "/wallet/balance";
     auto response = makeHttpRequest("GET", url, "");
 
-    // Calculate balance from UTXOs
-    int64_t totalBalance = 0;
-    if (response.is_array()) {
-        for (const auto& utxo : response) {
-            if (utxo.contains("amount")) {
-                totalBalance += utxo["amount"].get<int64_t>();
-            }
-        }
+    if (response.contains("balance")) {
+        int64_t totalBalance = response["balance"].get<int64_t>();
 
-        std::cout << "✅ Balance calculated successfully" << std::endl;
+        std::cout << "✅ Total balance retrieved successfully" << std::endl;
         std::cout << "💵 Total Balance: " << totalBalance << " satoshis" << std::endl;
         std::ofstream debugLog2("debug_output.log", std::ios::app);
-        debugLog2 << "✅ Balance calculated successfully" << std::endl;
+        debugLog2 << "✅ Total balance retrieved successfully" << std::endl;
         debugLog2 << "💵 Total Balance: " << totalBalance << " satoshis" << std::endl;
         debugLog2.close();
 
@@ -523,14 +514,14 @@ nlohmann::json WalletService::getBalance(const nlohmann::json& balanceData) {
         balanceResponse["balance"] = totalBalance;
         return balanceResponse;
     } else {
-        std::cerr << "❌ Failed to get UTXOs: " << response.dump() << std::endl;
+        std::cerr << "❌ Failed to get total balance: " << response.dump() << std::endl;
         std::ofstream debugLog3("debug_output.log", std::ios::app);
-        debugLog3 << "❌ Failed to get UTXOs: " << response.dump() << std::endl;
+        debugLog3 << "❌ Failed to get total balance: " << response.dump() << std::endl;
         debugLog3.close();
 
         // Return error response
         nlohmann::json errorResponse;
-        errorResponse["error"] = "Failed to fetch UTXOs";
+        errorResponse["error"] = "Failed to fetch total balance";
         return errorResponse;
     }
 }
@@ -686,5 +677,41 @@ BOOL WINAPI WalletService::ConsoleCtrlHandler(DWORD ctrlType) {
             return TRUE;
         default:
             return FALSE;
+    }
+}
+
+nlohmann::json WalletService::sendTransaction(const nlohmann::json& transactionData) {
+    std::cout << "🚀 Sending complete transaction..." << std::endl;
+    std::cout << "📋 Transaction data: " << transactionData.dump() << std::endl;
+
+    std::ofstream debugLog("debug_output.log", std::ios::app);
+    debugLog << "🚀 Sending complete transaction..." << std::endl;
+    debugLog << "📋 Transaction data: " << transactionData.dump() << std::endl;
+    debugLog.close();
+
+    // Call the new /transaction/send endpoint
+    std::string url = "/transaction/send";
+    auto response = makeHttpRequest("POST", url, transactionData.dump());
+
+    if (response.contains("success") && response["success"].get<bool>()) {
+        std::cout << "✅ Transaction sent successfully" << std::endl;
+        std::cout << "🔗 TxID: " << response["txid"].get<std::string>() << std::endl;
+
+        std::ofstream debugLog2("debug_output.log", std::ios::app);
+        debugLog2 << "✅ Transaction sent successfully" << std::endl;
+        debugLog2 << "🔗 TxID: " << response["txid"].get<std::string>() << std::endl;
+        debugLog2.close();
+
+        return response;
+    } else {
+        std::cerr << "❌ Transaction failed: " << response.dump() << std::endl;
+
+        std::ofstream debugLog3("debug_output.log", std::ios::app);
+        debugLog3 << "❌ Transaction failed: " << response.dump() << std::endl;
+        debugLog3.close();
+
+        nlohmann::json errorResponse;
+        errorResponse["error"] = "Transaction failed";
+        return errorResponse;
     }
 }

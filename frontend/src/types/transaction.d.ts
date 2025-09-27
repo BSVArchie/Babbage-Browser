@@ -18,10 +18,13 @@ export interface Transaction {
 
 export interface TransactionResponse {
   txid: string;
-  rawTx: string;
-  fee: number;
-  status: string;
-  broadcasted: boolean;
+  rawTx?: string;
+  fee?: number;
+  status?: string;
+  broadcasted?: boolean;
+  success?: boolean;
+  message?: string;
+  whatsOnChainUrl?: string;
 }
 
 export interface BroadcastResponse {
