@@ -204,4 +204,207 @@ window.bitcoinBrowser.address.generate = () => {
   };
 }
 
+// Wallet methods
+if (!window.bitcoinBrowser.wallet) {
+  window.bitcoinBrowser.wallet = {
+    getStatus: () => {
+      console.log("🔍 JS: Sending wallet_status_check to native");
+      return new Promise((resolve, reject) => {
+        window.onWalletStatusResponse = (data: any) => {
+          console.log("✅ Wallet status retrieved:", data);
+          resolve(data);
+          delete window.onWalletStatusResponse;
+          delete window.onWalletStatusError;
+        };
+
+        window.onWalletStatusError = (error: string) => {
+          console.error("❌ Wallet status error:", error);
+          reject(new Error(error));
+          delete window.onWalletStatusResponse;
+          delete window.onWalletStatusError;
+        };
+
+        window.cefMessage?.send('wallet_status_check', []);
+      });
+    },
+
+    create: () => {
+      console.log("🆕 JS: Sending create_wallet to native");
+      return new Promise((resolve, reject) => {
+        window.onCreateWalletResponse = (data: any) => {
+          console.log("✅ Wallet created:", data);
+          resolve(data);
+          delete window.onCreateWalletResponse;
+          delete window.onCreateWalletError;
+        };
+
+        window.onCreateWalletError = (error: string) => {
+          console.error("❌ Wallet creation error:", error);
+          reject(new Error(error));
+          delete window.onCreateWalletResponse;
+          delete window.onCreateWalletError;
+        };
+
+        window.cefMessage?.send('create_wallet', []);
+      });
+    },
+
+    load: () => {
+      console.log("📂 JS: Sending load_wallet to native");
+      return new Promise((resolve, reject) => {
+        window.onLoadWalletResponse = (data: any) => {
+          console.log("✅ Wallet loaded:", data);
+          resolve(data);
+          delete window.onLoadWalletResponse;
+          delete window.onLoadWalletError;
+        };
+
+        window.onLoadWalletError = (error: string) => {
+          console.error("❌ Wallet load error:", error);
+          reject(new Error(error));
+          delete window.onLoadWalletResponse;
+          delete window.onLoadWalletError;
+        };
+
+        window.cefMessage?.send('load_wallet', []);
+      });
+    },
+
+    getInfo: () => {
+      console.log("🔍 JS: Sending get_wallet_info to native");
+      return new Promise((resolve, reject) => {
+        window.onGetWalletInfoResponse = (data: any) => {
+          console.log("✅ Wallet info retrieved:", data);
+          resolve(data);
+          delete window.onGetWalletInfoResponse;
+          delete window.onGetWalletInfoError;
+        };
+
+        window.onGetWalletInfoError = (error: string) => {
+          console.error("❌ Wallet info error:", error);
+          reject(new Error(error));
+          delete window.onGetWalletInfoResponse;
+          delete window.onGetWalletInfoError;
+        };
+
+        window.cefMessage?.send('get_wallet_info', []);
+      });
+    },
+
+    generateAddress: () => {
+      console.log("📍 JS: Sending wallet address generation to native");
+      return new Promise((resolve, reject) => {
+        window.onAddressGenerated = (data: any) => {
+          console.log("✅ Address generated:", data);
+          resolve(data);
+          delete window.onAddressGenerated;
+          delete window.onAddressError;
+        };
+
+        window.onAddressError = (error: string) => {
+          console.error("❌ Address generation error:", error);
+          reject(new Error(error));
+          delete window.onAddressGenerated;
+          delete window.onAddressError;
+        };
+
+        window.cefMessage?.send('address_generate', []);
+      });
+    },
+
+    getCurrentAddress: () => {
+      console.log("📍 JS: Sending get_current_address to native");
+      return new Promise((resolve, reject) => {
+        window.onGetCurrentAddressResponse = (data: any) => {
+          console.log("✅ Current address retrieved:", data);
+          resolve(data);
+          delete window.onGetCurrentAddressResponse;
+          delete window.onGetCurrentAddressError;
+        };
+
+        window.onGetCurrentAddressError = (error: string) => {
+          console.error("❌ Current address error:", error);
+          reject(new Error(error));
+          delete window.onGetCurrentAddressResponse;
+          delete window.onGetCurrentAddressError;
+        };
+
+        window.cefMessage?.send('get_current_address', []);
+      });
+    },
+
+    getAddresses: () => {
+      console.log("📍 JS: Sending get_addresses to native");
+      return new Promise((resolve, reject) => {
+        window.onGetAddressesResponse = (data: any) => {
+          console.log("✅ All addresses retrieved:", data);
+          if (data.success) {
+            resolve(data.addresses);
+          } else {
+            reject(new Error(data.error || "Failed to get addresses"));
+          }
+          delete window.onGetAddressesResponse;
+          delete window.onGetAddressesError;
+        };
+
+        window.onGetAddressesError = (error: string) => {
+          console.error("❌ Get addresses error:", error);
+          reject(new Error(error));
+          delete window.onGetAddressesResponse;
+          delete window.onGetAddressesError;
+        };
+
+        window.cefMessage?.send('get_addresses', []);
+      });
+    },
+
+    markBackedUp: () => {
+      console.log("✅ JS: Sending mark_wallet_backed_up to native");
+      return new Promise((resolve, reject) => {
+        window.onMarkWalletBackedUpResponse = (data: any) => {
+          console.log("✅ Wallet marked as backed up:", data);
+          resolve(data);
+          delete window.onMarkWalletBackedUpResponse;
+          delete window.onMarkWalletBackedUpError;
+        };
+
+        window.onMarkWalletBackedUpError = (error: string) => {
+          console.error("❌ Mark backed up error:", error);
+          reject(new Error(error));
+          delete window.onMarkWalletBackedUpResponse;
+          delete window.onMarkWalletBackedUpError;
+        };
+
+        window.cefMessage?.send('mark_wallet_backed_up', []);
+      });
+    },
+
+    getBackupModalState: () => {
+      console.log("🔍 JS: Getting backup modal state");
+      return new Promise((resolve) => {
+        window.onGetBackupModalStateResponse = (data: any) => {
+          console.log("✅ Backup modal state retrieved:", data);
+          resolve(data);
+          delete window.onGetBackupModalStateResponse;
+        };
+
+        window.cefMessage?.send('get_backup_modal_state', []);
+      });
+    },
+
+    setBackupModalState: (shown: boolean) => {
+      console.log("🔍 JS: Setting backup modal state to:", shown);
+      return new Promise((resolve) => {
+        window.onSetBackupModalStateResponse = (data: any) => {
+          console.log("✅ Backup modal state set:", data);
+          resolve(data);
+          delete window.onSetBackupModalStateResponse;
+        };
+
+        window.cefMessage?.send('set_backup_modal_state', [shown]);
+      });
+    }
+  };
+}
+
 // overlayPanel methods removed - now using process-per-overlay architecture

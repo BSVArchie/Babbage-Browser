@@ -280,25 +280,72 @@ bool WalletService::isHealthy() {
     }
 }
 
-nlohmann::json WalletService::getIdentity() {
-    std::cout << "🔍 Getting identity from Go daemon..." << std::endl;
+// Unified Wallet Methods Implementation
 
-    auto response = makeHttpRequest("GET", "/identity/get");
+nlohmann::json WalletService::getWalletStatus() {
+    std::cout << "🔍 Getting wallet status from Go daemon..." << std::endl;
 
-    if (response.contains("address")) {
-        std::cout << "✅ Identity retrieved successfully" << std::endl;
-        std::cout << "📍 Address: " << response["address"].get<std::string>() << std::endl;
+    auto response = makeHttpRequest("GET", "/wallet/status");
+
+    if (response.contains("exists")) {
+        std::cout << "✅ Wallet status retrieved successfully" << std::endl;
+        std::cout << "📁 Wallet exists: " << (response["exists"].get<bool>() ? "Yes" : "No") << std::endl;
         return response;
     } else {
-        std::cerr << "❌ Failed to get identity from Go daemon" << std::endl;
+        std::cerr << "❌ Failed to get wallet status from Go daemon" << std::endl;
         return nlohmann::json::object();
     }
 }
 
-bool WalletService::markBackedUp() {
+nlohmann::json WalletService::getWalletInfo() {
+    std::cout << "🔍 Getting wallet info from Go daemon..." << std::endl;
+
+    auto response = makeHttpRequest("GET", "/wallet/info");
+
+    if (response.contains("version")) {
+        std::cout << "✅ Wallet info retrieved successfully" << std::endl;
+        std::cout << "📁 Version: " << response["version"].get<std::string>() << std::endl;
+        std::cout << "🔑 Backed up: " << (response["backedUp"].get<bool>() ? "Yes" : "No") << std::endl;
+        return response;
+    } else {
+        std::cerr << "❌ Failed to get wallet info from Go daemon" << std::endl;
+        return nlohmann::json::object();
+    }
+}
+
+nlohmann::json WalletService::createWallet() {
+    std::cout << "🔍 Creating new wallet via Go daemon..." << std::endl;
+
+    auto response = makeHttpRequest("POST", "/wallet/create");
+
+    if (response.contains("success") && response["success"].get<bool>()) {
+        std::cout << "✅ Wallet created successfully" << std::endl;
+        std::cout << "🔑 Mnemonic: " << response["mnemonic"].get<std::string>() << std::endl;
+        return response;
+    } else {
+        std::cerr << "❌ Failed to create wallet from Go daemon" << std::endl;
+        return nlohmann::json::object();
+    }
+}
+
+nlohmann::json WalletService::loadWallet() {
+    std::cout << "🔍 Loading wallet from Go daemon..." << std::endl;
+
+    auto response = makeHttpRequest("POST", "/wallet/load");
+
+    if (response.contains("success") && response["success"].get<bool>()) {
+        std::cout << "✅ Wallet loaded successfully" << std::endl;
+        return response;
+    } else {
+        std::cerr << "❌ Failed to load wallet from Go daemon" << std::endl;
+        return nlohmann::json::object();
+    }
+}
+
+bool WalletService::markWalletBackedUp() {
     std::cout << "🔍 Marking wallet as backed up..." << std::endl;
 
-    auto response = makeHttpRequest("POST", "/identity/markBackedUp");
+    auto response = makeHttpRequest("POST", "/wallet/markBackedUp");
 
     if (response.contains("success") && response["success"] == true) {
         std::cout << "✅ Wallet marked as backed up successfully" << std::endl;
@@ -309,10 +356,42 @@ bool WalletService::markBackedUp() {
     }
 }
 
+// Address Management Methods
+
+nlohmann::json WalletService::getAllAddresses() {
+    std::cout << "🔍 Getting all addresses from Go daemon..." << std::endl;
+
+    auto response = makeHttpRequest("GET", "/wallet/addresses");
+
+    if (response.is_array()) {
+        std::cout << "✅ Addresses retrieved successfully" << std::endl;
+        std::cout << "📍 Address count: " << response.size() << std::endl;
+        return response;
+    } else {
+        std::cerr << "❌ Failed to get addresses from Go daemon" << std::endl;
+        return nlohmann::json::array();
+    }
+}
+
+nlohmann::json WalletService::getCurrentAddress() {
+    std::cout << "🔍 Getting current address from Go daemon..." << std::endl;
+
+    auto response = makeHttpRequest("GET", "/wallet/address/current");
+
+    if (response.contains("address")) {
+        std::cout << "✅ Current address retrieved successfully" << std::endl;
+        std::cout << "📍 Address: " << response["address"].get<std::string>() << std::endl;
+        return response;
+    } else {
+        std::cerr << "❌ Failed to get current address from Go daemon" << std::endl;
+        return nlohmann::json::object();
+    }
+}
+
 nlohmann::json WalletService::generateAddress() {
     std::cout << "🔍 Generating new address from Go daemon..." << std::endl;
 
-    auto response = makeHttpRequest("GET", "/address/generate", "");
+    auto response = makeHttpRequest("POST", "/wallet/address/generate");
 
     if (response.contains("address")) {
         std::cout << "✅ Address generated successfully" << std::endl;

@@ -1,20 +1,37 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import SettingsOverlayRoot from './pages/SettingsOverlayRoot';
 import WalletOverlayRoot from './pages/WalletOverlayRoot';
 import BackupOverlayRoot from './pages/BackupOverlayRoot';
 import MainBrowserView from './pages/MainBrowserView';
-import type { IdentityResult } from './types/identity';
+// Removed identity types - now using unified wallet system
 
 const App = () => {
   console.log("🔍 App component rendering, pathname:", window.location.pathname);
-  const [identityFileExists, setIdentityFileExists] = useState(false);
+  // Wallet state tracking (currently unused but available for future features)
+  // const [walletExists, setWalletExists] = useState(false);
 
   useEffect(() => {
     console.log("🔍 useEffect started");
 
-    const checkIdentityStatus = async () => {
-      console.log("🔍 checkIdentityStatus started");
+    const checkWalletStatus = async () => {
+      console.log("🔍 checkWalletStatus started");
+
+      // Wait for all systems to be ready (for overlay browsers)
+      if (window.location.pathname !== '/') {
+        await new Promise<void>((resolve) => {
+          if (window.allSystemsReady) {
+            console.log("🔍 All systems already ready");
+            resolve();
+          } else {
+            console.log("🔍 Waiting for allSystemsReady event...");
+            window.addEventListener('allSystemsReady', () => {
+              console.log("🔍 allSystemsReady event received");
+              resolve();
+            }, { once: true });
+          }
+        });
+      }
 
       // Wait for cefMessage to be ready
       for (let i = 0; i < 40; i++) {
@@ -29,52 +46,37 @@ const App = () => {
       console.log("🔍 Current pathname:", window.location.pathname);
 
       // Only check on main page
-      if (window.location.pathname === '/' && window.cefMessage && typeof window.cefMessage.send === 'function') {
-        console.log("🔍 Running identity status check via message");
+      if (window.location.pathname === '/' && window.bitcoinBrowser?.wallet) {
+        console.log("🔍 Running wallet status check via API");
 
-        // Set up response listener
-        const handleResponse = (event: any) => {
-          if (event.detail.message === 'identity_status_check_response') {
+        try {
+          const walletStatus = await window.bitcoinBrowser.wallet.getStatus();
+          console.log("🔍 Wallet status response:", walletStatus);
+
+          if (walletStatus.needsBackup) {
+            // Wallet needs backup - create wallet first, then show modal
+            console.log("🔍 Wallet needs backup, creating wallet first...");
             try {
-              const response = JSON.parse(event.detail.args[0]);
-              console.log("🔍 Identity status response:", response);
-
-              if (response.needsBackup) {
-                // Identity needs backup - show backup modal
-                console.log("🔍 Identity needs backup, showing backup modal");
-                window.cefMessage?.send('overlay_show_backup', []);
-              } else {
-                // Identity is backed up - do nothing
-                console.log("🔍 Identity is backed up, no action needed");
-              }
-            } catch (error) {
-              console.error("💥 Error parsing identity status response:", error);
-              // On error, assume we need to show backup modal
-              console.log("🔍 Error parsing response, showing backup modal as fallback");
+              const newWallet = await window.bitcoinBrowser.wallet.create();
+              console.log("🔍 Wallet created successfully, showing backup modal");
               window.cefMessage?.send('overlay_show_backup', []);
+            } catch (error) {
+              console.error("💥 Error creating wallet:", error);
             }
-
-            // Remove listener
-            window.removeEventListener('cefMessageResponse', handleResponse);
+          } else {
+            // Wallet is backed up - do nothing
+            console.log("🔍 Wallet is backed up, no action needed");
           }
-        };
-
-        window.addEventListener('cefMessageResponse', handleResponse);
-
-        // Send request
-        window.cefMessage.send('identity_status_check', []);
-
-        // Cleanup listener after timeout
-        setTimeout(() => {
-          window.removeEventListener('cefMessageResponse', handleResponse);
-        }, 5000);
+        } catch (error) {
+          console.error("💥 Error checking wallet status:", error);
+        }
 
       } else {
-        console.log("🔍 Skipping identity check - path:", window.location.pathname, "backend ready:", typeof window.cefMessage?.send === 'function');
+        console.log("🔍 Skipping wallet check - path:", window.location.pathname, "wallet API ready:", !!window.bitcoinBrowser?.wallet);
       }
     };
 
-    checkIdentityStatus();
+    checkWalletStatus();
 
     // Cleanup function to remove event listeners
     return () => {

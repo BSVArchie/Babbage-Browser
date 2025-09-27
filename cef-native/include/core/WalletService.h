@@ -14,9 +14,18 @@ public:
 
     // API Methods
     bool isHealthy();
-    nlohmann::json getIdentity();
-    bool markBackedUp();
+
+    // Unified Wallet Methods
+    nlohmann::json getWalletStatus();
+    nlohmann::json getWalletInfo();
+    nlohmann::json createWallet();
+    nlohmann::json loadWallet();
+    bool markWalletBackedUp();
+
+    // Address Management
+    nlohmann::json getAllAddresses();
     nlohmann::json generateAddress();
+    nlohmann::json getCurrentAddress();
 
     // Transaction Methods
     nlohmann::json createTransaction(const nlohmann::json& transactionData);

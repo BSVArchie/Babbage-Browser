@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -34,27 +35,15 @@ func NewTransactionBroadcaster() *TransactionBroadcaster {
 	// Initialize BSV miners and nodes
 	miners := []MinerAPI{
 		{
-			Name:    "TAAL",
-			URL:     "https://api.taal.com/api/v1/transactions",
-			Type:    "mining_pool",
+			Name:    "WhatsOnChain",
+			URL:     "https://api.whatsonchain.com/v1/bsv/main/tx/raw",
+			Type:    "relay",
 			Timeout: 30 * time.Second,
 		},
 		{
 			Name:    "GorillaPool",
-			URL:     "https://api.gorillapool.io/api/v1/transactions",
+			URL:     "https://mapi.gorillapool.io/mapi/tx",
 			Type:    "mining_pool",
-			Timeout: 30 * time.Second,
-		},
-		{
-			Name:    "Teranode",
-			URL:     "https://api.teranode.io/v1/transactions",
-			Type:    "node",
-			Timeout: 30 * time.Second,
-		},
-		{
-			Name:    "WhatsOnChain",
-			URL:     "https://api.whatsonchain.com/v1/bsv/main/tx/publish",
-			Type:    "relay",
 			Timeout: 30 * time.Second,
 		},
 	}
@@ -144,6 +133,9 @@ func (tb *TransactionBroadcaster) broadcastToMiner(miner MinerAPI, signedTx stri
 		return "", fmt.Errorf("failed to read response: %v", err)
 	}
 
+	// Debug: log the raw response
+	tb.logger.Infof("Raw response from %s (status %d): %s", miner.Name, resp.StatusCode, string(body))
+
 	// Check response status
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return "", fmt.Errorf("miner returned status %d: %s", resp.StatusCode, string(body))
@@ -160,90 +152,83 @@ func (tb *TransactionBroadcaster) broadcastToMiner(miner MinerAPI, signedTx stri
 
 // createPayload creates the request payload for different miner types
 func (tb *TransactionBroadcaster) createPayload(miner MinerAPI, signedTx string) ([]byte, error) {
-	switch miner.Type {
-	case "mining_pool":
-		// TAAL and GorillaPool format
+	switch miner.Name {
+	case "WhatsOnChain":
+		// WhatsOnChain expects raw transaction hex in body
+		return []byte(signedTx), nil
+
+	case "GorillaPool":
+		// GorillaPool mAPI expects JSON with rawtx field
 		payload := map[string]string{
 			"rawtx": signedTx,
 		}
 		return json.Marshal(payload)
 
-	case "node":
-		// Teranode format
-		payload := map[string]string{
-			"hex": signedTx,
-		}
-		return json.Marshal(payload)
-
-	case "relay":
-		// WhatsOnChain format
-		payload := map[string]string{
-			"txHex": signedTx,
-		}
-		return json.Marshal(payload)
 
 	default:
-		return nil, fmt.Errorf("unknown miner type: %s", miner.Type)
+		// Default: send raw transaction hex
+		return []byte(signedTx), nil
 	}
 }
 
 // setHeaders sets appropriate headers for different miner types
 func (tb *TransactionBroadcaster) setHeaders(req *http.Request, miner MinerAPI) {
-	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "Babbage-Browser/1.0")
 
 	switch miner.Name {
-	case "TAAL":
-		// TAAL might require API key
-		// req.Header.Set("Authorization", "Bearer "+apiKey)
-	case "GorillaPool":
-		// GorillaPool might require API key
-		// req.Header.Set("X-API-Key", apiKey)
-	case "Teranode":
-		// Teranode standard headers
 	case "WhatsOnChain":
-		// WhatsOnChain standard headers
+		// WhatsOnChain expects raw hex, not JSON
+		req.Header.Set("Content-Type", "text/plain")
+	case "GorillaPool":
+		// GorillaPool mAPI expects JSON
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json")
+	default:
+		// Default to text/plain for raw hex
+		req.Header.Set("Content-Type", "text/plain")
 	}
 }
 
 // parseResponse extracts transaction ID from miner response
 func (tb *TransactionBroadcaster) parseResponse(miner MinerAPI, body []byte) (string, error) {
 	switch miner.Name {
-	case "TAAL":
-		var response struct {
-			TxID string `json:"txid"`
+	case "WhatsOnChain":
+		// WhatsOnChain returns the txid as a plain string, not JSON
+		txid := string(body)
+		// Remove quotes if present
+		if len(txid) > 2 && txid[0] == '"' && txid[len(txid)-1] == '"' {
+			txid = txid[1 : len(txid)-1]
 		}
-		if err := json.Unmarshal(body, &response); err != nil {
-			return "", err
-		}
-		return response.TxID, nil
+		// Remove newlines and whitespace
+		txid = strings.TrimSpace(txid)
+		return txid, nil
 
 	case "GorillaPool":
-		var response struct {
-			TxID string `json:"txid"`
+		// GorillaPool mAPI returns a nested JSON structure
+		var outerResponse struct {
+			Payload string `json:"payload"`
 		}
-		if err := json.Unmarshal(body, &response); err != nil {
+		if err := json.Unmarshal(body, &outerResponse); err != nil {
 			return "", err
 		}
-		return response.TxID, nil
 
-	case "Teranode":
-		var response struct {
-			TxID string `json:"txid"`
+		// Parse the inner payload
+		var innerResponse struct {
+			TxID            string `json:"txid"`
+			ReturnResult    string `json:"returnResult"`
+			ResultDesc      string `json:"resultDescription"`
 		}
-		if err := json.Unmarshal(body, &response); err != nil {
+		if err := json.Unmarshal([]byte(outerResponse.Payload), &innerResponse); err != nil {
 			return "", err
 		}
-		return response.TxID, nil
 
-	case "WhatsOnChain":
-		var response struct {
-			TxID string `json:"txid"`
+		// Check if the transaction was successful
+		if innerResponse.ReturnResult != "success" {
+			return "", fmt.Errorf("GorillaPool rejected transaction: %s", innerResponse.ResultDesc)
 		}
-		if err := json.Unmarshal(body, &response); err != nil {
-			return "", err
-		}
-		return response.TxID, nil
+
+		return innerResponse.TxID, nil
+
 
 	default:
 		// Fallback: try to extract from raw response

@@ -83,7 +83,7 @@ bool IdentityHandler::Execute(const CefString& name,
     if (name == "markBackedUp") {
         std::cout << "✅ Marking wallet as backed up via Go daemon" << std::endl;
 
-        if (walletService.markBackedUp()) {
+        if (walletService.markWalletBackedUp()) {
             retval = CefV8Value::CreateString("success");
         } else {
             retval = CefV8Value::CreateString("error");
@@ -93,19 +93,19 @@ bool IdentityHandler::Execute(const CefString& name,
     }
 
     try {
-        // Get identity from Go daemon
-        nlohmann::json identity = walletService.getIdentity();
+        // Get wallet info from Go daemon
+        nlohmann::json walletInfo = walletService.getWalletInfo();
 
-        if (identity.empty()) {
-            std::cerr << "❌ Failed to get identity from Go daemon" << std::endl;
-            exception = "Failed to retrieve identity from Go wallet daemon.";
+        if (walletInfo.empty()) {
+            std::cerr << "❌ Failed to get wallet info from Go daemon" << std::endl;
+            exception = "Failed to retrieve wallet info from Go wallet daemon.";
             return false;
         }
 
-        std::cout << "📦 Identity from Go daemon: " << identity.dump() << std::endl;
+        std::cout << "📦 Wallet info from Go daemon: " << walletInfo.dump() << std::endl;
 
-        CefRefPtr<CefV8Value> identityObject = jsonToV8(identity);
-        retval = identityObject;
+        CefRefPtr<CefV8Value> walletObject = jsonToV8(walletInfo);
+        retval = walletObject;
 
         return true;
     } catch (const std::exception& e) {

@@ -1,7 +1,10 @@
 import { useState, useCallback } from 'react';
+// Removed useWallet import - private keys handled by Go daemon
 import type { TransactionData, Transaction, TransactionResponse, BroadcastResponse } from '../types/transaction';
 
 export const useTransaction = () => {
+  // Wallet address will be obtained from the HD wallet system
+  // const [walletAddress, setWalletAddress] = useState<string>(''); // Currently unused
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -16,11 +19,21 @@ export const useTransaction = () => {
         throw new Error('Bitcoin API not available');
       }
 
+      // Get current address from HD wallet system
+      if (!window.bitcoinBrowser?.wallet) {
+        throw new Error('Wallet system not available');
+      }
+
+      const currentAddress = await window.bitcoinBrowser.wallet.getCurrentAddress();
+      if (!currentAddress?.address) {
+        throw new Error('No wallet address available - please create or load a wallet first');
+      }
+
       const response = await window.bitcoinAPI.createTransaction({
         recipientAddress: data.recipient,
         amount: parseInt(data.amount),
         feeRate: parseInt(data.feeRate),
-        senderAddress: '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa' // TODO: Get from wallet
+        senderAddress: currentAddress.address
       });
 
       return response;
@@ -33,7 +46,7 @@ export const useTransaction = () => {
     }
   }, []);
 
-  const signTransaction = useCallback(async (rawTx: string, privateKey: string): Promise<TransactionResponse> => {
+  const signTransaction = useCallback(async (rawTx: string): Promise<TransactionResponse> => {
     setIsLoading(true);
     setError(null);
 
@@ -43,8 +56,7 @@ export const useTransaction = () => {
       }
 
       const response = await window.bitcoinAPI.signTransaction({
-        rawTx,
-        privateKey
+        rawTx
       });
 
       return response;

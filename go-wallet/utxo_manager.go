@@ -102,10 +102,11 @@ func (um *UTXOManager) fetchFromWhatsOnChain(address string) ([]UTXO, error) {
 	var utxos []UTXO
 	for _, bsvUTXO := range apiResp {
 		utxos = append(utxos, UTXO{
-			TxID:   bsvUTXO.TxID,
-			Vout:   bsvUTXO.Vout,
-			Amount: bsvUTXO.Value,
-			Script: bsvUTXO.Script,
+			TxID:    bsvUTXO.TxID,
+			Vout:    bsvUTXO.Vout,
+			Amount:  bsvUTXO.Value,
+			Script:  bsvUTXO.Script,
+			Address: address, // Set the address field
 		})
 	}
 
@@ -142,10 +143,11 @@ func (um *UTXOManager) fetchFromBitails(address string) ([]UTXO, error) {
 	var utxos []UTXO
 	for _, bsvUTXO := range apiResp.Data {
 		utxos = append(utxos, UTXO{
-			TxID:   bsvUTXO.TxID,
-			Vout:   bsvUTXO.Vout,
-			Amount: bsvUTXO.Value,
-			Script: bsvUTXO.Script,
+			TxID:    bsvUTXO.TxID,
+			Vout:    bsvUTXO.Vout,
+			Amount:  bsvUTXO.Value,
+			Script:  bsvUTXO.Script,
+			Address: address, // Set the address field
 		})
 	}
 
@@ -224,4 +226,68 @@ func (um *UTXOManager) GetBalance(utxos []UTXO) int64 {
 		total += utxo.Amount
 	}
 	return total
+}
+
+// FetchTransaction fetches a transaction by its ID
+func (um *UTXOManager) FetchTransaction(txID string) (string, error) {
+	// Try WhatsOnChain first
+	url := fmt.Sprintf("https://api.whatsonchain.com/v1/bsv/main/tx/%s/hex", txID)
+
+	um.logger.Infof("Fetching transaction from WhatsOnChain: %s", txID)
+	um.logger.Infof("URL: %s", url)
+
+	// Create a request with timeout
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %v", err)
+	}
+
+	// Set a shorter timeout for this specific request
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch transaction from WhatsOnChain: %v", err)
+	}
+	defer resp.Body.Close()
+
+	um.logger.Infof("WhatsOnChain response status: %d", resp.StatusCode)
+
+	if resp.StatusCode == http.StatusTooManyRequests {
+		// Rate limited, wait and retry once
+		um.logger.Infof("Rate limited by WhatsOnChain, waiting 2 seconds before retry...")
+		time.Sleep(2 * time.Second)
+
+		// Create a new request for the retry
+		req2, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			return "", fmt.Errorf("failed to create retry request: %v", err)
+		}
+
+		resp, err = client.Do(req2)
+		if err != nil {
+			return "", fmt.Errorf("failed to fetch transaction from WhatsOnChain on retry: %v", err)
+		}
+		defer resp.Body.Close()
+
+		um.logger.Infof("WhatsOnChain retry response status: %d", resp.StatusCode)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("WhatsOnChain returned status %d for transaction %s: %s", resp.StatusCode, txID, string(body))
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response body: %v", err)
+	}
+
+	// WhatsOnChain returns the hex directly
+	txHex := string(body)
+	um.logger.Infof("Successfully fetched transaction %s (%d bytes)", txID, len(txHex))
+
+	return txHex, nil
 }

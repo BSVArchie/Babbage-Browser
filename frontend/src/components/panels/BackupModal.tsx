@@ -28,19 +28,20 @@ const style = {
 type Props = {
   open: boolean;
   onClose: () => void;
-  identity: {
+  wallet: {
     address: string;
-    publicKey: string;
-    privateKey: string;
+    mnemonic: string;
+    version: string;
+    backedUp: boolean;
   };
 };
 
-const BackupModal: React.FC<Props> = ({ open, onClose, identity }) => {
-  const [showPrivate, setShowPrivate] = useState(false);
+const BackupModal: React.FC<Props> = ({ open, onClose, wallet }) => {
+  const [showMnemonic, setShowMnemonic] = useState(false);
   const [copied, setCopied] = useState(false);
   const [confirmedBackup, setConfirmedBackup] = useState(false);
 
-  console.log("💾 BackupModal render - open:", open, "identity:", identity);
+  console.log("💾 BackupModal render - open:", open, "wallet:", wallet);
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -49,13 +50,29 @@ const BackupModal: React.FC<Props> = ({ open, onClose, identity }) => {
   };
 
   return (
-    <Modal
-    open={open}
-    onClose={(event, reason) => {
-        if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
-          // Do nothing, prevent closing
-          return;
-        }
+    <>
+      {/* Debug test div */}
+      <div style={{
+        position: 'fixed',
+        top: '50px',
+        left: '10px',
+        backgroundColor: 'blue',
+        color: 'white',
+        padding: '10px',
+        zIndex: 10000,
+        fontSize: '16px',
+        fontFamily: 'Arial, sans-serif'
+      }}>
+        DEBUG: BackupModal rendering - open: {open ? 'YES' : 'NO'}
+      </div>
+
+      <Modal
+        open={open}
+        onClose={(_, reason) => {
+          if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
+            // Do nothing, prevent closing
+            return;
+          }
         onClose();
       }}
       disableEscapeKeyDown
@@ -72,10 +89,10 @@ const BackupModal: React.FC<Props> = ({ open, onClose, identity }) => {
         <TextField
           fullWidth
           label="Address"
-          value={identity.address}
+          value={wallet.address}
           InputProps={{
             endAdornment: (
-              <IconButton onClick={() => handleCopy(identity.address)} size="small">
+              <IconButton onClick={() => handleCopy(wallet.address)} size="small">
                 <ContentCopyIcon fontSize="small" />
               </IconButton>
             ),
@@ -86,33 +103,31 @@ const BackupModal: React.FC<Props> = ({ open, onClose, identity }) => {
 
         <TextField
           fullWidth
-          label="Public Key"
-          value={identity.publicKey}
+          label="Wallet Version"
+          value={wallet.version}
           InputProps={{
-            endAdornment: (
-              <IconButton onClick={() => handleCopy(identity.publicKey)} size="small">
-                <ContentCopyIcon fontSize="small" />
-              </IconButton>
-            ),
             readOnly: true,
           }}
           margin="normal"
         />
 
-        <Collapse in={showPrivate}>
+        <Collapse in={showMnemonic}>
           <TextField
             fullWidth
-            label="Private Key"
-            value={identity.privateKey}
+            label="Seed Phrase (Mnemonic)"
+            value={wallet.mnemonic}
+            multiline
+            rows={3}
             InputProps={{
               endAdornment: (
-                <IconButton onClick={() => handleCopy(identity.privateKey)} size="small">
+                <IconButton onClick={() => handleCopy(wallet.mnemonic)} size="small">
                   <ContentCopyIcon fontSize="small" />
                 </IconButton>
               ),
               readOnly: true,
             }}
             margin="normal"
+            helperText="Write down these 12 words in the exact order shown. Store them in a safe place."
           />
         </Collapse>
 
@@ -130,25 +145,25 @@ const BackupModal: React.FC<Props> = ({ open, onClose, identity }) => {
         />
 
         <Box mt={2} display="flex" justifyContent="space-between">
-          <Button onClick={() => setShowPrivate((prev) => !prev)} color="warning">
-            {showPrivate ? 'Hide Private Key' : 'Show Private Key'}
+          <Button onClick={() => setShowMnemonic((prev) => !prev)} color="warning">
+            {showMnemonic ? 'Hide Seed Phrase' : 'Show Seed Phrase'}
           </Button>
           <Button
             onClick={async () => {
               try {
-                console.log("📝 Marking identity as backed up...");
+                console.log("📝 Marking wallet as backed up...");
 
                 // Set up response listener
                 const handleResponse = (event: any) => {
-                  if (event.detail.message === 'mark_identity_backed_up_response') {
+                  if (event.detail.message === 'mark_wallet_backed_up_response') {
                     try {
                       const response = JSON.parse(event.detail.args[0]);
                       console.log("📝 Mark backed up response:", response);
 
                       if (response.success) {
-                        console.log("✅ Identity successfully marked as backed up");
+                        console.log("✅ Wallet successfully marked as backed up");
                       } else {
-                        console.error("❌ Failed to mark identity as backed up:", response.error);
+                        console.error("❌ Failed to mark wallet as backed up:", response.error);
                       }
                     } catch (error) {
                       console.error("💥 Error parsing mark backed up response:", error);
@@ -163,7 +178,7 @@ const BackupModal: React.FC<Props> = ({ open, onClose, identity }) => {
 
                 // Send mark backed up request
                 if (window.cefMessage?.send) {
-                  window.cefMessage.send('mark_identity_backed_up', []);
+                  window.cefMessage.send('mark_wallet_backed_up', []);
                 } else {
                   console.error("❌ cefMessage not available");
                 }
@@ -195,6 +210,7 @@ const BackupModal: React.FC<Props> = ({ open, onClose, identity }) => {
         )}
       </Box>
     </Modal>
+    </>
   );
 };
 

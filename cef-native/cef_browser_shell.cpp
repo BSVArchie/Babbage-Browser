@@ -31,6 +31,9 @@
 #include <filesystem>
 #include <iostream>
 #include <fstream>
+#include <chrono>
+#include <iomanip>
+#include <sstream>
 
 HWND g_hwnd = nullptr;
 HWND g_header_hwnd = nullptr;
@@ -42,25 +45,151 @@ HWND g_settings_overlay_hwnd = nullptr;
 HWND g_wallet_overlay_hwnd = nullptr;
 HWND g_backup_overlay_hwnd = nullptr;
 
-// Debug logging function
+// Log levels
+enum class LogLevel {
+    DEBUG = 0,
+    INFO = 1,
+    WARNING = 2,
+    ERROR_LEVEL = 3
+};
+
+// Process types for identification
+enum class ProcessType {
+    MAIN = 0,
+    RENDER = 1,
+    BROWSER = 2
+};
+
+// Centralized Logger class
+class Logger {
+private:
+    static std::ofstream logFile;
+    static bool initialized;
+    static ProcessType currentProcess;
+    static std::string logFilePath;
+
+    static std::string GetTimestamp() {
+        auto now = std::chrono::system_clock::now();
+        auto time_t = std::chrono::system_clock::to_time_t(now);
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now.time_since_epoch()) % 1000;
+
+        std::stringstream ss;
+        ss << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
+        ss << "." << std::setfill('0') << std::setw(3) << ms.count();
+        return ss.str();
+    }
+
+    static std::string GetProcessName(ProcessType process) {
+        switch (process) {
+            case ProcessType::MAIN: return "MAIN";
+            case ProcessType::RENDER: return "RENDER";
+            case ProcessType::BROWSER: return "BROWSER";
+            default: return "UNKNOWN";
+        }
+    }
+
+    static std::string GetLogLevelName(LogLevel level) {
+        switch (level) {
+            case LogLevel::DEBUG: return "DEBUG";
+            case LogLevel::INFO: return "INFO";
+            case LogLevel::WARNING: return "WARN";
+            case LogLevel::ERROR_LEVEL: return "ERROR";
+            default: return "UNKNOWN";
+        }
+    }
+
+public:
+    static void Initialize(ProcessType process, const std::string& filePath = "debug_output.log") {
+        if (initialized) return;
+
+        currentProcess = process;
+        logFilePath = filePath;
+
+        // Open log file
+        logFile.open(logFilePath, std::ios::app);
+        if (logFile.is_open()) {
+            initialized = true;
+            Log("Logger initialized for " + GetProcessName(process), 1);
+        } else {
+            // Fallback to stdout if file can't be opened
+            std::cout << "WARNING: Could not open log file: " << filePath << std::endl;
+        }
+    }
+
+    static void Log(const std::string& message, int level = 1, int process = 0) {
+        LogLevel logLevel = static_cast<LogLevel>(level);
+        ProcessType processType = static_cast<ProcessType>(process);
+
+        if (!initialized) {
+            // Fallback logging if not initialized
+            std::cout << "[" << GetTimestamp() << "] [" << GetProcessName(processType) << "] [" << GetLogLevelName(logLevel) << "] " << message << std::endl;
+            return;
+        }
+
+        std::string logEntry = "[" + GetTimestamp() + "] [" + GetProcessName(processType) + "] [" + GetLogLevelName(logLevel) + "] " + message;
+
+        // Write to file
+        if (logFile.is_open()) {
+            logFile << logEntry << std::endl;
+            logFile.flush();
+        }
+
+        // Also write to stdout (for debugging)
+        std::cout << logEntry << std::endl;
+    }
+
+    static void Shutdown() {
+        if (initialized && logFile.is_open()) {
+            Log("Logger shutting down", 1);
+            logFile.close();
+            initialized = false;
+        }
+    }
+
+    static bool IsInitialized() {
+        return initialized;
+    }
+};
+
+// Static member definitions
+std::ofstream Logger::logFile;
+bool Logger::initialized = false;
+ProcessType Logger::currentProcess = ProcessType::MAIN;
+std::string Logger::logFilePath = "";
+
+// Convenience macros for easier logging
+#define LOG_DEBUG(msg) Logger::Log(msg, 0, 0)
+#define LOG_INFO(msg) Logger::Log(msg, 1, 0)
+#define LOG_WARNING(msg) Logger::Log(msg, 2, 0)
+#define LOG_ERROR(msg) Logger::Log(msg, 3, 0)
+
+#define LOG_DEBUG_RENDER(msg) Logger::Log(msg, 0, 1)
+#define LOG_INFO_RENDER(msg) Logger::Log(msg, 1, 1)
+#define LOG_WARNING_RENDER(msg) Logger::Log(msg, 2, 1)
+#define LOG_ERROR_RENDER(msg) Logger::Log(msg, 3, 1)
+
+#define LOG_DEBUG_BROWSER(msg) Logger::Log(msg, 0, 2)
+#define LOG_INFO_BROWSER(msg) Logger::Log(msg, 1, 2)
+#define LOG_WARNING_BROWSER(msg) Logger::Log(msg, 2, 2)
+#define LOG_ERROR_BROWSER(msg) Logger::Log(msg, 3, 2)
+
+// Legacy DebugLog function for backward compatibility
 void DebugLog(const std::string& message) {
-    std::cout << message << std::endl;
-    std::ofstream debugLog("debug_output.log", std::ios::app);
-    debugLog << message << std::endl;
-    debugLog.close();
+    LOG_INFO(message);
 }
 
 // Graceful shutdown function
 void ShutdownApplication() {
-    DebugLog("🛑 Starting graceful application shutdown...");
+    LOG_INFO("🛑 Starting graceful application shutdown...");
 
     // Step 0: Stop Go daemon first (to prevent orphaned processes)
-    DebugLog("🔄 Stopping Go daemon...");
+    LOG_INFO("🔄 Stopping Go daemon...");
     // Note: WalletService destructor will be called automatically when the app exits
     // This ensures the daemon is properly terminated
 
     // Step 1: Close all CEF browsers first
-    DebugLog("🔄 Closing CEF browsers...");
+    LOG_INFO("🔄 Closing CEF browsers...");
     CefRefPtr<CefBrowser> header_browser = SimpleHandler::GetHeaderBrowser();
     CefRefPtr<CefBrowser> webview_browser = SimpleHandler::GetWebviewBrowser();
     CefRefPtr<CefBrowser> settings_browser = SimpleHandler::GetSettingsBrowser();
@@ -68,76 +197,75 @@ void ShutdownApplication() {
     CefRefPtr<CefBrowser> backup_browser = SimpleHandler::GetBackupBrowser();
 
     if (header_browser) {
-        DebugLog("🔄 Closing header browser...");
+        LOG_INFO("🔄 Closing header browser...");
         header_browser->GetHost()->CloseBrowser(false);
     }
 
     if (webview_browser) {
-        DebugLog("🔄 Closing webview browser...");
+        LOG_INFO("🔄 Closing webview browser...");
         webview_browser->GetHost()->CloseBrowser(false);
     }
 
     if (settings_browser) {
-        DebugLog("🔄 Closing settings browser...");
+        LOG_INFO("🔄 Closing settings browser...");
         settings_browser->GetHost()->CloseBrowser(false);
     }
 
     if (wallet_browser) {
-        DebugLog("🔄 Closing wallet browser...");
+        LOG_INFO("🔄 Closing wallet browser...");
         wallet_browser->GetHost()->CloseBrowser(false);
     }
 
     if (backup_browser) {
-        DebugLog("🔄 Closing backup browser...");
+        LOG_INFO("🔄 Closing backup browser...");
         backup_browser->GetHost()->CloseBrowser(false);
     }
 
     // Step 2: Destroy overlay windows
-    DebugLog("🔄 Destroying overlay windows...");
+    LOG_INFO("🔄 Destroying overlay windows...");
     if (g_settings_overlay_hwnd && IsWindow(g_settings_overlay_hwnd)) {
-        DebugLog("🔄 Destroying settings overlay window...");
+        LOG_INFO("🔄 Destroying settings overlay window...");
         DestroyWindow(g_settings_overlay_hwnd);
         g_settings_overlay_hwnd = nullptr;
     }
 
     if (g_wallet_overlay_hwnd && IsWindow(g_wallet_overlay_hwnd)) {
-        DebugLog("🔄 Destroying wallet overlay window...");
+        LOG_INFO("🔄 Destroying wallet overlay window...");
         DestroyWindow(g_wallet_overlay_hwnd);
         g_wallet_overlay_hwnd = nullptr;
     }
 
     if (g_backup_overlay_hwnd && IsWindow(g_backup_overlay_hwnd)) {
-        DebugLog("🔄 Destroying backup overlay window...");
+        LOG_INFO("🔄 Destroying backup overlay window...");
         DestroyWindow(g_backup_overlay_hwnd);
         g_backup_overlay_hwnd = nullptr;
     }
 
     // Step 3: Destroy main windows (child windows first)
-    DebugLog("🔄 Destroying main windows...");
+    LOG_INFO("🔄 Destroying main windows...");
     if (g_header_hwnd && IsWindow(g_header_hwnd)) {
-        DebugLog("🔄 Destroying header window...");
+        LOG_INFO("🔄 Destroying header window...");
         DestroyWindow(g_header_hwnd);
         g_header_hwnd = nullptr;
     }
 
     if (g_webview_hwnd && IsWindow(g_webview_hwnd)) {
-        DebugLog("🔄 Destroying webview window...");
+        LOG_INFO("🔄 Destroying webview window...");
         DestroyWindow(g_webview_hwnd);
         g_webview_hwnd = nullptr;
     }
 
     // Step 4: Destroy main shell window last
     if (g_hwnd && IsWindow(g_hwnd)) {
-        DebugLog("🔄 Destroying main shell window...");
+        LOG_INFO("🔄 Destroying main shell window...");
         DestroyWindow(g_hwnd);
         g_hwnd = nullptr;
     }
 
-    DebugLog("✅ Application shutdown complete");
+    LOG_INFO("✅ Application shutdown complete");
 
-    // Step 5: Close console window
-    DebugLog("🔄 Closing console window...");
-    FreeConsole();
+    // Shutdown logger
+    Logger::Shutdown();
 }
 
 LRESULT CALLBACK ShellWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -147,13 +275,13 @@ LRESULT CALLBACK ShellWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
             break;
 
         case WM_CLOSE:
-            DebugLog("🛑 Main shell window received WM_CLOSE - starting graceful shutdown...");
+            LOG_INFO("🛑 Main shell window received WM_CLOSE - starting graceful shutdown...");
             ShutdownApplication();
             PostQuitMessage(0);
             return 0;
 
         case WM_DESTROY:
-            DebugLog("🛑 Main shell window received WM_DESTROY");
+            LOG_INFO("🛑 Main shell window received WM_DESTROY");
             PostQuitMessage(0);
             break;
     }
@@ -165,12 +293,12 @@ LRESULT CALLBACK ShellWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 LRESULT CALLBACK SettingsOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
         case WM_MOUSEACTIVATE:
-            std::cout << "👆 Settings Overlay HWND received WM_MOUSEACTIVATE\n";
+            LOG_INFO("👆 Settings Overlay HWND received WM_MOUSEACTIVATE");
             // Allow normal activation without forcing z-order
             return MA_ACTIVATE;
 
         case WM_LBUTTONDOWN: {
-            std::cout << "🖱️ Settings Overlay received WM_LBUTTONDOWN\n";
+            LOG_DEBUG("🖱️ Settings Overlay received WM_LBUTTONDOWN");
             SetFocus(hwnd);
 
             POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
@@ -185,16 +313,16 @@ LRESULT CALLBACK SettingsOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
             if (settings_browser) {
                 settings_browser->GetHost()->SendMouseClickEvent(mouse_event, MBT_LEFT, false, 1);  // mouse down
                 settings_browser->GetHost()->SendMouseClickEvent(mouse_event, MBT_LEFT, true, 1);   // mouse up
-                std::cout << "🧠 Left-click sent to settings overlay browser\n";
+                LOG_DEBUG("🧠 Left-click sent to settings overlay browser");
             } else {
-                std::cout << "⚠️ No settings overlay browser to send left-click\n";
+                LOG_WARNING("⚠️ No settings overlay browser to send left-click");
             }
 
             return 0;
         }
 
         case WM_RBUTTONDOWN: {
-            std::cout << "🖱️ Settings Overlay received WM_RBUTTONDOWN\n";
+            LOG_DEBUG("🖱️ Settings Overlay received WM_RBUTTONDOWN");
             SetFocus(hwnd);
 
             POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
@@ -209,26 +337,26 @@ LRESULT CALLBACK SettingsOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
             if (settings_browser) {
                 settings_browser->GetHost()->SendMouseClickEvent(mouse_event, MBT_RIGHT, false, 1);  // mouse down
                 settings_browser->GetHost()->SendMouseClickEvent(mouse_event, MBT_RIGHT, true, 1);   // mouse up
-                std::cout << "🧠 Right-click sent to settings overlay browser\n";
+                LOG_DEBUG("🧠 Right-click sent to settings overlay browser");
             } else {
-                std::cout << "⚠️ No settings overlay browser to send right-click\n";
+                LOG_WARNING("⚠️ No settings overlay browser to send right-click");
             }
 
             return 0;
         }
 
         case WM_CLOSE:
-            std::cout << "❌ Settings Overlay received WM_CLOSE - destroying window\n";
+            LOG_INFO("❌ Settings Overlay received WM_CLOSE - destroying window");
             DestroyWindow(hwnd);
             return 0;
 
         case WM_DESTROY:
-            std::cout << "❌ Settings Overlay received WM_DESTROY - cleaning up\n";
+            LOG_INFO("❌ Settings Overlay received WM_DESTROY - cleaning up");
             // Clean up any resources if needed
             return 0;
 
         case WM_ACTIVATE:
-            std::cout << "⚡ Settings HWND activated with state: " << LOWORD(wParam) << "\n";
+            LOG_DEBUG("⚡ Settings HWND activated with state: " + std::to_string(LOWORD(wParam)));
             break;
 
         case WM_WINDOWPOSCHANGING:
@@ -241,12 +369,12 @@ LRESULT CALLBACK SettingsOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 LRESULT CALLBACK WalletOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
         case WM_MOUSEACTIVATE:
-            std::cout << "👆 Wallet Overlay HWND received WM_MOUSEACTIVATE\n";
+            LOG_DEBUG("👆 Wallet Overlay HWND received WM_MOUSEACTIVATE");
             // Allow normal activation without forcing z-order
             return MA_ACTIVATE;
 
         case WM_LBUTTONDOWN: {
-            std::cout << "🖱️ Wallet Overlay received WM_LBUTTONDOWN\n";
+            LOG_DEBUG("🖱️ Wallet Overlay received WM_LBUTTONDOWN");
             SetFocus(hwnd);
 
             POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
@@ -261,16 +389,16 @@ LRESULT CALLBACK WalletOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
             if (wallet_browser) {
                 wallet_browser->GetHost()->SendMouseClickEvent(mouse_event, MBT_LEFT, false, 1);  // mouse down
                 wallet_browser->GetHost()->SendMouseClickEvent(mouse_event, MBT_LEFT, true, 1);   // mouse up
-                std::cout << "🧠 Left-click sent to wallet overlay browser\n";
+                LOG_DEBUG("🧠 Left-click sent to wallet overlay browser");
             } else {
-                std::cout << "⚠️ No wallet overlay browser to send left-click\n";
+                LOG_DEBUG("⚠️ No wallet overlay browser to send left-click");
             }
 
             return 0;
         }
 
         case WM_RBUTTONDOWN: {
-            std::cout << "🖱️ Wallet Overlay received WM_RBUTTONDOWN\n";
+            LOG_DEBUG("🖱️ Wallet Overlay received WM_RBUTTONDOWN");
             SetFocus(hwnd);
 
             POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
@@ -285,26 +413,26 @@ LRESULT CALLBACK WalletOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
             if (wallet_browser) {
                 wallet_browser->GetHost()->SendMouseClickEvent(mouse_event, MBT_RIGHT, false, 1);  // mouse down
                 wallet_browser->GetHost()->SendMouseClickEvent(mouse_event, MBT_RIGHT, true, 1);   // mouse up
-                std::cout << "🧠 Right-click sent to wallet overlay browser\n";
+                LOG_DEBUG("🧠 Right-click sent to wallet overlay browser");
             } else {
-                std::cout << "⚠️ No wallet overlay browser to send right-click\n";
+                LOG_DEBUG("⚠️ No wallet overlay browser to send right-click");
             }
 
             return 0;
         }
 
         case WM_CLOSE:
-            std::cout << "❌ Wallet Overlay received WM_CLOSE - destroying window\n";
+            LOG_DEBUG("❌ Wallet Overlay received WM_CLOSE - destroying window");
             DestroyWindow(hwnd);
             return 0;
 
         case WM_DESTROY:
-            std::cout << "❌ Wallet Overlay received WM_DESTROY - cleaning up\n";
+            LOG_DEBUG("❌ Wallet Overlay received WM_DESTROY - cleaning up");
             // Clean up any resources if needed
             return 0;
 
         case WM_ACTIVATE:
-            std::cout << "⚡ Wallet HWND activated with state: " << LOWORD(wParam) << "\n";
+            LOG_DEBUG("⚡ Wallet HWND activated with state: " + std::to_string(LOWORD(wParam)));
             break;
 
         case WM_WINDOWPOSCHANGING:
@@ -317,11 +445,11 @@ LRESULT CALLBACK WalletOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
 LRESULT CALLBACK BackupOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
         case WM_MOUSEACTIVATE:
-            std::cout << "👆 Backup Overlay HWND received WM_MOUSEACTIVATE\n";
+            LOG_DEBUG("👆 Backup Overlay HWND received WM_MOUSEACTIVATE");
             return MA_ACTIVATE;
 
         case WM_LBUTTONDOWN: {
-            std::cout << "🖱️ Backup Overlay received WM_LBUTTONDOWN\n";
+            LOG_DEBUG("🖱️ Backup Overlay received WM_LBUTTONDOWN");
             SetFocus(hwnd);
             POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
             CefMouseEvent mouse_event;
@@ -332,15 +460,15 @@ LRESULT CALLBACK BackupOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
             if (backup_browser) {
                 backup_browser->GetHost()->SendMouseClickEvent(mouse_event, MBT_LEFT, false, 1);
                 backup_browser->GetHost()->SendMouseClickEvent(mouse_event, MBT_LEFT, true, 1);
-                std::cout << "🧠 Left-click sent to backup overlay browser\n";
+                LOG_DEBUG("🧠 Left-click sent to backup overlay browser");
             } else {
-                std::cout << "⚠️ No backup overlay browser to send left-click\n";
+                LOG_DEBUG("⚠️ No backup overlay browser to send left-click");
             }
             return 0;
         }
 
         case WM_RBUTTONDOWN: {
-            std::cout << "🖱️ Backup Overlay received WM_RBUTTONDOWN\n";
+            LOG_DEBUG("🖱️ Backup Overlay received WM_RBUTTONDOWN");
             SetFocus(hwnd);
             POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
             CefMouseEvent mouse_event;
@@ -351,24 +479,24 @@ LRESULT CALLBACK BackupOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
             if (backup_browser) {
                 backup_browser->GetHost()->SendMouseClickEvent(mouse_event, MBT_RIGHT, false, 1);
                 backup_browser->GetHost()->SendMouseClickEvent(mouse_event, MBT_RIGHT, true, 1);
-                std::cout << "🧠 Right-click sent to backup overlay browser\n";
+                LOG_DEBUG("🧠 Right-click sent to backup overlay browser");
             } else {
-                std::cout << "⚠️ No backup overlay browser to send right-click\n";
+                LOG_DEBUG("⚠️ No backup overlay browser to send right-click");
             }
             return 0;
         }
 
         case WM_CLOSE:
-            std::cout << "❌ Backup Overlay received WM_CLOSE - destroying window\n";
+            LOG_DEBUG("❌ Backup Overlay received WM_CLOSE - destroying window");
             DestroyWindow(hwnd);
             return 0;
 
         case WM_DESTROY:
-            std::cout << "❌ Backup Overlay received WM_DESTROY - cleaning up\n";
+            LOG_DEBUG("❌ Backup Overlay received WM_DESTROY - cleaning up");
             return 0;
 
         case WM_ACTIVATE:
-            std::cout << "⚡ Backup HWND activated with state: " << LOWORD(wParam) << "\n";
+            LOG_DEBUG("⚡ Backup HWND activated with state: " + std::to_string(LOWORD(wParam)));
             break;
 
         case WM_WINDOWPOSCHANGING:
@@ -385,20 +513,22 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     int exit_code = CefExecuteProcess(main_args, app, nullptr);
     if (exit_code >= 0) return exit_code;
 
-    AllocConsole();
+    // Initialize centralized logger FIRST
+    Logger::Initialize(ProcessType::MAIN, "debug_output.log");
+
+    LOG_INFO("=== NEW SESSION STARTED ===");
+    LOG_INFO("Shell starting...");
+
+    // Redirect stdout and stderr to debug_output.log as backup
     FILE* dummy;
-    freopen_s(&dummy, "CONOUT$", "w", stdout);
-    freopen_s(&dummy, "CONOUT$", "w", stderr);
-    freopen_s(&dummy, "CONIN$", "r", stdin);
+    errno_t result1 = freopen_s(&dummy, "debug_output.log", "a", stdout);
+    errno_t result2 = freopen_s(&dummy, "debug_output.log", "a", stderr);
 
-    // Create a separate log file for our debug messages
-    std::ofstream debugLog("debug_output.log", std::ios::app);
-    debugLog << "=== NEW SESSION STARTED ===" << std::endl;
-    debugLog.close();
-
-    DebugLog("Shell starting...");
-    debugLog << "=== NEW SESSION STARTED ===" << std::endl;
-    debugLog.close();
+    if (result1 != 0 || result2 != 0) {
+        LOG_WARNING("freopen failed - stdout: " + std::to_string(result1) + ", stderr: " + std::to_string(result2));
+    } else {
+        LOG_INFO("stdout/stderr successfully redirected to debug_output.log");
+    }
 
     CefSettings settings;
     settings.command_line_args_disabled = false;
@@ -439,7 +569,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     settingsOverlayClass.lpszClassName = L"CEFSettingsOverlayWindow";
 
     if (!RegisterClass(&settingsOverlayClass)) {
-        std::cout << "❌ Failed to register settings overlay window class. Error: " << GetLastError() << std::endl;
+        LOG_DEBUG("❌ Failed to register settings overlay window class. Error: " + std::to_string(GetLastError()));
     }
 
     WNDCLASS walletOverlayClass = {};
@@ -448,7 +578,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     walletOverlayClass.lpszClassName = L"CEFWalletOverlayWindow";
 
     if (!RegisterClass(&walletOverlayClass)) {
-        std::cout << "❌ Failed to register wallet overlay window class. Error: " << GetLastError() << std::endl;
+        LOG_DEBUG("❌ Failed to register wallet overlay window class. Error: " + std::to_string(GetLastError()));
     }
 
     // Register backup overlay window class
@@ -458,7 +588,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     backupOverlayClass.lpszClassName = L"CEFBackupOverlayWindow";
 
     if (!RegisterClass(&backupOverlayClass)) {
-        std::cout << "❌ Failed to register backup overlay window class. Error: " << GetLastError() << std::endl;
+        LOG_DEBUG("❌ Failed to register backup overlay window class. Error: " + std::to_string(GetLastError()));
     }
 
     HWND hwnd = CreateWindow(L"BitcoinBrowserWndClass", L"Bitcoin Browser / Babbage Browser",
@@ -480,9 +610,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     ShowWindow(header_hwnd, SW_SHOW); UpdateWindow(header_hwnd);
     ShowWindow(webview_hwnd, SW_SHOW); UpdateWindow(webview_hwnd);
 
-    std::cout << "Initializing CEF..." << std::endl;
+    LOG_DEBUG("Initializing CEF...");
     bool success = CefInitialize(main_args, settings, app, nullptr);
-    std::cout << "CefInitialize success: " << (success ? "true" : "false") << std::endl;
+    LOG_DEBUG("CefInitialize success: " + std::string(success ? "true" : "false"));
 
     if (!success) return 1;
 

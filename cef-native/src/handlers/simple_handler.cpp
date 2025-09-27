@@ -17,9 +17,34 @@
 #include <string>
 #include <nlohmann/json.hpp>
 
+// Forward declaration of Logger class from main shell
+class Logger {
+public:
+    static void Log(const std::string& message, int level = 1, int process = 2);
+};
+
+// Convenience macros for easier logging
+#define LOG_DEBUG_BROWSER(msg) Logger::Log(msg, 0, 2)
+#define LOG_INFO_BROWSER(msg) Logger::Log(msg, 1, 2)
+#define LOG_WARNING_BROWSER(msg) Logger::Log(msg, 2, 2)
+#define LOG_ERROR_BROWSER(msg) Logger::Log(msg, 3, 2)
+
 extern void CreateTestOverlayWithSeparateProcess(HINSTANCE hInstance);
 extern void CreateWalletOverlayWithSeparateProcess(HINSTANCE hInstance);
 extern void CreateBackupOverlayWithSeparateProcess(HINSTANCE hInstance);
+
+// Global backup modal state management
+static bool g_backupModalShown = false;
+
+// Helper functions for backup modal state
+bool getBackupModalShown() {
+    return g_backupModalShown;
+}
+
+void setBackupModalShown(bool shown) {
+    g_backupModalShown = shown;
+    LOG_DEBUG_BROWSER("💾 Backup modal state set to: " + std::to_string(shown));
+}
 
 std::string SimpleHandler::pending_panel_;
 bool SimpleHandler::needs_overlay_reload_ = false;
@@ -70,9 +95,9 @@ void SimpleHandler::TriggerDeferredPanel(const std::string& panel) {
     if (overlay && overlay->GetMainFrame()) {
         std::string js = "window.triggerPanel('" + panel + "')";
         overlay->GetMainFrame()->ExecuteJavaScript(js, overlay->GetMainFrame()->GetURL(), 0);
-        std::cout << "🧠 Deferred panel triggered after delay: " << panel << std::endl;
+        LOG_DEBUG_BROWSER("🧠 Deferred panel triggered after delay: " + panel);
     } else {
-        std::cout << "⚠️ Overlay browser still not ready. Skipping panel trigger." << std::endl;
+        LOG_DEBUG_BROWSER("⚠️ Overlay browser still not ready. Skipping panel trigger.");
     }
 }
 
@@ -88,10 +113,9 @@ void SimpleHandler::OnLoadError(CefRefPtr<CefBrowser> browser,
                                 ErrorCode errorCode,
                                 const CefString& errorText,
                                 const CefString& failedUrl) {
-    std::cout << "❌ Load error for role: " << role_ << std::endl;
-    std::wcout << L"❌ Load error: " << std::wstring(failedUrl)
-               << L" - " << std::wstring(errorText) << std::endl;
-    std::cout << "❌ Error code: " << errorCode << std::endl;
+    LOG_DEBUG_BROWSER("❌ Load error for role: " + role_);
+    LOG_DEBUG_BROWSER("❌ Load error: " + failedUrl.ToString() + " - " + errorText.ToString());
+    LOG_DEBUG_BROWSER("❌ Error code: " + std::to_string(errorCode));
 
     if (frame->IsMain()) {
         std::string html = "<html><body><h1>Failed to load</h1><p>URL: " +
@@ -118,56 +142,39 @@ void SimpleHandler::OnLoadingStateChange(CefRefPtr<CefBrowser> browser,
                                          bool isLoading,
                                          bool canGoBack,
                                          bool canGoForward) {
-    std::cout << "📡 Loading state for role " << role_ << ": " << (isLoading ? "loading..." : "done") << std::endl;
-    std::ofstream debugLog("debug_output.log", std::ios::app);
-    debugLog << "📡 Loading state for role " << role_ << ": " << (isLoading ? "loading..." : "done") << std::endl;
-    debugLog.close();
+        LOG_DEBUG_BROWSER("📡 Loading state for role " + role_ + ": " + (isLoading ? "loading..." : "done"));
 
     if (role_ == "overlay") {
-        std::cout << "📡 Overlay URL: " << browser->GetMainFrame()->GetURL().ToString() << std::endl;
+        LOG_DEBUG_BROWSER("📡 Overlay URL: " + browser->GetMainFrame()->GetURL().ToString());
     }
 
     if (role_ == "backup") {
-        std::cout << "📡 Backup URL: " << browser->GetMainFrame()->GetURL().ToString() << std::endl;
-        std::ofstream debugLog("debug_output.log", std::ios::app);
-        debugLog << "📡 Backup URL: " << browser->GetMainFrame()->GetURL().ToString() << std::endl;
-        debugLog.close();
+        LOG_DEBUG_BROWSER("📡 Backup URL: " + browser->GetMainFrame()->GetURL().ToString());
     }
 
     if (!isLoading) {
         if (role_ == "overlay") {
             // Log that we're about to inject the API
-            std::ofstream debugLog("debug_output.log", std::ios::app);
-            debugLog << "🔧 OVERLAY LOADED - About to inject bitcoinBrowser API" << std::endl;
-            debugLog.close();
+            LOG_DEBUG_BROWSER("🔧 OVERLAY LOADED - About to inject bitcoinBrowser API");
 
             // Inject the bitcoinBrowser API when overlay finishes loading
             extern void InjectBitcoinBrowserAPI(CefRefPtr<CefBrowser> browser);
             InjectBitcoinBrowserAPI(browser);
         } else if (role_ == "webview") {
             // Inject the bitcoinBrowser API into webview browser as well
-            std::cout << "🔧 WEBVIEW BROWSER LOADED - Injecting bitcoinBrowser API" << std::endl;
-            std::ofstream debugLog("debug_output.log", std::ios::app);
-            debugLog << "🔧 WEBVIEW BROWSER LOADED - Injecting bitcoinBrowser API" << std::endl;
-            debugLog.close();
+            LOG_DEBUG_BROWSER("🔧 WEBVIEW BROWSER LOADED - Injecting bitcoinBrowser API");
 
             extern void InjectBitcoinBrowserAPI(CefRefPtr<CefBrowser> browser);
             InjectBitcoinBrowserAPI(browser);
         } else if (role_ == "header") {
             // Inject the bitcoinBrowser API into header browser (where React app runs)
-            std::cout << "🔧 HEADER BROWSER LOADED - Injecting bitcoinBrowser API" << std::endl;
-            std::ofstream debugLog("debug_output.log", std::ios::app);
-            debugLog << "🔧 HEADER BROWSER LOADED - Injecting bitcoinBrowser API" << std::endl;
-            debugLog.close();
+            LOG_DEBUG_BROWSER("🔧 HEADER BROWSER LOADED - Injecting bitcoinBrowser API");
 
             extern void InjectBitcoinBrowserAPI(CefRefPtr<CefBrowser> browser);
             InjectBitcoinBrowserAPI(browser);
         } else if (role_ == "settings") {
             // Inject the bitcoinBrowser API into settings browser
-            std::cout << "🔧 SETTINGS BROWSER LOADED - Injecting bitcoinBrowser API" << std::endl;
-            std::ofstream debugLog("debug_output.log", std::ios::app);
-            debugLog << "🔧 SETTINGS BROWSER LOADED - Injecting bitcoinBrowser API" << std::endl;
-            debugLog.close();
+            LOG_DEBUG_BROWSER("🔧 SETTINGS BROWSER LOADED - Injecting bitcoinBrowser API");
 
             extern void InjectBitcoinBrowserAPI(CefRefPtr<CefBrowser> browser);
             InjectBitcoinBrowserAPI(browser);
@@ -177,17 +184,17 @@ void SimpleHandler::OnLoadingStateChange(CefRefPtr<CefBrowser> browser,
         if (role_ == "overlay") {
             // Check if we need to reload the overlay
             if (needs_overlay_reload_) {
-                std::cout << "🔄 Overlay finished loading, now reloading React app" << std::endl;
+                LOG_DEBUG_BROWSER("🔄 Overlay finished loading, now reloading React app");
                 needs_overlay_reload_ = false;
                 browser->GetMainFrame()->LoadURL("http://127.0.0.1:5137/overlay");
-                std::cout << "🔄 LoadURL called for overlay reload" << std::endl;
+                LOG_DEBUG_BROWSER("🔄 LoadURL called for overlay reload");
                 return; // Don't process pending panels yet, wait for reload to complete
             }
 
             // Handle pending panel triggers
             if (!pending_panel_.empty()) {
                 std::string panel = pending_panel_;
-                std::cout << "🕒 OnLoadingStateChange: Creating deferred trigger for panel: " << panel << std::endl;
+                LOG_DEBUG_BROWSER("🕒 OnLoadingStateChange: Creating deferred trigger for panel: " + panel);
 
                 // Clear pending_panel_ immediately to prevent duplicate deferred triggers
                 SimpleHandler::pending_panel_.clear();
@@ -203,51 +210,35 @@ void SimpleHandler::OnLoadingStateChange(CefRefPtr<CefBrowser> browser,
 void SimpleHandler::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
     CEF_REQUIRE_UI_THREAD();
 
-    std::cout << "✅ OnAfterCreated for role: " << role_ << std::endl;
+    LOG_DEBUG_BROWSER("✅ OnAfterCreated for role: " + role_);
 
     if (role_ == "webview") {
         webview_browser_ = browser;
-        std::cout << "📡 WebView browser reference stored." << std::endl;
-        std::ofstream debugLog("debug_output.log", std::ios::app);
-        debugLog << "📡 WebView browser reference stored. ID: " << browser->GetIdentifier() << std::endl;
-        debugLog.close();
+        LOG_DEBUG_BROWSER("📡 WebView browser reference stored.");
+        LOG_DEBUG_BROWSER("📡 WebView browser reference stored. ID: " + std::to_string(browser->GetIdentifier()));
     } else if (role_ == "header") {
         header_browser_ = browser;
-        std::cout << "🧭 header browser initialized." << std::endl;
-        std::ofstream debugLog("debug_output.log", std::ios::app);
-        debugLog << "🧭 header browser initialized. ID: " << browser->GetIdentifier() << std::endl;
-        debugLog.close();
+        LOG_DEBUG_BROWSER("🧭 header browser initialized.");
+        LOG_DEBUG_BROWSER("🧭 header browser initialized. ID: " + std::to_string(browser->GetIdentifier()));
     } else if (role_ == "overlay") {
         overlay_browser_ = browser;
-        std::cout << "🪟 Overlay browser initialized." << std::endl;
-        std::ofstream debugLog("debug_output.log", std::ios::app);
-        debugLog << "🪟 Overlay browser initialized. ID: " << browser->GetIdentifier() << std::endl;
-        debugLog.close();
+        LOG_DEBUG_BROWSER("🪟 Overlay browser initialized.");
+        LOG_DEBUG_BROWSER("🪟 Overlay browser initialized. ID: " + std::to_string(browser->GetIdentifier()));
     } else if (role_ == "settings") {
         settings_browser_ = browser;
-        std::cout << "⚙️ Settings browser initialized." << std::endl;
-        std::ofstream debugLog("debug_output.log", std::ios::app);
-        debugLog << "⚙️ Settings browser initialized. ID: " << browser->GetIdentifier() << std::endl;
-        debugLog.close();
+        LOG_DEBUG_BROWSER("⚙️ Settings browser initialized.");
+        LOG_DEBUG_BROWSER("⚙️ Settings browser initialized. ID: " + std::to_string(browser->GetIdentifier()));
     } else if (role_ == "wallet") {
         wallet_browser_ = browser;
-        std::cout << "💰 Wallet browser initialized." << std::endl;
-        std::ofstream debugLog("debug_output.log", std::ios::app);
-        debugLog << "💰 Wallet browser initialized. ID: " << browser->GetIdentifier() << std::endl;
-        debugLog.close();
+        LOG_DEBUG_BROWSER("💰 Wallet browser initialized.");
+        LOG_DEBUG_BROWSER("💰 Wallet browser initialized. ID: " + std::to_string(browser->GetIdentifier()));
     } else if (role_ == "backup") {
         backup_browser_ = browser;
-        std::cout << "💾 Backup browser initialized." << std::endl;
-        std::ofstream debugLog("debug_output.log", std::ios::app);
-        debugLog << "💾 Backup browser initialized. ID: " << browser->GetIdentifier() << std::endl;
-        debugLog.close();
+        LOG_DEBUG_BROWSER("💾 Backup browser initialized.");
+        LOG_DEBUG_BROWSER("💾 Backup browser initialized. ID: " + std::to_string(browser->GetIdentifier()));
     }
 
-    std::cout << "🧭 Browser Created → role: " << role_
-          << ", ID: " << browser->GetIdentifier()
-          << ", IsPopup: " << browser->IsPopup()
-          << ", MainFrame URL: " << browser->GetMainFrame()->GetURL().ToString()
-          << std::endl;
+    LOG_DEBUG_BROWSER("🧭 Browser Created → role: " + role_ + ", ID: " + std::to_string(browser->GetIdentifier()) + ", IsPopup: " + (browser->IsPopup() ? "true" : "false") + ", MainFrame URL: " + browser->GetMainFrame()->GetURL().ToString());
 }
 
 bool SimpleHandler::OnProcessMessageReceived(
@@ -259,8 +250,10 @@ bool SimpleHandler::OnProcessMessageReceived(
     CEF_REQUIRE_UI_THREAD();
 
     std::string message_name = message->GetName();
-    std::cout << "📨 Message received: " << message_name
-          << ", Browser ID: " << browser->GetIdentifier() << std::endl;
+    LOG_DEBUG_BROWSER("📨 Message received: " + message_name + ", Browser ID: " + std::to_string(browser->GetIdentifier()));
+
+    // Additional logging for debugging
+    LOG_DEBUG_BROWSER("📨 Message received: " + message_name + ", Browser ID: " + std::to_string(browser->GetIdentifier()));
 
     if (message_name == "navigate") {
         CefRefPtr<CefListValue> args = message->GetArgumentList();
@@ -271,12 +264,12 @@ bool SimpleHandler::OnProcessMessageReceived(
             path = "http://" + path;
         }
 
-        std::cout << "🔁 Forwarding navigation to webview: " << path << std::endl;
+        LOG_DEBUG_BROWSER("🔁 Forwarding navigation to webview: " + path);
 
         if (SimpleHandler::webview_browser_ && SimpleHandler::webview_browser_->GetMainFrame()) {
             SimpleHandler::webview_browser_->GetMainFrame()->LoadURL(path);
         } else {
-            std::cout << "⚠️ WebView browser not available or not fully initialized." << std::endl;
+            LOG_DEBUG_BROWSER("⚠️ WebView browser not available or not fully initialized.");
         }
 
         return true;
@@ -286,223 +279,433 @@ bool SimpleHandler::OnProcessMessageReceived(
 
 
     if (message_name == "force_repaint") {
-        std::ofstream debugLog("debug_output.log", std::ios::app);
-        debugLog << "🔄 Force repaint requested for " << role_ << " browser" << std::endl;
-        debugLog.close();
+        LOG_DEBUG_BROWSER("🔄 Force repaint requested for " + role_ + " browser");
 
         if (browser) {
             browser->GetHost()->Invalidate(PET_VIEW);
-            std::ofstream debugLog2("debug_output.log", std::ios::app);
-            debugLog2 << "🔄 Browser invalidated for " << role_ << " browser" << std::endl;
-            debugLog2.close();
+            LOG_DEBUG_BROWSER("🔄 Browser invalidated for " + role_ + " browser");
         }
         return true;
     }
 
-    if (message_name == "identity_status_check") {
-        std::ofstream debugLog("debug_output.log", std::ios::app);
-        debugLog << "🔍 Identity status check requested" << std::endl;
-        debugLog << "🔍 Current working directory: " << std::filesystem::current_path().string() << std::endl;
-
-        // Get the same path that the Go daemon uses
-        const char* homeDir = std::getenv("USERPROFILE");
-        std::string identityPath = std::string(homeDir) + "\\AppData\\Roaming\\BabbageBrowser\\identity.json";
-        debugLog << "🔍 Looking for identity file at: " << identityPath << std::endl;
-        debugLog.close();
-
-        nlohmann::json response;
-
-        // Check if identity.json file exists locally
-        std::ifstream identityFile(identityPath);
-        if (identityFile.good()) {
-            try {
-                // File exists - read it and check status
-                nlohmann::json identity;
-                identityFile >> identity;
-                identityFile.close();
-
-                bool backedUp = identity.value("backedUp", false);
-
-                response["exists"] = true;
-                response["needsBackup"] = !backedUp;
-                response["identity"] = identity;
-
-                std::ofstream debugLog2("debug_output.log", std::ios::app);
-                debugLog2 << "📁 Identity file exists, backedUp: " << (backedUp ? "YES" : "NO") << std::endl;
-                debugLog2.close();
-
-            } catch (const std::exception& e) {
-                identityFile.close();
-                // File exists but corrupted
-                response["exists"] = true;
-                response["needsBackup"] = true;
-                response["error"] = "Identity file corrupted: " + std::string(e.what());
-
-                std::ofstream debugLog3("debug_output.log", std::ios::app);
-                debugLog3 << "⚠️ Identity file corrupted: " << e.what() << std::endl;
-                debugLog3.close();
-            }
-        } else {
-            identityFile.close();
-            // File doesn't exist
-            response["exists"] = false;
-            response["needsBackup"] = true;
-
-            std::ofstream debugLog4("debug_output.log", std::ios::app);
-            debugLog4 << "📁 Identity file does not exist" << std::endl;
-            debugLog4.close();
-        }
-
-        // Send response back to frontend
-        CefRefPtr<CefProcessMessage> cefResponse = CefProcessMessage::Create("identity_status_check_response");
-        CefRefPtr<CefListValue> responseArgs = cefResponse->GetArgumentList();
-        responseArgs->SetString(0, response.dump());
-
-        browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, cefResponse);
-        std::ofstream debugLog5("debug_output.log", std::ios::app);
-        debugLog5 << "📤 Identity status sent: " << response.dump() << std::endl;
-        debugLog5.close();
-
-        return true;
-    }
-
-    if (message_name == "create_identity") {
-        std::ofstream debugLog("debug_output.log", std::ios::app);
-        debugLog << "🆕 Create identity requested" << std::endl;
-        debugLog.close();
-
-        nlohmann::json response;
-
-        // Check if identity already exists
-        const char* homeDir = std::getenv("USERPROFILE");
-        std::string identityPath = std::string(homeDir) + "\\AppData\\Roaming\\BabbageBrowser\\identity.json";
-
-        std::ofstream debugLog2("debug_output.log", std::ios::app);
-        debugLog2 << "🔍 create_identity: Checking for existing identity at: " << identityPath << std::endl;
-        debugLog2 << "🔍 create_identity: File exists check: " << std::filesystem::exists(identityPath) << std::endl;
-        debugLog2.close();
-
-        std::ifstream identityFile(identityPath);
-        if (identityFile.good()) {
-            try {
-                // Identity already exists - return it
-                nlohmann::json existingIdentity;
-                identityFile >> existingIdentity;
-                identityFile.close();
-
-                response["success"] = true;
-                response["identity"] = existingIdentity;
-
-                std::cout << "📁 Identity already exists, returning existing identity" << std::endl;
-
-            } catch (const std::exception& e) {
-                identityFile.close();
-                response["success"] = false;
-                response["error"] = "Failed to read existing identity: " + std::string(e.what());
-
-                std::cout << "⚠️ Failed to read existing identity: " << e.what() << std::endl;
-            }
-        } else {
-            identityFile.close();
-
-            // Identity doesn't exist - create new one via WalletService
-            try {
-                WalletService walletService;
-
-                if (!walletService.isConnected()) {
-                    response["success"] = false;
-                    response["error"] = "Wallet daemon is not running. Please start the daemon manually.";
-
-                    std::cout << "❌ Cannot create identity - daemon not running" << std::endl;
-                } else {
-                    // Create new identity
-                    nlohmann::json newIdentity = walletService.getIdentity();
-
-                    response["success"] = true;
-                    response["identity"] = newIdentity;
-
-                    std::cout << "✅ New identity created successfully" << std::endl;
-                }
-
-            } catch (const std::exception& e) {
-                response["success"] = false;
-                response["error"] = "Failed to create identity: " + std::string(e.what());
-
-                std::cout << "💥 Error creating identity: " << e.what() << std::endl;
-            }
-        }
-
-        // Send response back to frontend
-        CefRefPtr<CefProcessMessage> cefResponse = CefProcessMessage::Create("create_identity_response");
-        CefRefPtr<CefListValue> responseArgs = cefResponse->GetArgumentList();
-        responseArgs->SetString(0, response.dump());
-
-        browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, cefResponse);
-        std::cout << "📤 Create identity response sent: " << response.dump() << std::endl;
-
-        return true;
-    }
-
-    if (message_name == "mark_identity_backed_up") {
-        std::ofstream debugLog("debug_output.log", std::ios::app);
-        debugLog << "✅ Mark identity as backed up requested" << std::endl;
-        debugLog.close();
+    if (message_name == "wallet_status_check") {
+        LOG_DEBUG_BROWSER("🔍 Wallet status check requested");
 
         nlohmann::json response;
 
         try {
-            // Read existing identity file
-            const char* homeDir = std::getenv("USERPROFILE");
-            std::string identityPath = std::string(homeDir) + "\\AppData\\Roaming\\BabbageBrowser\\identity.json";
-            std::ifstream identityFile(identityPath);
-            if (!identityFile.good()) {
-                identityFile.close();
-                response["success"] = false;
-                response["error"] = "Identity file not found";
+            // Call WalletService to get wallet status
+            WalletService walletService;
+            nlohmann::json walletStatus = walletService.getWalletStatus();
 
-                std::cout << "❌ Cannot mark as backed up - identity file not found" << std::endl;
+            if (walletStatus.contains("exists")) {
+                bool exists = walletStatus["exists"].get<bool>();
+                response["exists"] = exists;
+                response["needsBackup"] = !exists; // If wallet doesn't exist, needs backup
+
+                LOG_DEBUG_BROWSER("📁 Wallet exists: " + std::string(exists ? "YES" : "NO"));
             } else {
-                nlohmann::json identity;
-                identityFile >> identity;
-                identityFile.close();
+                response["exists"] = false;
+                response["needsBackup"] = true;
+            }
 
-                // Update backedUp flag
-                identity["backedUp"] = true;
+        } catch (const std::exception& e) {
+            response["exists"] = false;
+            response["needsBackup"] = true;
 
-                // Write back to file
-                std::ofstream outFile(identityPath);
-                outFile << identity.dump(4); // Pretty print with 4-space indentation
-                outFile.close();
+            LOG_DEBUG_BROWSER("⚠️ Wallet status check failed: " + std::string(e.what()));
+        }
 
-                response["success"] = true;
-                response["identity"] = identity;
+        // Send response back to frontend
+        CefRefPtr<CefProcessMessage> cefResponse = CefProcessMessage::Create("wallet_status_check_response");
+        CefRefPtr<CefListValue> responseArgs = cefResponse->GetArgumentList();
+        responseArgs->SetString(0, response.dump());
 
-                std::cout << "✅ Identity marked as backed up successfully" << std::endl;
+        browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, cefResponse);
+        LOG_DEBUG_BROWSER("📤 Wallet status sent: " + response.dump());
+
+        return true;
+    }
+
+    if (message_name == "create_wallet") {
+        LOG_DEBUG_BROWSER("🆕 Create wallet requested");
+        LOG_DEBUG_BROWSER("🆕 Browser ID: " + std::to_string(browser->GetIdentifier()));
+        LOG_DEBUG_BROWSER("🆕 Frame URL: " + browser->GetMainFrame()->GetURL().ToString());
+
+        nlohmann::json response;
+
+        try {
+            WalletService walletService;
+
+            if (!walletService.isConnected()) {
+                response["success"] = false;
+                response["error"] = "Wallet daemon is not running. Please start the daemon manually.";
+
+                LOG_DEBUG_BROWSER("❌ Cannot create wallet - daemon not running");
+            } else {
+                // Create new wallet
+                nlohmann::json newWallet = walletService.createWallet();
+
+                if (newWallet.contains("success") && newWallet["success"].get<bool>()) {
+                    response["success"] = true;
+                    response["wallet"] = newWallet;
+
+                    LOG_DEBUG_BROWSER("✅ New wallet created successfully");
+                } else {
+                    response["success"] = false;
+                    response["error"] = "Failed to create wallet: " + newWallet.dump();
+
+                    LOG_DEBUG_BROWSER("❌ Failed to create wallet: " + newWallet.dump());
+                }
+            }
+
+        } catch (const std::exception& e) {
+            response["success"] = false;
+            response["error"] = "Failed to create wallet: " + std::string(e.what());
+
+            LOG_DEBUG_BROWSER("💥 Error creating wallet: " + std::string(e.what()));
+        }
+
+        // Send response back to frontend
+        CefRefPtr<CefProcessMessage> cefResponse = CefProcessMessage::Create("create_wallet_response");
+        CefRefPtr<CefListValue> responseArgs = cefResponse->GetArgumentList();
+        responseArgs->SetString(0, response.dump());
+
+        browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, cefResponse);
+        LOG_DEBUG_BROWSER("📤 Create wallet response sent: " + response.dump());
+
+        return true;
+    }
+
+    if (message_name == "mark_wallet_backed_up") {
+        LOG_DEBUG_BROWSER("✅ Mark wallet as backed up requested");
+
+        nlohmann::json response;
+
+        try {
+            WalletService walletService;
+
+            if (!walletService.isConnected()) {
+                response["success"] = false;
+                response["error"] = "Wallet daemon is not running. Please start the daemon manually.";
+
+                LOG_DEBUG_BROWSER("❌ Cannot mark as backed up - daemon not running");
+            } else {
+                // Mark wallet as backed up
+                bool success = walletService.markWalletBackedUp();
+
+                if (success) {
+                    response["success"] = true;
+                    LOG_DEBUG_BROWSER("✅ Wallet marked as backed up successfully");
+                } else {
+                    response["success"] = false;
+                    response["error"] = "Failed to mark wallet as backed up";
+
+                    LOG_DEBUG_BROWSER("❌ Failed to mark wallet as backed up");
+                }
             }
 
         } catch (const std::exception& e) {
             response["success"] = false;
             response["error"] = "Failed to mark as backed up: " + std::string(e.what());
 
-            std::cout << "💥 Error marking identity as backed up: " << e.what() << std::endl;
+            LOG_DEBUG_BROWSER("💥 Error marking wallet as backed up: " + std::string(e.what()));
         }
 
         // Send response back to frontend
-        CefRefPtr<CefProcessMessage> cefResponse = CefProcessMessage::Create("mark_identity_backed_up_response");
+        CefRefPtr<CefProcessMessage> cefResponse = CefProcessMessage::Create("mark_wallet_backed_up_response");
         CefRefPtr<CefListValue> responseArgs = cefResponse->GetArgumentList();
         responseArgs->SetString(0, response.dump());
 
         browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, cefResponse);
-        std::cout << "📤 Mark backed up response sent: " << response.dump() << std::endl;
+        LOG_DEBUG_BROWSER("📤 Mark backed up response sent: " + response.dump());
+
+        return true;
+    }
+
+    if (message_name == "get_wallet_info") {
+        LOG_DEBUG_BROWSER("🔍 Get wallet info requested");
+
+        nlohmann::json response;
+
+        try {
+            WalletService walletService;
+
+            if (!walletService.isConnected()) {
+                response["success"] = false;
+                response["error"] = "Wallet daemon is not running. Please start the daemon manually.";
+
+                LOG_DEBUG_BROWSER("❌ Cannot get wallet info - daemon not running");
+            } else {
+                // Get wallet info
+                nlohmann::json walletInfo = walletService.getWalletInfo();
+
+                if (walletInfo.contains("version")) {
+                    response["success"] = true;
+                    response["wallet"] = walletInfo;
+
+                    LOG_DEBUG_BROWSER("✅ Wallet info retrieved successfully");
+                } else {
+                    response["success"] = false;
+                    response["error"] = "Failed to get wallet info: " + walletInfo.dump();
+
+                    LOG_DEBUG_BROWSER("❌ Failed to get wallet info: " + walletInfo.dump());
+                }
+            }
+
+        } catch (const std::exception& e) {
+            response["success"] = false;
+            response["error"] = "Failed to get wallet info: " + std::string(e.what());
+
+            LOG_DEBUG_BROWSER("💥 Error getting wallet info: " + std::string(e.what()));
+        }
+
+        // Send response back to frontend
+        CefRefPtr<CefProcessMessage> cefResponse = CefProcessMessage::Create("get_wallet_info_response");
+        CefRefPtr<CefListValue> responseArgs = cefResponse->GetArgumentList();
+        responseArgs->SetString(0, response.dump());
+
+        browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, cefResponse);
+        LOG_DEBUG_BROWSER("📤 Get wallet info response sent: " + response.dump());
+
+        return true;
+    }
+
+    if (message_name == "load_wallet") {
+        LOG_DEBUG_BROWSER("📂 Load wallet requested");
+
+        nlohmann::json response;
+
+        try {
+            WalletService walletService;
+
+            if (!walletService.isConnected()) {
+                response["success"] = false;
+                response["error"] = "Wallet daemon is not running. Please start the daemon manually.";
+
+                LOG_DEBUG_BROWSER("❌ Cannot load wallet - daemon not running");
+            } else {
+                // Load wallet
+                nlohmann::json loadResult = walletService.loadWallet();
+
+                if (loadResult.contains("success") && loadResult["success"].get<bool>()) {
+                    response["success"] = true;
+                    response["wallet"] = loadResult;
+
+                    LOG_DEBUG_BROWSER("✅ Wallet loaded successfully");
+                } else {
+                    response["success"] = false;
+                    response["error"] = "Failed to load wallet: " + loadResult.dump();
+
+                    LOG_DEBUG_BROWSER("❌ Failed to load wallet: " + loadResult.dump());
+                }
+            }
+
+        } catch (const std::exception& e) {
+            response["success"] = false;
+            response["error"] = "Failed to load wallet: " + std::string(e.what());
+
+            LOG_DEBUG_BROWSER("💥 Error loading wallet: " + std::string(e.what()));
+        }
+
+        // Send response back to frontend
+        CefRefPtr<CefProcessMessage> cefResponse = CefProcessMessage::Create("load_wallet_response");
+        CefRefPtr<CefListValue> responseArgs = cefResponse->GetArgumentList();
+        responseArgs->SetString(0, response.dump());
+
+        browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, cefResponse);
+        LOG_DEBUG_BROWSER("📤 Load wallet response sent: " + response.dump());
+
+        return true;
+    }
+
+    if (message_name == "get_all_addresses") {
+        LOG_DEBUG_BROWSER("📍 Get all addresses requested");
+
+        nlohmann::json response;
+
+        try {
+            WalletService walletService;
+
+            if (!walletService.isConnected()) {
+                response["success"] = false;
+                response["error"] = "Wallet daemon is not running. Please start the daemon manually.";
+
+                LOG_DEBUG_BROWSER("❌ Cannot get addresses - daemon not running");
+            } else {
+                // Get all addresses
+                nlohmann::json addresses = walletService.getAllAddresses();
+
+                if (addresses.is_array()) {
+                    response["success"] = true;
+                    response["addresses"] = addresses;
+
+                    LOG_DEBUG_BROWSER("✅ Addresses retrieved successfully");
+                } else {
+                    response["success"] = false;
+                    response["error"] = "Failed to get addresses: " + addresses.dump();
+
+                    LOG_DEBUG_BROWSER("❌ Failed to get addresses: " + addresses.dump());
+                }
+            }
+
+        } catch (const std::exception& e) {
+            response["success"] = false;
+            response["error"] = "Failed to get addresses: " + std::string(e.what());
+
+            LOG_DEBUG_BROWSER("💥 Error getting addresses: " + std::string(e.what()));
+        }
+
+        // Send response back to frontend
+        CefRefPtr<CefProcessMessage> cefResponse = CefProcessMessage::Create("get_all_addresses_response");
+        CefRefPtr<CefListValue> responseArgs = cefResponse->GetArgumentList();
+        responseArgs->SetString(0, response.dump());
+
+        browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, cefResponse);
+        LOG_DEBUG_BROWSER("📤 Get all addresses response sent: " + response.dump());
+
+        return true;
+    }
+
+    if (message_name == "get_current_address") {
+        LOG_DEBUG_BROWSER("📍 Get current address requested");
+
+        nlohmann::json response;
+
+        try {
+            WalletService walletService;
+
+            if (!walletService.isConnected()) {
+                response["success"] = false;
+                response["error"] = "Wallet daemon is not running. Please start the daemon manually.";
+
+                LOG_DEBUG_BROWSER("❌ Cannot get current address - daemon not running");
+            } else {
+                // Get current address
+                nlohmann::json currentAddress = walletService.getCurrentAddress();
+
+                if (currentAddress.contains("address")) {
+                    response["success"] = true;
+                    response["address"] = currentAddress;
+
+                    LOG_DEBUG_BROWSER("✅ Current address retrieved successfully");
+                } else {
+                    response["success"] = false;
+                    response["error"] = "Failed to get current address: " + currentAddress.dump();
+
+                    LOG_DEBUG_BROWSER("❌ Failed to get current address: " + currentAddress.dump());
+                }
+            }
+
+        } catch (const std::exception& e) {
+            response["success"] = false;
+            response["error"] = "Failed to get current address: " + std::string(e.what());
+
+            LOG_DEBUG_BROWSER("💥 Error getting current address: " + std::string(e.what()));
+        }
+
+        // Send response back to frontend
+        CefRefPtr<CefProcessMessage> cefResponse = CefProcessMessage::Create("get_current_address_response");
+        CefRefPtr<CefListValue> responseArgs = cefResponse->GetArgumentList();
+        responseArgs->SetString(0, response.dump());
+
+        browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, cefResponse);
+        LOG_DEBUG_BROWSER("📤 Get current address response sent: " + response.dump());
+
+        return true;
+    }
+
+    if (message_name == "get_addresses") {
+        LOG_DEBUG_BROWSER("📍 Get all addresses requested");
+
+        nlohmann::json response;
+
+        try {
+            WalletService walletService;
+
+            if (!walletService.isConnected()) {
+                response["success"] = false;
+                response["error"] = "Wallet daemon is not running. Please start the daemon manually.";
+                LOG_DEBUG_BROWSER("❌ Wallet daemon not connected");
+            } else {
+                nlohmann::json addresses = walletService.getAllAddresses();
+
+                if (addresses.is_array()) {
+                    response["success"] = true;
+                    response["addresses"] = addresses;
+                    LOG_DEBUG_BROWSER("✅ All addresses retrieved successfully");
+                } else {
+                    response["success"] = false;
+                    response["error"] = "Failed to retrieve addresses: " + addresses.dump();
+                    LOG_DEBUG_BROWSER("❌ Failed to retrieve addresses: " + addresses.dump());
+                }
+            }
+        } catch (const std::exception& e) {
+            response["success"] = false;
+            response["error"] = "Exception: " + std::string(e.what());
+            LOG_DEBUG_BROWSER("❌ Exception in get_addresses: " + std::string(e.what()));
+        }
+
+        // Send response back to renderer
+        CefRefPtr<CefProcessMessage> cefResponse = CefProcessMessage::Create("get_addresses_response");
+        CefRefPtr<CefListValue> responseArgs = cefResponse->GetArgumentList();
+        responseArgs->SetString(0, response.dump());
+
+        browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, cefResponse);
+        LOG_DEBUG_BROWSER("📤 Get addresses response sent: " + response.dump());
+
+        return true;
+    }
+
+    if (message_name == "get_backup_modal_state") {
+        LOG_DEBUG_BROWSER("📨 Message received: get_backup_modal_state");
+
+        nlohmann::json response;
+        response["shown"] = getBackupModalShown();
+
+        CefRefPtr<CefProcessMessage> cefResponse = CefProcessMessage::Create("get_backup_modal_state_response");
+        CefRefPtr<CefListValue> responseArgs = cefResponse->GetArgumentList();
+        responseArgs->SetString(0, response.dump());
+
+        browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, cefResponse);
+        LOG_DEBUG_BROWSER("📤 Backup modal state sent: " + response.dump());
+
+        return true;
+    }
+
+    if (message_name == "set_backup_modal_state") {
+        LOG_DEBUG_BROWSER("📨 Message received: set_backup_modal_state");
+
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        LOG_DEBUG_BROWSER("🔍 Args size: " + std::to_string(args->GetSize()));
+
+        if (args->GetSize() > 0) {
+            LOG_DEBUG_BROWSER("🔍 Arg 0 type: " + std::to_string(args->GetType(0)));
+            LOG_DEBUG_BROWSER("🔍 Arg 0 as string: " + args->GetString(0).ToString());
+            LOG_DEBUG_BROWSER("🔍 Arg 0 as int: " + std::to_string(args->GetInt(0)));
+            LOG_DEBUG_BROWSER("🔍 Arg 0 as double: " + std::to_string(args->GetDouble(0)));
+        }
+
+        bool shown = args->GetBool(0);
+        LOG_DEBUG_BROWSER("🔍 Parsed boolean: " + std::to_string(shown));
+        setBackupModalShown(shown);
+
+        // Send confirmation response
+        nlohmann::json response;
+        response["success"] = true;
+
+        CefRefPtr<CefProcessMessage> cefResponse = CefProcessMessage::Create("set_backup_modal_state_response");
+        CefRefPtr<CefListValue> responseArgs = cefResponse->GetArgumentList();
+        responseArgs->SetString(0, response.dump());
+
+        browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, cefResponse);
+        LOG_DEBUG_BROWSER("📤 Backup modal state updated: " + std::to_string(shown));
 
         return true;
     }
 
     if (message_name == "overlay_close") {
-        std::cout << "🧠 [SimpleHandler] overlay_close message received" << std::endl;
-        std::ofstream debugLog("debug_output.log", std::ios::app);
-        debugLog << "🧠 [SimpleHandler] overlay_close message received" << std::endl;
-        debugLog.close();
+        LOG_DEBUG_BROWSER("🧠 [SimpleHandler] overlay_close message received");
 
         // Find and destroy overlay windows based on role
         HWND target_hwnd = nullptr;
@@ -511,25 +714,23 @@ bool SimpleHandler::OnProcessMessageReceived(
         if (role_ == "settings") {
             target_hwnd = FindWindow(L"CEFSettingsOverlayWindow", L"Settings Overlay");
             target_browser = GetSettingsBrowser();
-            std::cout << "✅ Found settings overlay window: " << target_hwnd << std::endl;
+            LOG_DEBUG_BROWSER("✅ Found settings overlay window: " + std::to_string(reinterpret_cast<uintptr_t>(target_hwnd)));
         } else if (role_ == "wallet") {
             target_hwnd = FindWindow(L"CEFWalletOverlayWindow", L"Wallet Overlay");
             target_browser = GetWalletBrowser();
-            std::cout << "✅ Found wallet overlay window: " << target_hwnd << std::endl;
+            LOG_DEBUG_BROWSER("✅ Found wallet overlay window: " + std::to_string(reinterpret_cast<uintptr_t>(target_hwnd)));
         } else if (role_ == "backup") {
             target_hwnd = FindWindow(L"CEFBackupOverlayWindow", L"Backup Overlay");
             target_browser = GetBackupBrowser();
-            std::cout << "✅ Found backup overlay window: " << target_hwnd << std::endl;
+            LOG_DEBUG_BROWSER("✅ Found backup overlay window: " + std::to_string(reinterpret_cast<uintptr_t>(target_hwnd)));
         }
 
         if (target_hwnd && IsWindow(target_hwnd)) {
-            std::ofstream debugLog2("debug_output.log", std::ios::app);
-            debugLog2 << "✅ Found " << role_ << " overlay window: " << target_hwnd << std::endl;
-            debugLog2.close();
+            LOG_DEBUG_BROWSER("✅ Found " + role_ + " overlay window: " + std::to_string(reinterpret_cast<uintptr_t>(target_hwnd)));
 
             // Close the browser first
             if (target_browser) {
-                std::cout << "🔄 Closing " << role_ << " browser" << std::endl;
+                LOG_DEBUG_BROWSER("🔄 Closing " + role_ + " browser");
                 target_browser->GetHost()->CloseBrowser(false);
                 // Clear the appropriate browser reference
                 if (role_ == "settings") settings_browser_ = nullptr;
@@ -538,36 +739,27 @@ bool SimpleHandler::OnProcessMessageReceived(
             }
 
             // Then destroy the window
-            std::cout << "🔄 Destroying " << role_ << " overlay window" << std::endl;
+            LOG_DEBUG_BROWSER("🔄 Destroying " + role_ + " overlay window");
             SendMessage(target_hwnd, WM_CLOSE, 0, 0);
         } else {
-            std::cout << "❌ " << role_ << " overlay window not found" << std::endl;
-            std::ofstream debugLog3("debug_output.log", std::ios::app);
-            debugLog3 << "❌ " << role_ << " overlay window not found" << std::endl;
-            debugLog3.close();
+            LOG_DEBUG_BROWSER("❌ " + role_ + " overlay window not found");
         }
 
         return true;
     }
 
     if (false && message_name == "overlay_hide_NEVER_CALLED_12345") {
-        std::cout << "🪟 Hiding overlay HWND" << std::endl;
-        std::cout << "�� Before hide - EXSTYLE: 0x" << std::hex << GetWindowLong(nullptr, GWL_EXSTYLE) << std::endl;
+        LOG_DEBUG_BROWSER("🪟 Hiding overlay HWND");
+        LOG_DEBUG_BROWSER("🪟 Before hide - EXSTYLE: 0x" + std::to_string(GetWindowLong(nullptr, GWL_EXSTYLE)));
         ShowWindow(nullptr, SW_HIDE);
-        std::cout << "🪟 After hide - EXSTYLE: 0x" << std::hex << GetWindowLong(nullptr, GWL_EXSTYLE) << std::endl;
+        LOG_DEBUG_BROWSER("🪟 After hide - EXSTYLE: 0x" + std::to_string(GetWindowLong(nullptr, GWL_EXSTYLE)));
         return true;
     }
 
     if (message_name == "overlay_show_wallet") {
-        std::cout << "💰 overlay_show_wallet message received from role: " << role_ << std::endl;
-        std::ofstream debugLog("debug_output.log", std::ios::app);
-        debugLog << "💰 overlay_show_wallet message received from role: " << role_ << std::endl;
-        debugLog.close();
+        LOG_DEBUG_BROWSER("💰 overlay_show_wallet message received from role: " + role_);
 
-        std::cout << "💰 Creating wallet overlay with separate process" << std::endl;
-        std::ofstream debugLog2("debug_output.log", std::ios::app);
-        debugLog2 << "💰 Creating wallet overlay with separate process" << std::endl;
-        debugLog2.close();
+        LOG_DEBUG_BROWSER("💰 Creating wallet overlay with separate process");
         // Create new process for wallet overlay
         extern HINSTANCE g_hInstance;
         CreateWalletOverlayWithSeparateProcess(g_hInstance);
@@ -575,15 +767,9 @@ bool SimpleHandler::OnProcessMessageReceived(
     }
 
     if (message_name == "overlay_show_backup") {
-        std::cout << "💾 overlay_show_backup message received from role: " << role_ << std::endl;
-        std::ofstream debugLog("debug_output.log", std::ios::app);
-        debugLog << "💾 overlay_show_backup message received from role: " << role_ << std::endl;
-        debugLog.close();
+        LOG_DEBUG_BROWSER("💾 overlay_show_backup message received from role: " + role_);
 
-        std::cout << "💾 Creating backup overlay with separate process" << std::endl;
-        std::ofstream debugLog2("debug_output.log", std::ios::app);
-        debugLog2 << "💾 Creating backup overlay with separate process" << std::endl;
-        debugLog2.close();
+        LOG_DEBUG_BROWSER("💾 Creating backup overlay with separate process");
         // Create new process for backup overlay
         extern HINSTANCE g_hInstance;
         CreateBackupOverlayWithSeparateProcess(g_hInstance);
@@ -591,15 +777,9 @@ bool SimpleHandler::OnProcessMessageReceived(
     }
 
     if (message_name == "overlay_show_settings") {
-        std::cout << "🪟 overlay_show_settings message received from role: " << role_ << std::endl;
-        std::ofstream debugLog("debug_output.log", std::ios::app);
-        debugLog << "🪟 overlay_show_settings message received from role: " << role_ << std::endl;
-        debugLog.close();
+        LOG_DEBUG_BROWSER("🪟 overlay_show_settings message received from role: " + role_);
 
-        std::cout << "🪟 Creating settings overlay with separate process" << std::endl;
-        std::ofstream debugLog2("debug_output.log", std::ios::app);
-        debugLog2 << "🪟 Creating settings overlay with separate process" << std::endl;
-        debugLog2.close();
+        LOG_DEBUG_BROWSER("🪟 Creating settings overlay with separate process");
         // Create new process for settings overlay
         extern HINSTANCE g_hInstance;
         CreateSettingsOverlayWithSeparateProcess(g_hInstance);
@@ -607,100 +787,69 @@ bool SimpleHandler::OnProcessMessageReceived(
     }
 
     if (message_name == "test_settings_message") {
-        std::cout << "🧪 test_settings_message received from role: " << role_ << std::endl;
-        std::ofstream debugLog("debug_output.log", std::ios::app);
-        debugLog << "🧪 test_settings_message received from role: " << role_ << std::endl;
-        debugLog.close();
+        LOG_DEBUG_BROWSER("🧪 test_settings_message received from role: " + role_);
         return true;
     }
 
     if (false && message_name == "overlay_hide_NEVER_CALLED_67890" && role_ == "settings") {
-        std::cout << "🪟 overlay_hide message received for settings overlay" << std::endl;
-        std::ofstream debugLog("debug_output.log", std::ios::app);
-        debugLog << "🪟 overlay_hide message received for settings overlay" << std::endl;
-        debugLog.close();
+        LOG_DEBUG_BROWSER("🪟 overlay_hide message received for settings overlay");
 
         // Close the settings overlay window
         HWND settings_hwnd = FindWindow(L"CEFSettingsOverlayWindow", L"Settings Overlay");
         if (settings_hwnd) {
-            std::cout << "🪟 Closing settings overlay window" << std::endl;
-            std::ofstream debugLog2("debug_output.log", std::ios::app);
-            debugLog2 << "🪟 Closing settings overlay window" << std::endl;
-            debugLog2.close();
+            LOG_DEBUG_BROWSER("🪟 Closing settings overlay window");
             DestroyWindow(settings_hwnd);
         }
         return true;
     }
 
     if (message_name == "overlay_input") {
-        std::ofstream debugLog("debug_output.log", std::ios::app);
-        debugLog << "🪟 overlay_input message received from role: " << role_ << std::endl;
-        debugLog.close();
+        LOG_DEBUG_BROWSER("🪟 overlay_input message received from role: " + role_);
 
         CefRefPtr<CefListValue> args = message->GetArgumentList();
         bool enable = args->GetBool(0);
-        std::ofstream debugLog2("debug_output.log", std::ios::app);
-        debugLog2 << "🪟 Setting overlay input: " << (enable ? "enabled" : "disabled") << " for role: " << role_ << std::endl;
-        debugLog2.close();
+        LOG_DEBUG_BROWSER("🪟 Setting overlay input: " + std::string(enable ? "enabled" : "disabled") + " for role: " + role_);
 
         // Handle input for the appropriate overlay based on role
         HWND target_hwnd = nullptr;
         if (role_ == "settings") {
             // Find the settings overlay window
             target_hwnd = FindWindow(L"CEFSettingsOverlayWindow", L"Settings Overlay");
-            std::ofstream debugLog2("debug_output.log", std::ios::app);
-            debugLog2 << "🪟 Settings overlay HWND found: " << target_hwnd << std::endl;
-            debugLog2.close();
+            LOG_DEBUG_BROWSER("🪟 Settings overlay HWND found: " + std::to_string(reinterpret_cast<uintptr_t>(target_hwnd)));
         } else if (role_ == "wallet") {
             // Find the wallet overlay window
             target_hwnd = FindWindow(L"CEFWalletOverlayWindow", L"Wallet Overlay");
-            std::ofstream debugLog2("debug_output.log", std::ios::app);
-            debugLog2 << "💰 Wallet overlay HWND found: " << target_hwnd << std::endl;
-            debugLog2.close();
+            LOG_DEBUG_BROWSER("💰 Wallet overlay HWND found: " + std::to_string(reinterpret_cast<uintptr_t>(target_hwnd)));
         } else if (role_ == "backup") {
             // Find the backup overlay window
             target_hwnd = FindWindow(L"CEFBackupOverlayWindow", L"Backup Overlay");
-            std::ofstream debugLog2("debug_output.log", std::ios::app);
-            debugLog2 << "💾 Backup overlay HWND found: " << target_hwnd << std::endl;
-            debugLog2.close();
+            LOG_DEBUG_BROWSER("💾 Backup overlay HWND found: " + std::to_string(reinterpret_cast<uintptr_t>(target_hwnd)));
         }
 
         if (target_hwnd) {
             LONG exStyle = GetWindowLong(target_hwnd, GWL_EXSTYLE);
             if (enable) {
                 SetWindowLong(target_hwnd, GWL_EXSTYLE, exStyle & ~WS_EX_TRANSPARENT);
-                std::ofstream debugLog4("debug_output.log", std::ios::app);
-                debugLog4 << "🪟 Mouse input ENABLED for HWND: " << target_hwnd << std::endl;
-                debugLog4.close();
+                LOG_DEBUG_BROWSER("🪟 Mouse input ENABLED for HWND: " + std::to_string(reinterpret_cast<uintptr_t>(target_hwnd)));
             } else {
                 SetWindowLong(target_hwnd, GWL_EXSTYLE, exStyle | WS_EX_TRANSPARENT);
-                std::ofstream debugLog5("debug_output.log", std::ios::app);
-                debugLog5 << "🪟 Mouse input DISABLED for HWND: " << target_hwnd << std::endl;
-                debugLog5.close();
+                LOG_DEBUG_BROWSER("🪟 Mouse input DISABLED for HWND: " + std::to_string(reinterpret_cast<uintptr_t>(target_hwnd)));
             }
         } else {
-            std::ofstream debugLog6("debug_output.log", std::ios::app);
-            debugLog6 << "❌ No target HWND found for overlay_input" << std::endl;
-            debugLog6.close();
+            LOG_DEBUG_BROWSER("❌ No target HWND found for overlay_input");
         }
         return true;
     }
 
     if (message_name == "address_generate") {
-        std::cout << "🔑 Address generation requested from browser ID: " << browser->GetIdentifier() << std::endl;
-        std::ofstream debugLog("debug_output.log", std::ios::app);
-        debugLog << "🔑 Address generation requested from browser ID: " << browser->GetIdentifier() << std::endl;
-        debugLog.close();
+        LOG_DEBUG_BROWSER("🔑 Address generation requested from browser ID: " + std::to_string(browser->GetIdentifier()));
 
         try {
             // Call WalletService to generate address
             WalletService walletService;
             nlohmann::json addressData = walletService.generateAddress();
 
-            std::cout << "✅ Address generated successfully: " << addressData.dump() << std::endl;
-            std::ofstream debugLog2("debug_output.log", std::ios::app);
-            debugLog2 << "✅ Address generated successfully: " << addressData.dump() << std::endl;
-            debugLog2.close();
+            LOG_DEBUG_BROWSER("✅ Address generated successfully: " + addressData.dump());
 
             // Send result back to the requesting browser
             CefRefPtr<CefProcessMessage> response = CefProcessMessage::Create("address_generate_response");
@@ -708,15 +857,12 @@ bool SimpleHandler::OnProcessMessageReceived(
             responseArgs->SetString(0, addressData.dump());
 
             browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, response);
-            std::cout << "📤 Address data sent back to browser" << std::endl;
-            std::ofstream debugLog3("debug_output.log", std::ios::app);
-            debugLog3 << "📤 Address data sent back to browser" << std::endl;
-            debugLog3 << "🔍 Browser ID: " << browser->GetIdentifier() << std::endl;
-            debugLog3 << "🔍 Frame URL: " << browser->GetMainFrame()->GetURL().ToString() << std::endl;
-            debugLog3.close();
+            LOG_DEBUG_BROWSER("📤 Address data sent back to browser");
+            LOG_DEBUG_BROWSER("🔍 Browser ID: " + std::to_string(browser->GetIdentifier()));
+            LOG_DEBUG_BROWSER("🔍 Frame URL: " + browser->GetMainFrame()->GetURL().ToString());
 
         } catch (const std::exception& e) {
-            std::cout << "❌ Address generation failed: " << e.what() << std::endl;
+            LOG_DEBUG_BROWSER("❌ Address generation failed: " + std::string(e.what()));
 
             // Send error response
             CefRefPtr<CefProcessMessage> response = CefProcessMessage::Create("address_generate_error");
@@ -732,10 +878,7 @@ bool SimpleHandler::OnProcessMessageReceived(
     // Transaction Message Handlers
 
     if (message_name == "create_transaction") {
-        std::cout << "💰 Create transaction requested from browser ID: " << browser->GetIdentifier() << std::endl;
-        std::ofstream debugLog("debug_output.log", std::ios::app);
-        debugLog << "💰 Create transaction requested from browser ID: " << browser->GetIdentifier() << std::endl;
-        debugLog.close();
+        LOG_DEBUG_BROWSER("💰 Create transaction requested from browser ID: " + std::to_string(browser->GetIdentifier()));
 
         try {
             // Parse transaction data from message arguments
@@ -748,10 +891,7 @@ bool SimpleHandler::OnProcessMessageReceived(
                 WalletService walletService;
                 nlohmann::json result = walletService.createTransaction(transactionData);
 
-                std::cout << "✅ Transaction creation result: " << result.dump() << std::endl;
-                std::ofstream debugLog2("debug_output.log", std::ios::app);
-                debugLog2 << "✅ Transaction creation result: " << result.dump() << std::endl;
-                debugLog2.close();
+                LOG_DEBUG_BROWSER("✅ Transaction creation result: " + result.dump());
 
                 // Send result back to the requesting browser
                 CefRefPtr<CefProcessMessage> response = CefProcessMessage::Create("create_transaction_response");
@@ -759,19 +899,13 @@ bool SimpleHandler::OnProcessMessageReceived(
                 responseArgs->SetString(0, result.dump());
 
                 browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, response);
-                std::cout << "📤 Transaction creation response sent back to browser" << std::endl;
-                std::ofstream debugLog3("debug_output.log", std::ios::app);
-                debugLog3 << "📤 Transaction creation response sent back to browser" << std::endl;
-                debugLog3.close();
+                LOG_DEBUG_BROWSER("📤 Transaction creation response sent back to browser");
             } else {
                 throw std::runtime_error("No transaction data provided");
             }
 
         } catch (const std::exception& e) {
-            std::cout << "❌ Transaction creation failed: " << e.what() << std::endl;
-            std::ofstream debugLog4("debug_output.log", std::ios::app);
-            debugLog4 << "❌ Transaction creation failed: " << e.what() << std::endl;
-            debugLog4.close();
+            LOG_DEBUG_BROWSER("❌ Transaction creation failed: " + std::string(e.what()));
 
             // Send error response
             nlohmann::json errorResponse;
@@ -788,10 +922,7 @@ bool SimpleHandler::OnProcessMessageReceived(
     }
 
     if (message_name == "sign_transaction") {
-        std::cout << "✍️ Sign transaction requested from browser ID: " << browser->GetIdentifier() << std::endl;
-        std::ofstream debugLog("debug_output.log", std::ios::app);
-        debugLog << "✍️ Sign transaction requested from browser ID: " << browser->GetIdentifier() << std::endl;
-        debugLog.close();
+        LOG_DEBUG_BROWSER("✍️ Sign transaction requested from browser ID: " + std::to_string(browser->GetIdentifier()));
 
         try {
             // Parse transaction data from message arguments
@@ -804,10 +935,7 @@ bool SimpleHandler::OnProcessMessageReceived(
                 WalletService walletService;
                 nlohmann::json result = walletService.signTransaction(transactionData);
 
-                std::cout << "✅ Transaction signing result: " << result.dump() << std::endl;
-                std::ofstream debugLog2("debug_output.log", std::ios::app);
-                debugLog2 << "✅ Transaction signing result: " << result.dump() << std::endl;
-                debugLog2.close();
+                LOG_DEBUG_BROWSER("✅ Transaction signing result: " + result.dump());
 
                 // Send result back to the requesting browser
                 CefRefPtr<CefProcessMessage> response = CefProcessMessage::Create("sign_transaction_response");
@@ -815,19 +943,13 @@ bool SimpleHandler::OnProcessMessageReceived(
                 responseArgs->SetString(0, result.dump());
 
                 browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, response);
-                std::cout << "📤 Transaction signing response sent back to browser" << std::endl;
-                std::ofstream debugLog3("debug_output.log", std::ios::app);
-                debugLog3 << "📤 Transaction signing response sent back to browser" << std::endl;
-                debugLog3.close();
+                LOG_DEBUG_BROWSER("📤 Transaction signing response sent back to browser");
             } else {
                 throw std::runtime_error("No transaction data provided");
             }
 
         } catch (const std::exception& e) {
-            std::cout << "❌ Transaction signing failed: " << e.what() << std::endl;
-            std::ofstream debugLog4("debug_output.log", std::ios::app);
-            debugLog4 << "❌ Transaction signing failed: " << e.what() << std::endl;
-            debugLog4.close();
+            LOG_DEBUG_BROWSER("❌ Transaction signing failed: " + std::string(e.what()));
 
             // Send error response
             nlohmann::json errorResponse;
@@ -844,10 +966,7 @@ bool SimpleHandler::OnProcessMessageReceived(
     }
 
     if (message_name == "broadcast_transaction") {
-        std::cout << "📡 Broadcast transaction requested from browser ID: " << browser->GetIdentifier() << std::endl;
-        std::ofstream debugLog("debug_output.log", std::ios::app);
-        debugLog << "📡 Broadcast transaction requested from browser ID: " << browser->GetIdentifier() << std::endl;
-        debugLog.close();
+        LOG_DEBUG_BROWSER("📡 Broadcast transaction requested from browser ID: " + std::to_string(browser->GetIdentifier()));
 
         try {
             // Parse transaction data from message arguments
@@ -860,10 +979,7 @@ bool SimpleHandler::OnProcessMessageReceived(
                 WalletService walletService;
                 nlohmann::json result = walletService.broadcastTransaction(transactionData);
 
-                std::cout << "✅ Transaction broadcast result: " << result.dump() << std::endl;
-                std::ofstream debugLog2("debug_output.log", std::ios::app);
-                debugLog2 << "✅ Transaction broadcast result: " << result.dump() << std::endl;
-                debugLog2.close();
+                LOG_DEBUG_BROWSER("✅ Transaction broadcast result: " + result.dump());
 
                 // Send result back to the requesting browser
                 CefRefPtr<CefProcessMessage> response = CefProcessMessage::Create("broadcast_transaction_response");
@@ -871,19 +987,13 @@ bool SimpleHandler::OnProcessMessageReceived(
                 responseArgs->SetString(0, result.dump());
 
                 browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, response);
-                std::cout << "📤 Transaction broadcast response sent back to browser" << std::endl;
-                std::ofstream debugLog3("debug_output.log", std::ios::app);
-                debugLog3 << "📤 Transaction broadcast response sent back to browser" << std::endl;
-                debugLog3.close();
+                LOG_DEBUG_BROWSER("📤 Transaction broadcast response sent back to browser");
             } else {
                 throw std::runtime_error("No transaction data provided");
             }
 
         } catch (const std::exception& e) {
-            std::cout << "❌ Transaction broadcast failed: " << e.what() << std::endl;
-            std::ofstream debugLog4("debug_output.log", std::ios::app);
-            debugLog4 << "❌ Transaction broadcast failed: " << e.what() << std::endl;
-            debugLog4.close();
+            LOG_DEBUG_BROWSER("❌ Transaction broadcast failed: " + std::string(e.what()));
 
             // Send error response
             nlohmann::json errorResponse;
@@ -901,23 +1011,16 @@ bool SimpleHandler::OnProcessMessageReceived(
 
 
         if (message_name == "get_balance") {
-        std::cout << "💰 Get balance requested from browser ID: " << browser->GetIdentifier() << std::endl;
-        std::ofstream debugLog("debug_output.log", std::ios::app);
-        debugLog << "💰 Get balance requested from browser ID: " << browser->GetIdentifier() << std::endl;
-        debugLog.close();
+        LOG_DEBUG_BROWSER("💰 Get balance requested from browser ID: " + std::to_string(browser->GetIdentifier()));
 
         try {
             // Parse balance data from message arguments
             CefRefPtr<CefListValue> args = message->GetArgumentList();
-            std::ofstream debugLog("debug_output.log", std::ios::app);
-            debugLog << "🔍 get_balance: args->GetSize() = " << args->GetSize() << std::endl;
-            debugLog.close();
+            LOG_DEBUG_BROWSER("🔍 get_balance: args->GetSize() = " + std::to_string(args->GetSize()));
 
             if (args->GetSize() > 0) {
                 std::string balanceDataJson = args->GetString(0);
-                std::ofstream debugLog2("debug_output.log", std::ios::app);
-                debugLog2 << "🔍 get_balance: received JSON = " << balanceDataJson << std::endl;
-                debugLog2.close();
+                LOG_DEBUG_BROWSER("🔍 get_balance: received JSON = " + balanceDataJson);
 
                 nlohmann::json balanceData = nlohmann::json::parse(balanceDataJson);
 
@@ -925,10 +1028,7 @@ bool SimpleHandler::OnProcessMessageReceived(
                 WalletService walletService;
                 nlohmann::json result = walletService.getBalance(balanceData);
 
-                std::cout << "✅ Balance result: " << result.dump() << std::endl;
-                std::ofstream debugLog3("debug_output.log", std::ios::app);
-                debugLog3 << "✅ Balance result: " << result.dump() << std::endl;
-                debugLog3.close();
+                LOG_DEBUG_BROWSER("✅ Balance result: " + result.dump());
 
                 // Send result back to the requesting browser
                 CefRefPtr<CefProcessMessage> response = CefProcessMessage::Create("get_balance_response");
@@ -936,22 +1036,14 @@ bool SimpleHandler::OnProcessMessageReceived(
                 responseArgs->SetString(0, result.dump());
 
                 browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, response);
-                std::cout << "📤 Balance response sent back to browser" << std::endl;
-                std::ofstream debugLog6("debug_output.log", std::ios::app);
-                debugLog6 << "📤 Balance response sent back to browser" << std::endl;
-                debugLog6.close();
+                LOG_DEBUG_BROWSER("📤 Balance response sent back to browser");
             } else {
-                std::ofstream debugLog4("debug_output.log", std::ios::app);
-                debugLog4 << "❌ get_balance: No arguments provided, args->GetSize() = " << args->GetSize() << std::endl;
-                debugLog4.close();
+                LOG_DEBUG_BROWSER("❌ get_balance: No arguments provided, args->GetSize() = " + std::to_string(args->GetSize()));
                 throw std::runtime_error("No balance data provided");
             }
 
         } catch (const std::exception& e) {
-            std::cout << "❌ Get balance failed: " << e.what() << std::endl;
-            std::ofstream debugLog5("debug_output.log", std::ios::app);
-            debugLog5 << "❌ Get balance failed: " << e.what() << std::endl;
-            debugLog5.close();
+            LOG_DEBUG_BROWSER("❌ Get balance failed: " + std::string(e.what()));
 
             // Send error response
             nlohmann::json errorResponse;
@@ -968,20 +1060,14 @@ bool SimpleHandler::OnProcessMessageReceived(
     }
 
     if (message_name == "get_transaction_history") {
-        std::cout << "📜 Get transaction history requested from browser ID: " << browser->GetIdentifier() << std::endl;
-        std::ofstream debugLog("debug_output.log", std::ios::app);
-        debugLog << "📜 Get transaction history requested from browser ID: " << browser->GetIdentifier() << std::endl;
-        debugLog.close();
+        LOG_DEBUG_BROWSER("📜 Get transaction history requested from browser ID: " + std::to_string(browser->GetIdentifier()));
 
         try {
             // Call WalletService to get transaction history
             WalletService walletService;
             nlohmann::json result = walletService.getTransactionHistory();
 
-            std::cout << "✅ Transaction history result: " << result.dump() << std::endl;
-            std::ofstream debugLog2("debug_output.log", std::ios::app);
-            debugLog2 << "✅ Transaction history result: " << result.dump() << std::endl;
-            debugLog2.close();
+            LOG_DEBUG_BROWSER("✅ Transaction history result: " + result.dump());
 
             // Send result back to the requesting browser
             CefRefPtr<CefProcessMessage> response = CefProcessMessage::Create("get_transaction_history_response");
@@ -989,16 +1075,10 @@ bool SimpleHandler::OnProcessMessageReceived(
             responseArgs->SetString(0, result.dump());
 
             browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, response);
-            std::cout << "📤 Transaction history response sent back to browser" << std::endl;
-            std::ofstream debugLog3("debug_output.log", std::ios::app);
-            debugLog3 << "📤 Transaction history response sent back to browser" << std::endl;
-            debugLog3.close();
+            LOG_DEBUG_BROWSER("📤 Transaction history response sent back to browser");
 
         } catch (const std::exception& e) {
-            std::cout << "❌ Get transaction history failed: " << e.what() << std::endl;
-            std::ofstream debugLog4("debug_output.log", std::ios::app);
-            debugLog4 << "❌ Get transaction history failed: " << e.what() << std::endl;
-            debugLog4.close();
+            LOG_DEBUG_BROWSER("❌ Get transaction history failed: " + std::string(e.what()));
 
             // Send error response
             nlohmann::json errorResponse;
@@ -1044,7 +1124,7 @@ void SimpleHandler::OnBeforeContextMenu(CefRefPtr<CefBrowser> browser,
         model->AddItem(MENU_ID_DEV_TOOLS_INSPECT, "Inspect Element");
         model->AddSeparator();
 
-        std::cout << "🔧 Context menu enabled for " << role_ << " overlay - DevTools available" << std::endl;
+        LOG_DEBUG_BROWSER("🔧 Context menu enabled for " + role_ + " overlay - DevTools available");
     }
 }
 
@@ -1056,7 +1136,7 @@ bool SimpleHandler::OnContextMenuCommand(CefRefPtr<CefBrowser> browser,
     if ((role_ == "settings" || role_ == "wallet" || role_ == "backup") && command_id == (MENU_ID_USER_FIRST + 1)) {
         // Open DevTools
         browser->GetHost()->ShowDevTools(CefWindowInfo(), nullptr, CefBrowserSettings(), CefPoint());
-        std::cout << "🔧 DevTools opened for " << role_ << " overlay" << std::endl;
+        LOG_DEBUG_BROWSER("🔧 DevTools opened for " + role_ + " overlay");
         return true;
     }
     return false;

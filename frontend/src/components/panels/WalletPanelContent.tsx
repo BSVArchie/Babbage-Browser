@@ -5,6 +5,7 @@ import { TransactionForm } from '../TransactionForm';
 import { useBalance } from '../../hooks/useBalance';
 import { useTransaction } from '../../hooks/useTransaction';
 import { useAddress } from '../../hooks/useAddress';
+// Removed useWallet import - private keys handled by Go daemon
 import type { TransactionResponse } from '../../types/transaction';
 import '../../components/TransactionComponents.css';
 
@@ -18,6 +19,8 @@ const WalletPanel = () => {
   const [showReceiveAddress, setShowReceiveAddress] = useState(false);
   const [addressCopiedMessage, setAddressCopiedMessage] = useState<string | null>(null);
 
+  // No wallet initialization needed - using hardcoded test address
+
   const handleSendClick = () => {
     setShowSendForm(!showSendForm);
   };
@@ -25,13 +28,13 @@ const WalletPanel = () => {
   const handleReceiveClick = async () => {
     console.log('🔄 Receive button clicked');
     try {
-      console.log('🔄 Calling generateAndCopy...');
-      const address = await generateAndCopy();
-      console.log('✅ Address generated and copied:', address);
+      // Generate address from identity
+      const addressData = await generateAndCopy();
+      console.log('✅ Address generated and copied:', addressData);
 
       setShowReceiveAddress(true);
-      setAddressCopiedMessage(`Address copied to clipboard: ${address.substring(0, 10)}...`);
-      console.log('✅ Message set:', `Address copied to clipboard: ${address.substring(0, 10)}...`);
+      setAddressCopiedMessage(`Address copied to clipboard: ${addressData.substring(0, 10)}...`);
+      console.log('✅ Message set:', `Address copied to clipboard: ${addressData.substring(0, 10)}...`);
 
       // Clear the message after 3 seconds
       setTimeout(() => {
@@ -119,27 +122,27 @@ const WalletPanel = () => {
               </div>
             )}
 
-            {showReceiveAddress && currentAddress && (
-              <div className="receive-address-container">
-                <h3>Receive Bitcoin SV</h3>
-                <p>Address copied to clipboard!</p>
-                <div className="address-display">
-                  <code>{currentAddress}</code>
-                  <button
-                    className="copy-button"
-                    onClick={() => navigator.clipboard.writeText(currentAddress)}
-                  >
-                    Copy Again
-                  </button>
-                </div>
-                <button
-                  className="close-button"
-                  onClick={() => setShowReceiveAddress(false)}
-                >
-                  Close
-                </button>
-              </div>
-            )}
+                    {showReceiveAddress && (
+                      <div className="receive-address-container">
+                        <h3>Receive Bitcoin SV</h3>
+                        <p>Address copied to clipboard!</p>
+                        <div className="address-display">
+                          <code>{currentAddress || 'Generating...'}</code>
+                          <button
+                            className="copy-button"
+                            onClick={() => navigator.clipboard.writeText(currentAddress || '')}
+                          >
+                            Copy Again
+                          </button>
+                        </div>
+                        <button
+                          className="close-button"
+                          onClick={() => setShowReceiveAddress(false)}
+                        >
+                          Close
+                        </button>
+                      </div>
+                    )}
 
             {lastTransaction && (
               <div className="success-message">

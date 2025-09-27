@@ -8,6 +8,18 @@
 #include <iostream>
 #include <fstream>
 
+// Forward declaration of Logger class from main shell
+class Logger {
+public:
+    static void Log(const std::string& message, int level = 1, int process = 1);
+};
+
+// Convenience macros for easier logging
+#define LOG_DEBUG_RENDER(msg) Logger::Log(msg, 0, 1)
+#define LOG_INFO_RENDER(msg) Logger::Log(msg, 1, 1)
+#define LOG_WARNING_RENDER(msg) Logger::Log(msg, 2, 1)
+#define LOG_ERROR_RENDER(msg) Logger::Log(msg, 3, 1)
+
 // Handler for cefMessage.send() function
 class CefMessageSendHandler : public CefV8Handler {
 public:
@@ -28,9 +40,17 @@ public:
 
         std::string messageName = arguments[0]->GetStringValue();
         std::cout << "📤 cefMessage.send() called with message: " << messageName << std::endl;
-        std::ofstream debugLog("debug_output.log", std::ios::app);
-        debugLog << "📤 cefMessage.send() called with message: " << messageName << std::endl;
-        debugLog.close();
+        std::cout << "📤 Arguments count: " << arguments.size() << std::endl;
+
+        // Try multiple logging approaches
+        LOG_DEBUG_RENDER("📤 cefMessage.send() called with message: " + messageName);
+        LOG_DEBUG_RENDER("📤 Arguments count: " + std::to_string(arguments.size()));
+
+        // Also try writing to a different file
+        std::ofstream testLog("test_debug.log", std::ios::app);
+        testLog << "📤 cefMessage.send() called with message: " << messageName << std::endl;
+        testLog.flush();
+        testLog.close();
 
         // Create the process message
         CefRefPtr<CefProcessMessage> message = CefProcessMessage::Create(messageName);
@@ -38,23 +58,51 @@ public:
 
         // Add arguments if provided (skip first argument which is the message name)
         for (size_t i = 1; i < arguments.size(); i++) {
+            std::cout << "📤 Processing argument " << (i-1) << ": ";
+            LOG_DEBUG_RENDER("📤 Processing argument " + std::to_string(i-1) + ": ");
+
             if (arguments[i]->IsString()) {
-                args->SetString(i - 1, arguments[i]->GetStringValue());
+                std::string value = arguments[i]->GetStringValue();
+                std::cout << "String: " << value << std::endl;
+                LOG_DEBUG_RENDER("String: " + value);
+                args->SetString(i - 1, value);
             } else if (arguments[i]->IsBool()) {
-                args->SetBool(i - 1, arguments[i]->GetBoolValue());
+                bool value = arguments[i]->GetBoolValue();
+                std::cout << "Bool: " << (value ? "true" : "false") << std::endl;
+                LOG_DEBUG_RENDER("Bool: " + std::string(value ? "true" : "false"));
+                args->SetBool(i - 1, value);
             } else if (arguments[i]->IsInt()) {
-                args->SetInt(i - 1, arguments[i]->GetIntValue());
+                int value = arguments[i]->GetIntValue();
+                std::cout << "Int: " << value << std::endl;
+                LOG_DEBUG_RENDER("Int: " + std::to_string(value));
+                args->SetInt(i - 1, value);
             } else if (arguments[i]->IsDouble()) {
-                args->SetDouble(i - 1, arguments[i]->GetDoubleValue());
+                double value = arguments[i]->GetDoubleValue();
+                std::cout << "Double: " << value << std::endl;
+                LOG_DEBUG_RENDER("Double: " + std::to_string(value));
+                args->SetDouble(i - 1, value);
             } else if (arguments[i]->IsArray()) {
                 // Handle array arguments - extract the first element if it's a string
                 CefRefPtr<CefV8Value> array = arguments[i];
+                std::cout << "Array with length: " << array->GetArrayLength() << std::endl;
+                LOG_DEBUG_RENDER("Array with length: " + std::to_string(array->GetArrayLength()));
                 if (array->GetArrayLength() > 0) {
                     CefRefPtr<CefV8Value> firstElement = array->GetValue(0);
                     if (firstElement->IsString()) {
-                        args->SetString(i - 1, firstElement->GetStringValue());
+                        std::string value = firstElement->GetStringValue();
+                        std::cout << "Array[0] String: " << value << std::endl;
+                        LOG_DEBUG_RENDER("Array[0] String: " + value);
+                        args->SetString(i - 1, value);
+                    } else if (firstElement->IsBool()) {
+                        bool value = firstElement->GetBoolValue();
+                        std::cout << "Array[0] Bool: " << (value ? "true" : "false") << std::endl;
+                        LOG_DEBUG_RENDER("Array[0] Bool: " + std::string(value ? "true" : "false"));
+                        args->SetBool(i - 1, value);
                     }
                 }
+            } else {
+                std::cout << "Unknown type" << std::endl;
+                LOG_DEBUG_RENDER("Unknown type");
             }
         }
 
@@ -63,14 +111,10 @@ public:
         if (context && context->GetFrame()) {
             context->GetFrame()->SendProcessMessage(PID_BROWSER, message);
             std::cout << "✅ Process message sent to browser process: " << messageName << std::endl;
-            std::ofstream debugLog2("debug_output.log", std::ios::app);
-            debugLog2 << "✅ Process message sent to browser process: " << messageName << std::endl;
-            debugLog2.close();
+            LOG_DEBUG_RENDER("✅ Process message sent to browser process: " + messageName);
         } else {
             std::cout << "❌ Failed to get frame context for sending process message" << std::endl;
-            std::ofstream debugLog3("debug_output.log", std::ios::app);
-            debugLog3 << "❌ Failed to get frame context for sending process message" << std::endl;
-            debugLog3.close();
+            LOG_ERROR_RENDER("❌ Failed to get frame context for sending process message");
         }
 
         return true;
@@ -94,9 +138,7 @@ public:
         CEF_REQUIRE_RENDERER_THREAD();
 
         std::cout << "🎯 overlay.close() called from overlay browser" << std::endl;
-        std::ofstream debugLog("debug_output.log", std::ios::app);
-        debugLog << "🎯 overlay.close() called from overlay browser" << std::endl;
-        debugLog.close();
+        LOG_DEBUG_RENDER("🎯 overlay.close() called from overlay browser");
 
         // Send overlay_close message via cefMessage
         CefRefPtr<CefV8Context> context = CefV8Context::GetCurrentContext();
@@ -105,9 +147,7 @@ public:
             context->GetFrame()->SendProcessMessage(PID_BROWSER, message);
 
             std::cout << "✅ overlay.close() sent overlay_close message" << std::endl;
-            std::ofstream debugLog2("debug_output.log", std::ios::app);
-            debugLog2 << "✅ overlay.close() sent overlay_close message" << std::endl;
-            debugLog2.close();
+            LOG_DEBUG_RENDER("✅ overlay.close() sent overlay_close message");
         }
 
         return true;
@@ -118,11 +158,9 @@ private:
 };
 
 SimpleRenderProcessHandler::SimpleRenderProcessHandler() {
-    std::ofstream debugLog("debug_output.log", std::ios::app);
-    debugLog << "🔧 SimpleRenderProcessHandler constructor called!" << std::endl;
-    debugLog << "🔧 Process ID: " << GetCurrentProcessId() << std::endl;
-    debugLog << "🔧 Thread ID: " << GetCurrentThreadId() << std::endl;
-    debugLog.close();
+    LOG_DEBUG_RENDER("🔧 SimpleRenderProcessHandler constructor called!");
+    LOG_DEBUG_RENDER("🔧 Process ID: " + std::to_string(GetCurrentProcessId()));
+    LOG_DEBUG_RENDER("🔧 Thread ID: " + std::to_string(GetCurrentThreadId()));
 }
 
 void SimpleRenderProcessHandler::OnContextCreated(
@@ -132,14 +170,12 @@ void SimpleRenderProcessHandler::OnContextCreated(
 
     CEF_REQUIRE_RENDERER_THREAD();
 
-    std::ofstream debugLog("debug_output.log", std::ios::app);
-    debugLog << "🔧 OnContextCreated called for browser ID: " << browser->GetIdentifier() << std::endl;
-    debugLog << "🔧 Frame URL: " << frame->GetURL().ToString() << std::endl;
-    debugLog << "🔧 Process ID: " << GetCurrentProcessId() << std::endl;
-    debugLog << "🔧 Thread ID: " << GetCurrentThreadId() << std::endl;
-    debugLog << "🔧 RENDER PROCESS HANDLER IS WORKING!" << std::endl;
-    debugLog << "🔧 THIS IS THE RENDER PROCESS HANDLER!" << std::endl;
-    debugLog.close();
+    LOG_DEBUG_RENDER("🔧 OnContextCreated called for browser ID: " + std::to_string(browser->GetIdentifier()));
+    LOG_DEBUG_RENDER("🔧 Frame URL: " + frame->GetURL().ToString());
+    LOG_DEBUG_RENDER("🔧 Process ID: " + std::to_string(GetCurrentProcessId()));
+    LOG_DEBUG_RENDER("🔧 Thread ID: " + std::to_string(GetCurrentThreadId()));
+    LOG_DEBUG_RENDER("🔧 RENDER PROCESS HANDLER IS WORKING!");
+    LOG_DEBUG_RENDER("🔧 THIS IS THE RENDER PROCESS HANDLER!");
 
     // Check if this is an overlay browser (any browser that's not the main root browser)
     std::string url = frame->GetURL().ToString();
@@ -147,11 +183,9 @@ void SimpleRenderProcessHandler::OnContextCreated(
     bool isOverlayBrowser = !isMainBrowser && url.find("127.0.0.1:5137") != std::string::npos;
 
     if (isOverlayBrowser) {
-        std::ofstream debugLog2("debug_output.log", std::ios::app);
-        debugLog2 << "🎯 OVERLAY BROWSER V8 CONTEXT CREATED!" << std::endl;
-        debugLog2 << "🎯 URL: " << url << std::endl;
-        debugLog2 << "🎯 Setting up bitcoinBrowser for overlay browser" << std::endl;
-        debugLog2.close();
+        LOG_DEBUG_RENDER("🎯 OVERLAY BROWSER V8 CONTEXT CREATED!");
+        LOG_DEBUG_RENDER("🎯 URL: " + url);
+        LOG_DEBUG_RENDER("🎯 Setting up bitcoinBrowser for overlay browser");
     }
 
     CefRefPtr<CefV8Value> global = context->GetGlobal();
@@ -190,9 +224,7 @@ void SimpleRenderProcessHandler::OnContextCreated(
 
     // Create the overlay object (for overlay browsers only)
     if (isOverlayBrowser) {
-        std::ofstream debugLog3("debug_output.log", std::ios::app);
-        debugLog3 << "🎯 Creating overlay object for URL: " << url << std::endl;
-        debugLog3.close();
+        LOG_DEBUG_RENDER("🎯 Creating overlay object for URL: " + url);
 
         CefRefPtr<CefV8Value> overlayObject = CefV8Value::CreateObject(nullptr, nullptr);
         bitcoinBrowser->SetValue("overlay", overlayObject, V8_PROPERTY_ATTRIBUTE_READONLY);
@@ -202,14 +234,10 @@ void SimpleRenderProcessHandler::OnContextCreated(
             CefV8Value::CreateFunction("close", new OverlayCloseHandler()),
             V8_PROPERTY_ATTRIBUTE_NONE);
 
-        std::ofstream debugLog4("debug_output.log", std::ios::app);
-        debugLog4 << "🎯 Overlay object created with close method" << std::endl;
-        debugLog4.close();
+        LOG_DEBUG_RENDER("🎯 Overlay object created with close method");
     } else {
-        std::ofstream debugLog5("debug_output.log", std::ios::app);
-        debugLog5 << "🎯 NOT creating overlay object for URL: " << url << std::endl;
-        debugLog5 << "🎯 isMainBrowser: " << (isMainBrowser ? "true" : "false") << std::endl;
-        debugLog5.close();
+        LOG_DEBUG_RENDER("🎯 NOT creating overlay object for URL: " + url);
+        LOG_DEBUG_RENDER("🎯 isMainBrowser: " + std::string(isMainBrowser ? "true" : "false"));
     }
 
     // Create the address object
@@ -230,20 +258,19 @@ void SimpleRenderProcessHandler::OnContextCreated(
     CefRefPtr<CefV8Value> sendFunction = CefV8Value::CreateFunction("send", new CefMessageSendHandler());
     cefMessageObject->SetValue("send", sendFunction, V8_PROPERTY_ATTRIBUTE_NONE);
 
-    // For overlay browsers, add a delay to ensure React is ready before triggering any operations
+    // For overlay browsers, signal that all systems are ready
     if (isOverlayBrowser) {
         std::string js = R"(
-            setTimeout(() => {
-                console.log("🎯 Overlay browser API ready - React can now use bitcoinBrowser");
-                // Dispatch a custom event to signal API is ready
-                window.dispatchEvent(new CustomEvent('bitcoinBrowserReady'));
-            }, 500);
+            console.log("🎯 All systems ready - V8 context created, APIs injected");
+            // Set a flag that all systems are ready
+            window.allSystemsReady = true;
+            // Dispatch a custom event to signal all systems are ready
+            window.dispatchEvent(new CustomEvent('allSystemsReady'));
+            console.log("🎯 allSystemsReady event dispatched");
         )";
         frame->ExecuteJavaScript(js, frame->GetURL(), 0);
 
-        std::ofstream debugLog6("debug_output.log", std::ios::app);
-        debugLog6 << "🎯 Added 500ms delay for overlay browser API readiness" << std::endl;
-        debugLog6.close();
+        LOG_DEBUG_RENDER("🎯 All systems ready - V8 context created, APIs injected");
     }
 }
 
@@ -266,9 +293,7 @@ bool SimpleRenderProcessHandler::OnProcessMessageReceived(
             std::string addressDataJson = args->GetString(0);
 
             std::cout << "✅ Address generation response received: " << addressDataJson << std::endl;
-            std::ofstream debugLog("debug_output.log", std::ios::app);
-            debugLog << "✅ Address generation response received: " << addressDataJson << std::endl;
-            debugLog.close();
+            LOG_DEBUG_RENDER("✅ Address generation response received: " + addressDataJson);
 
             // Execute JavaScript to call the callback function directly
             std::string js = "if (window.onAddressGenerated) { window.onAddressGenerated(" + addressDataJson + "); }";
@@ -342,9 +367,7 @@ bool SimpleRenderProcessHandler::OnProcessMessageReceived(
             std::string responseJson = args->GetString(0);
 
             std::cout << "✅ Address generation response received: " << responseJson << std::endl;
-            std::ofstream debugLog("debug_output.log", std::ios::app);
-            debugLog << "✅ Address generation response received: " << responseJson << std::endl;
-            debugLog.close();
+            LOG_DEBUG_RENDER("✅ Address generation response received: " + responseJson);
 
             // Execute JavaScript to call the callback function directly
             std::string js = "if (window.onAddressGenerated) { window.onAddressGenerated(" + responseJson + "); }";
@@ -358,9 +381,7 @@ bool SimpleRenderProcessHandler::OnProcessMessageReceived(
             std::string errorJson = args->GetString(0);
 
             std::cout << "❌ Address generation error received: " << errorJson << std::endl;
-            std::ofstream debugLog("debug_output.log", std::ios::app);
-            debugLog << "❌ Address generation error received: " << errorJson << std::endl;
-            debugLog.close();
+            LOG_DEBUG_RENDER("❌ Address generation error received: " + errorJson);
 
             // Execute JavaScript to call the error callback function directly
             std::string js = "if (window.onAddressError) { window.onAddressError(" + errorJson + "); }";
@@ -376,11 +397,9 @@ bool SimpleRenderProcessHandler::OnProcessMessageReceived(
         std::cout << "✅ Create transaction response received: " << responseJson << std::endl;
         std::cout << "🔍 Browser ID: " << browser->GetIdentifier() << std::endl;
         std::cout << "🔍 Frame URL: " << frame->GetURL().ToString() << std::endl;
-        std::ofstream debugLog("debug_output.log", std::ios::app);
-        debugLog << "✅ Create transaction response received: " << responseJson << std::endl;
-        debugLog << "🔍 Browser ID: " << browser->GetIdentifier() << std::endl;
-        debugLog << "🔍 Frame URL: " << frame->GetURL().ToString() << std::endl;
-        debugLog.close();
+        LOG_DEBUG_RENDER("✅ Create transaction response received: " + responseJson);
+        LOG_DEBUG_RENDER("🔍 Browser ID: " + std::to_string(browser->GetIdentifier()));
+        LOG_DEBUG_RENDER("🔍 Frame URL: " + frame->GetURL().ToString());
 
         // Execute JavaScript to call the callback function directly
         std::string js = "if (window.onCreateTransactionResponse) { window.onCreateTransactionResponse(" + responseJson + "); }";
@@ -394,9 +413,7 @@ bool SimpleRenderProcessHandler::OnProcessMessageReceived(
         std::string errorMessage = args->GetString(0);
 
         std::cout << "❌ Create transaction error received: " << errorMessage << std::endl;
-        std::ofstream debugLog("debug_output.log", std::ios::app);
-        debugLog << "❌ Create transaction error received: " << errorMessage << std::endl;
-        debugLog.close();
+        LOG_DEBUG_RENDER("❌ Create transaction error received: " + errorMessage);
 
         // Execute JavaScript to handle the error
         std::string js = "if (window.onCreateTransactionError) { window.onCreateTransactionError('" + errorMessage + "'); }";
@@ -412,11 +429,9 @@ bool SimpleRenderProcessHandler::OnProcessMessageReceived(
         std::cout << "✅ Sign transaction response received: " << responseJson << std::endl;
         std::cout << "🔍 Browser ID: " << browser->GetIdentifier() << std::endl;
         std::cout << "🔍 Frame URL: " << frame->GetURL().ToString() << std::endl;
-        std::ofstream debugLog("debug_output.log", std::ios::app);
-        debugLog << "✅ Sign transaction response received: " << responseJson << std::endl;
-        debugLog << "🔍 Browser ID: " << browser->GetIdentifier() << std::endl;
-        debugLog << "🔍 Frame URL: " << frame->GetURL().ToString() << std::endl;
-        debugLog.close();
+        LOG_DEBUG_RENDER("✅ Sign transaction response received: " + responseJson);
+        LOG_DEBUG_RENDER("🔍 Browser ID: " + std::to_string(browser->GetIdentifier()));
+        LOG_DEBUG_RENDER("🔍 Frame URL: " + frame->GetURL().ToString());
 
         // Execute JavaScript to dispatch the response event
         std::string js = "window.dispatchEvent(new CustomEvent('cefMessageResponse', { detail: { message: 'sign_transaction_response', args: ['" + responseJson + "'] } }));";
@@ -544,6 +559,162 @@ bool SimpleRenderProcessHandler::OnProcessMessageReceived(
 
         // Execute JavaScript to handle the error
         std::string js = "if (window.onGetTransactionHistoryError) { window.onGetTransactionHistoryError('" + errorMessage + "'); }";
+        frame->ExecuteJavaScript(js, frame->GetURL(), 0);
+
+        return true;
+    }
+
+    // Wallet Response Handlers
+
+    if (message_name == "wallet_status_check_response") {
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        std::string responseJson = args->GetString(0);
+
+        std::cout << "✅ Wallet status check response received: " << responseJson << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "✅ Wallet status check response received: " << responseJson << std::endl;
+        debugLog.close();
+
+        // Execute JavaScript to call the callback function directly
+        std::string js = "if (window.onWalletStatusResponse) { window.onWalletStatusResponse(" + responseJson + "); }";
+        frame->ExecuteJavaScript(js, frame->GetURL(), 0);
+
+        return true;
+    }
+
+    if (message_name == "create_wallet_response") {
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        std::string responseJson = args->GetString(0);
+
+        std::cout << "✅ Create wallet response received: " << responseJson << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "✅ Create wallet response received: " << responseJson << std::endl;
+        debugLog.close();
+
+        // Execute JavaScript to call the callback function directly
+        std::string js = "if (window.onCreateWalletResponse) { window.onCreateWalletResponse(" + responseJson + "); }";
+        frame->ExecuteJavaScript(js, frame->GetURL(), 0);
+
+        return true;
+    }
+
+    if (message_name == "load_wallet_response") {
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        std::string responseJson = args->GetString(0);
+
+        std::cout << "✅ Load wallet response received: " << responseJson << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "✅ Load wallet response received: " << responseJson << std::endl;
+        debugLog.close();
+
+        // Execute JavaScript to call the callback function directly
+        std::string js = "if (window.onLoadWalletResponse) { window.onLoadWalletResponse(" + responseJson + "); }";
+        frame->ExecuteJavaScript(js, frame->GetURL(), 0);
+
+        return true;
+    }
+
+    if (message_name == "get_wallet_info_response") {
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        std::string responseJson = args->GetString(0);
+
+        std::cout << "✅ Get wallet info response received: " << responseJson << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "✅ Get wallet info response received: " << responseJson << std::endl;
+        debugLog.close();
+
+        // Execute JavaScript to call the callback function directly
+        std::string js = "if (window.onGetWalletInfoResponse) { window.onGetWalletInfoResponse(" + responseJson + "); }";
+        frame->ExecuteJavaScript(js, frame->GetURL(), 0);
+
+        return true;
+    }
+
+    if (message_name == "get_all_addresses_response") {
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        std::string responseJson = args->GetString(0);
+
+        std::cout << "✅ Get all addresses response received: " << responseJson << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "✅ Get all addresses response received: " << responseJson << std::endl;
+        debugLog.close();
+
+        // Execute JavaScript to call the callback function directly
+        std::string js = "if (window.onGetAllAddressesResponse) { window.onGetAllAddressesResponse(" + responseJson + "); }";
+        frame->ExecuteJavaScript(js, frame->GetURL(), 0);
+
+        return true;
+    }
+
+    if (message_name == "get_current_address_response") {
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        std::string responseJson = args->GetString(0);
+
+        std::cout << "✅ Get current address response received: " << responseJson << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "✅ Get current address response received: " << responseJson << std::endl;
+        debugLog.close();
+
+        // Execute JavaScript to call the callback function directly
+        std::string js = "if (window.onGetCurrentAddressResponse) { window.onGetCurrentAddressResponse(" + responseJson + "); }";
+        frame->ExecuteJavaScript(js, frame->GetURL(), 0);
+
+        return true;
+    }
+
+    if (message_name == "mark_wallet_backed_up_response") {
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        std::string responseJson = args->GetString(0);
+
+        std::cout << "✅ Mark wallet backed up response received: " << responseJson << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "✅ Mark wallet backed up response received: " << responseJson << std::endl;
+        debugLog.close();
+
+        // Execute JavaScript to call the callback function directly
+        std::string js = "if (window.onMarkWalletBackedUpResponse) { window.onMarkWalletBackedUpResponse(" + responseJson + "); }";
+        frame->ExecuteJavaScript(js, frame->GetURL(), 0);
+
+        return true;
+    }
+
+    if (message_name == "get_addresses_response") {
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        std::string responseJson = args->GetString(0);
+
+        std::cout << "✅ Get addresses response received: " << responseJson << std::endl;
+        std::ofstream debugLog("debug_output.log", std::ios::app);
+        debugLog << "✅ Get addresses response received: " << responseJson << std::endl;
+        debugLog.close();
+
+        // Execute JavaScript to call the callback function directly
+        std::string js = "if (window.onGetAddressesResponse) { window.onGetAddressesResponse(" + responseJson + "); }";
+        frame->ExecuteJavaScript(js, frame->GetURL(), 0);
+
+        return true;
+    }
+
+    if (message_name == "get_backup_modal_state_response") {
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        std::string responseJson = args->GetString(0);
+
+        LOG_DEBUG_RENDER("✅ Backup modal state response received: " + responseJson);
+
+        // Execute JavaScript callback
+        std::string js = "if (window.onGetBackupModalStateResponse) { window.onGetBackupModalStateResponse(" + responseJson + "); }";
+        frame->ExecuteJavaScript(js, frame->GetURL(), 0);
+
+        return true;
+    }
+
+    if (message_name == "set_backup_modal_state_response") {
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        std::string responseJson = args->GetString(0);
+
+        LOG_DEBUG_RENDER("✅ Set backup modal state response received: " + responseJson);
+
+        // Execute JavaScript callback
+        std::string js = "if (window.onSetBackupModalStateResponse) { window.onSetBackupModalStateResponse(" + responseJson + "); }";
         frame->ExecuteJavaScript(js, frame->GetURL(), 0);
 
         return true;
