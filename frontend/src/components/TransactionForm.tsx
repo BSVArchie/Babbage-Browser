@@ -86,18 +86,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
 
       console.log('🎉 Transaction send successful:', result);
 
-      // Reset form immediately (don't wait for callback)
-      setFormData({
-        recipient: '',
-        amount: '',
-        feeRate: '5',
-        memo: ''
-      });
-      console.log('✅ Form: Form reset completed');
-      setErrors({});
-      console.log('✅ Form: Errors cleared');
-
-      // Call callback with result
+      // Call callback with result first (this will close the form)
       try {
         onTransactionCreated(result);
         console.log('🔄 Form: onTransactionCreated called with result');

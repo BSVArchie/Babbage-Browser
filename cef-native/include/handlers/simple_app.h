@@ -23,6 +23,7 @@ extern HINSTANCE g_hInstance;
 
 // Global functions
 void CreateSettingsOverlayWithSeparateProcess(HINSTANCE hInstance);
+void UpdateOverlayPositions();
 
 
 class SimpleApp : public CefApp,

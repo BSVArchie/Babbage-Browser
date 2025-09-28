@@ -272,6 +272,26 @@ LRESULT CALLBACK ShellWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
     switch (msg) {
         case WM_MOVE:
         case WM_SIZE:
+            // Update overlay positions when main window moves or resizes
+            UpdateOverlayPositions();
+            break;
+
+        case WM_SYSCOMMAND:
+            if (wParam == SC_MINIMIZE) {
+                // Hide overlays when main window is minimized
+                if (g_wallet_overlay_hwnd && IsWindow(g_wallet_overlay_hwnd)) {
+                    ShowWindow(g_wallet_overlay_hwnd, SW_HIDE);
+                }
+                if (g_settings_overlay_hwnd && IsWindow(g_settings_overlay_hwnd)) {
+                    ShowWindow(g_settings_overlay_hwnd, SW_HIDE);
+                }
+                if (g_backup_overlay_hwnd && IsWindow(g_backup_overlay_hwnd)) {
+                    ShowWindow(g_backup_overlay_hwnd, SW_HIDE);
+                }
+            } else if (wParam == SC_RESTORE) {
+                // Show overlays when main window is restored
+                UpdateOverlayPositions();
+            }
             break;
 
         case WM_CLOSE:

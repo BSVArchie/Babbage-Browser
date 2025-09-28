@@ -15,6 +15,37 @@ extern HWND g_settings_overlay_hwnd;
 extern HWND g_wallet_overlay_hwnd;
 extern HWND g_backup_overlay_hwnd;
 
+// Function to update overlay window positions when main window moves
+void UpdateOverlayPositions() {
+    if (!g_hwnd) return;
+
+    RECT mainRect;
+    GetWindowRect(g_hwnd, &mainRect);
+    int width = mainRect.right - mainRect.left;
+    int height = mainRect.bottom - mainRect.top;
+
+    // Update wallet overlay position
+    if (g_wallet_overlay_hwnd && IsWindow(g_wallet_overlay_hwnd)) {
+        SetWindowPos(g_wallet_overlay_hwnd, HWND_TOPMOST,
+                    mainRect.left, mainRect.top, width, height,
+                    SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    }
+
+    // Update settings overlay position
+    if (g_settings_overlay_hwnd && IsWindow(g_settings_overlay_hwnd)) {
+        SetWindowPos(g_settings_overlay_hwnd, HWND_TOPMOST,
+                    mainRect.left, mainRect.top, width, height,
+                    SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    }
+
+    // Update backup overlay position
+    if (g_backup_overlay_hwnd && IsWindow(g_backup_overlay_hwnd)) {
+        SetWindowPos(g_backup_overlay_hwnd, HWND_TOPMOST,
+                    mainRect.left, mainRect.top, width, height,
+                    SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    }
+}
+
 SimpleApp::SimpleApp()
     : render_process_handler_(new SimpleRenderProcessHandler()) {
     std::cout << "🔧 SimpleApp constructor called!" << std::endl;
@@ -335,11 +366,16 @@ void CreateSettingsOverlayWithSeparateProcess(HINSTANCE hInstance) {
         debugLog4 << "✅ Settings overlay browser created with subprocess" << std::endl;
         debugLog4.close();
 
-        // Enable mouse input for settings overlay
+        // Enable mouse and keyboard input for settings overlay
         LONG exStyle = GetWindowLong(settings_hwnd, GWL_EXSTYLE);
         SetWindowLong(settings_hwnd, GWL_EXSTYLE, exStyle & ~WS_EX_TRANSPARENT);
+
+        // Ensure window can receive keyboard input
+        EnableWindow(settings_hwnd, TRUE);
+        SetFocus(settings_hwnd);
+
         std::ofstream debugLog6("debug_output.log", std::ios::app);
-        debugLog6 << "🪟 Mouse input ENABLED for settings overlay HWND: " << settings_hwnd << std::endl;
+        debugLog6 << "🪟 Mouse and keyboard input ENABLED for settings overlay HWND: " << settings_hwnd << std::endl;
         debugLog6.close();
     } else {
         std::cout << "❌ Failed to create settings overlay browser" << std::endl;
@@ -424,11 +460,16 @@ void CreateWalletOverlayWithSeparateProcess(HINSTANCE hInstance) {
         debugLog4 << "✅ Wallet overlay browser created with subprocess" << std::endl;
         debugLog4.close();
 
-        // Enable mouse input for wallet overlay
+        // Enable mouse and keyboard input for wallet overlay
         LONG exStyle = GetWindowLong(wallet_hwnd, GWL_EXSTYLE);
         SetWindowLong(wallet_hwnd, GWL_EXSTYLE, exStyle & ~WS_EX_TRANSPARENT);
+
+        // Ensure window can receive keyboard input
+        EnableWindow(wallet_hwnd, TRUE);
+        SetFocus(wallet_hwnd);
+
         std::ofstream debugLog6("debug_output.log", std::ios::app);
-        debugLog6 << "💰 Mouse input ENABLED for wallet overlay HWND: " << wallet_hwnd << std::endl;
+        debugLog6 << "💰 Mouse and keyboard input ENABLED for wallet overlay HWND: " << wallet_hwnd << std::endl;
         debugLog6.close();
     } else {
         std::cout << "❌ Failed to create wallet overlay browser" << std::endl;
