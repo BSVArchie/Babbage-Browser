@@ -358,10 +358,17 @@ LRESULT CALLBACK SettingsOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
                 key_event.windows_key_code = wParam;
                 key_event.native_key_code = lParam;
                 key_event.is_system_key = false;
-                key_event.modifiers = 0;
+
+                // Check for modifier keys
+                int modifiers = 0;
+                if (GetKeyState(VK_CONTROL) & 0x8000) modifiers |= EVENTFLAG_CONTROL_DOWN;
+                if (GetKeyState(VK_SHIFT) & 0x8000) modifiers |= EVENTFLAG_SHIFT_DOWN;
+                if (GetKeyState(VK_MENU) & 0x8000) modifiers |= EVENTFLAG_ALT_DOWN;
+                if (GetKeyState(VK_LWIN) & 0x8000 || GetKeyState(VK_RWIN) & 0x8000) modifiers |= EVENTFLAG_COMMAND_DOWN;
+                key_event.modifiers = modifiers;
 
                 settings_browser->GetHost()->SendKeyEvent(key_event);
-                LOG_DEBUG("⌨️ Key down sent to settings overlay browser");
+                LOG_DEBUG("⌨️ Key down sent to settings overlay browser (modifiers: " + std::to_string(modifiers) + ")");
             } else {
                 LOG_WARNING("⚠️ No settings overlay browser to send key down");
             }
@@ -382,10 +389,17 @@ LRESULT CALLBACK SettingsOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
                 key_event.windows_key_code = wParam;
                 key_event.native_key_code = lParam;
                 key_event.is_system_key = false;
-                key_event.modifiers = 0;
+
+                // Check for modifier keys
+                int modifiers = 0;
+                if (GetKeyState(VK_CONTROL) & 0x8000) modifiers |= EVENTFLAG_CONTROL_DOWN;
+                if (GetKeyState(VK_SHIFT) & 0x8000) modifiers |= EVENTFLAG_SHIFT_DOWN;
+                if (GetKeyState(VK_MENU) & 0x8000) modifiers |= EVENTFLAG_ALT_DOWN;
+                if (GetKeyState(VK_LWIN) & 0x8000 || GetKeyState(VK_RWIN) & 0x8000) modifiers |= EVENTFLAG_COMMAND_DOWN;
+                key_event.modifiers = modifiers;
 
                 settings_browser->GetHost()->SendKeyEvent(key_event);
-                LOG_DEBUG("⌨️ Key up sent to settings overlay browser");
+                LOG_DEBUG("⌨️ Key up sent to settings overlay browser (modifiers: " + std::to_string(modifiers) + ")");
             } else {
                 LOG_WARNING("⚠️ No settings overlay browser to send key up");
             }
@@ -406,10 +420,17 @@ LRESULT CALLBACK SettingsOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
                 key_event.windows_key_code = wParam;
                 key_event.native_key_code = lParam;
                 key_event.is_system_key = false;
-                key_event.modifiers = 0;
+
+                // Check for modifier keys
+                int modifiers = 0;
+                if (GetKeyState(VK_CONTROL) & 0x8000) modifiers |= EVENTFLAG_CONTROL_DOWN;
+                if (GetKeyState(VK_SHIFT) & 0x8000) modifiers |= EVENTFLAG_SHIFT_DOWN;
+                if (GetKeyState(VK_MENU) & 0x8000) modifiers |= EVENTFLAG_ALT_DOWN;
+                if (GetKeyState(VK_LWIN) & 0x8000 || GetKeyState(VK_RWIN) & 0x8000) modifiers |= EVENTFLAG_COMMAND_DOWN;
+                key_event.modifiers = modifiers;
 
                 settings_browser->GetHost()->SendKeyEvent(key_event);
-                LOG_DEBUG("⌨️ Char sent to settings overlay browser");
+                LOG_DEBUG("⌨️ Char sent to settings overlay browser (modifiers: " + std::to_string(modifiers) + ")");
             } else {
                 LOG_WARNING("⚠️ No settings overlay browser to send char");
             }
@@ -506,10 +527,17 @@ LRESULT CALLBACK WalletOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
                 key_event.windows_key_code = wParam;
                 key_event.native_key_code = lParam;
                 key_event.is_system_key = false;
-                key_event.modifiers = 0;
+
+                // Check for modifier keys
+                int modifiers = 0;
+                if (GetKeyState(VK_CONTROL) & 0x8000) modifiers |= EVENTFLAG_CONTROL_DOWN;
+                if (GetKeyState(VK_SHIFT) & 0x8000) modifiers |= EVENTFLAG_SHIFT_DOWN;
+                if (GetKeyState(VK_MENU) & 0x8000) modifiers |= EVENTFLAG_ALT_DOWN;
+                if (GetKeyState(VK_LWIN) & 0x8000 || GetKeyState(VK_RWIN) & 0x8000) modifiers |= EVENTFLAG_COMMAND_DOWN;
+                key_event.modifiers = modifiers;
 
                 wallet_browser->GetHost()->SendKeyEvent(key_event);
-                LOG_DEBUG("⌨️ Key down sent to wallet overlay browser");
+                LOG_DEBUG("⌨️ Key down sent to wallet overlay browser (modifiers: " + std::to_string(modifiers) + ")");
             } else {
                 LOG_DEBUG("⚠️ No wallet overlay browser to send key down");
             }
@@ -530,10 +558,17 @@ LRESULT CALLBACK WalletOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
                 key_event.windows_key_code = wParam;
                 key_event.native_key_code = lParam;
                 key_event.is_system_key = false;
-                key_event.modifiers = 0;
+
+                // Check for modifier keys
+                int modifiers = 0;
+                if (GetKeyState(VK_CONTROL) & 0x8000) modifiers |= EVENTFLAG_CONTROL_DOWN;
+                if (GetKeyState(VK_SHIFT) & 0x8000) modifiers |= EVENTFLAG_SHIFT_DOWN;
+                if (GetKeyState(VK_MENU) & 0x8000) modifiers |= EVENTFLAG_ALT_DOWN;
+                if (GetKeyState(VK_LWIN) & 0x8000 || GetKeyState(VK_RWIN) & 0x8000) modifiers |= EVENTFLAG_COMMAND_DOWN;
+                key_event.modifiers = modifiers;
 
                 wallet_browser->GetHost()->SendKeyEvent(key_event);
-                LOG_DEBUG("⌨️ Key up sent to wallet overlay browser");
+                LOG_DEBUG("⌨️ Key up sent to wallet overlay browser (modifiers: " + std::to_string(modifiers) + ")");
             } else {
                 LOG_DEBUG("⚠️ No wallet overlay browser to send key up");
             }
@@ -554,10 +589,17 @@ LRESULT CALLBACK WalletOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
                 key_event.windows_key_code = wParam;
                 key_event.native_key_code = lParam;
                 key_event.is_system_key = false;
-                key_event.modifiers = 0;
+
+                // Check for modifier keys
+                int modifiers = 0;
+                if (GetKeyState(VK_CONTROL) & 0x8000) modifiers |= EVENTFLAG_CONTROL_DOWN;
+                if (GetKeyState(VK_SHIFT) & 0x8000) modifiers |= EVENTFLAG_SHIFT_DOWN;
+                if (GetKeyState(VK_MENU) & 0x8000) modifiers |= EVENTFLAG_ALT_DOWN;
+                if (GetKeyState(VK_LWIN) & 0x8000 || GetKeyState(VK_RWIN) & 0x8000) modifiers |= EVENTFLAG_COMMAND_DOWN;
+                key_event.modifiers = modifiers;
 
                 wallet_browser->GetHost()->SendKeyEvent(key_event);
-                LOG_DEBUG("⌨️ Char sent to wallet overlay browser");
+                LOG_DEBUG("⌨️ Char sent to wallet overlay browser (modifiers: " + std::to_string(modifiers) + ")");
             } else {
                 LOG_DEBUG("⚠️ No wallet overlay browser to send char");
             }
