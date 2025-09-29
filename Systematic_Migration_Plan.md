@@ -1,11 +1,24 @@
-# Systematic Migration Plan: Overlay Windows → Integrated Panels
+# Systematic Migration Plan: Multi-Process Overlays → Single-Process Integrated Browser
 
 ## 🎯 **Migration Overview**
 
-**Goal**: Convert from separate overlay HWNDs to integrated React panels within the main browser window, following modern browser architecture patterns.
+**Goal**: Transform from multi-process overlay architecture to single-process integrated browser with React panels and embedded CefBrowserView, following modern browser architecture patterns.
 
-**Current Architecture**: Separate CEF processes for each overlay (settings, wallet, backup)
-**Target Architecture**: Single main process with React-managed panels
+**Current Architecture**:
+- Multiple CEF processes (main + overlays)
+- Separate HWNDs for each overlay
+- Separate webview_hwnd for browsing
+
+**Target Architecture**:
+- Single CEF process with integrated components
+- CefBrowserView embedded in header_hwnd
+- React panels sliding over webview area
+
+### **Critical Architecture Requirements:**
+- **Single Top-Level Window**: Main HWND only - no separate CefWindow instances
+- **CefBrowserView Integration**: Must be embedded as child of header_hwnd, not separate window
+- **Space Management**: Panels and webview share same space with proper z-order management
+- **Fully Functional Browser**: Complete web browsing capabilities within integrated layout
 
 ---
 
@@ -29,6 +42,39 @@
 ---
 
 ## 🗓️ **Phase-by-Phase Migration Plan**
+
+### **Phase 0: Code Preservation & Reference Setup** ⏱️ *0.5 days*
+
+#### **C++ Backend Tasks:**
+- [ ] **Comment out overlay creation functions**
+  - [ ] `CreateSettingsOverlayWithSeparateProcess()`
+  - [ ] `CreateWalletOverlayWithSeparateProcess()`
+  - [ ] `CreateBackupOverlayWithSeparateProcess()`
+  - [ ] Add `// TODO: REMOVE AFTER MIGRATION` comments with clear descriptions
+
+- [ ] **Comment out webview_hwnd creation**
+  - [ ] Comment out `webview_hwnd` creation in `cef_browser_shell.cpp`
+  - [ ] Comment out `g_webview_hwnd` assignment
+  - [ ] Add `// TODO: REPLACE WITH CefBrowserView` comments
+
+- [ ] **Preserve working code as reference**
+  - [ ] Add detailed comments explaining current functionality
+  - [ ] Mark sections that will be replaced vs removed
+  - [ ] Create reference map of current message handling
+
+#### **Frontend Tasks:**
+- [ ] **Comment out overlay routing**
+  - [ ] Comment out `/settings`, `/wallet`, `/backup` routes
+  - [ ] Add `// TODO: CONVERT TO PANELS` comments
+  - [ ] Preserve existing component structure as reference
+
+#### **Documentation Tasks:**
+- [ ] **Create migration reference document**
+  - [ ] Map current message flow patterns
+  - [ ] Document current HWND relationships
+  - [ ] List all overlay-specific functionality to migrate
+
+---
 
 ### **Phase 1: Architecture Setup** ⏱️ *1-2 days*
 
@@ -219,6 +265,21 @@
 
 ## 🔧 **Technical Implementation Details**
 
+### **Target Window Architecture:**
+```
+Main HWND (BitcoinBrowserWndClass)
+├── header_hwnd (CEFHostWindow) ← React JSX renders here
+│   ├── CefBrowserView ← Web content area (embedded as child)
+│   └── PanelArea ← Sliding panels (settings, wallet, backup)
+└── (other UI elements)
+```
+
+### **CefBrowserView Integration Requirements:**
+- **Use CefWindowInfo::SetAsChild()** to embed in header_hwnd
+- **NO separate CefWindow instances** - causes crashes
+- **Proper parent-child relationship** with header_hwnd
+- **Coordinate event handling** between React and CefBrowserView
+
 ### **New Panel Architecture:**
 ```typescript
 // Panel state management
@@ -228,10 +289,12 @@ interface PanelState {
   backup: { open: boolean; data?: any };
 }
 
-// Panel positioning
+// Panel positioning - panels slide over webview area
 const PANEL_WIDTH = 400;
 const PANEL_HEIGHT = 600;
 const PANEL_SLIDE_DURATION = 300; // ms
+const WEBVIEW_Z_INDEX = 1;
+const PANEL_Z_INDEX = 10; // Panels appear above webview
 ```
 
 ### **Message Flow Changes:**
@@ -243,11 +306,26 @@ window.cefMessage.send('overlay_show', ['settings']);
 setPanelState({ settings: { open: true } });
 ```
 
-### **CSS Transitions:**
+### **CSS Transitions & Z-Order Management:**
 ```css
+.webview-area {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+}
+
 .panel-area {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 400px;
+  height: 100%;
+  z-index: 10;
   transform: translateX(100%);
   transition: transform 300ms ease-in-out;
+  background: white;
+  box-shadow: -2px 0 10px rgba(0,0,0,0.1);
 }
 
 .panel-area.open {
@@ -255,14 +333,33 @@ setPanelState({ settings: { open: true } });
 }
 ```
 
+### **CefBrowserView Implementation Pattern:**
+```cpp
+// Correct approach - embed in existing HWND
+CefWindowInfo window_info;
+window_info.SetAsChild(header_hwnd, rect);
+CefBrowserHost::CreateBrowser(window_info, handler, url, browser_settings, nullptr);
+
+// WRONG - creates separate top-level window (causes crashes)
+// CefWindow::CreateTopLevelWindow() - DO NOT USE
+```
+
 ---
 
 ## ⚠️ **Risk Mitigation**
+
+### **Critical Implementation Warnings:**
+- **NEVER create separate CefWindow instances** - causes crashes
+- **ALWAYS use CefWindowInfo::SetAsChild()** for embedding
+- **Ensure parent window is visible** before creating browser
+- **Coordinate event handling** between React and CefBrowserView
+- **Manage z-order properly** for panels and webview
 
 ### **Rollback Strategy:**
 - [ ] Keep all old code commented out until migration complete
 - [ ] Use feature flags to switch between old/new implementations
 - [ ] Test each phase thoroughly before proceeding
+- [ ] Preserve working wrapper in cef-binaries (gitignored)
 
 ### **Testing Checklist:**
 - [ ] All existing functionality preserved
@@ -271,6 +368,9 @@ setPanelState({ settings: { open: true } });
 - [ ] Panel animations smooth
 - [ ] No memory leaks
 - [ ] All error handling works
+- [ ] **Single top-level window only**
+- [ ] **CefBrowserView properly embedded in header_hwnd**
+- [ ] **Panels slide over webview without conflicts**
 
 ---
 
@@ -296,8 +396,9 @@ setPanelState({ settings: { open: true } });
 
 ---
 
-## 🎯 **Total Timeline: 7-10 days**
+## 🎯 **Total Timeline: 7.5-10.5 days**
 
+**Phase 0**: 0.5 days (Code Preservation & Reference)
 **Phase 1**: 1-2 days (Architecture)
 **Phase 2**: 1 day (Settings)
 **Phase 3**: 2-3 days (Bridge & Hooks)
@@ -313,3 +414,6 @@ setPanelState({ settings: { open: true } });
 - **Microservices**: Yes, this is a valid microservices architecture with clear separation of concerns
 - **Rollback**: Easy to rollback at any phase due to commented code preservation
 - **Testing**: Each phase includes comprehensive testing to ensure no functionality loss
+- **Wrapper Verified**: New CEF wrapper works correctly with old code - no compatibility issues
+- **Architecture Key**: CefBrowserView must be embedded in header_hwnd, not separate window
+- **Space Management**: Panels and webview share same space with proper z-order layering

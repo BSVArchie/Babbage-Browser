@@ -1,3 +1,8 @@
+// PHASE 0 MIGRATION: Code preservation and reference setup
+// - Commented out webview_hwnd creation (will be replaced with CefBrowserView)
+// - Preserved all code as reference for migration
+// - Added detailed TODO comments for each section
+
 // #define CEF_ENABLE_SANDBOX 0
 
 #pragma once
@@ -618,17 +623,21 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     HWND header_hwnd = CreateWindow(L"CEFHostWindow", nullptr,
         WS_CHILD | WS_VISIBLE, 0, 0, width, shellHeight, hwnd, nullptr, hInstance, nullptr);
 
-    HWND webview_hwnd = CreateWindow(L"CEFHostWindow", nullptr,
-        WS_CHILD | WS_VISIBLE, 0, shellHeight, width, webviewHeight, hwnd, nullptr, hInstance, nullptr);
+    // TODO: REPLACE WITH CefBrowserView - Old webview HWND creation
+    // HWND webview_hwnd = CreateWindow(L"CEFHostWindow", nullptr,
+    //     WS_CHILD | WS_VISIBLE, 0, shellHeight, width, webviewHeight, hwnd, nullptr, hInstance, nullptr);
 
     // 🌍 Assign to globals
     g_hwnd = hwnd;
     g_header_hwnd = header_hwnd;
-    g_webview_hwnd = webview_hwnd;
+    // TODO: REPLACE WITH CefBrowserView - Global webview HWND assignment
+    // g_webview_hwnd = webview_hwnd;
+    g_webview_hwnd = nullptr; // Will be replaced with CefBrowserView
 
     ShowWindow(hwnd, SW_SHOW);        UpdateWindow(hwnd);
     ShowWindow(header_hwnd, SW_SHOW); UpdateWindow(header_hwnd);
-    ShowWindow(webview_hwnd, SW_SHOW); UpdateWindow(webview_hwnd);
+    // TODO: REPLACE WITH CefBrowserView - Show webview window
+    // ShowWindow(webview_hwnd, SW_SHOW); UpdateWindow(webview_hwnd);
 
     LOG_DEBUG("Initializing CEF...");
     bool success = CefInitialize(main_args, settings, app, nullptr);
@@ -637,7 +646,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     if (!success) return 1;
 
     // 💡 Optionally pass handles to app instance
-    app->SetWindowHandles(hwnd, header_hwnd, webview_hwnd);
+    // TODO: REPLACE WITH CefBrowserView - Pass webview handle to app
+    app->SetWindowHandles(hwnd, header_hwnd, nullptr); // webview_hwnd will be replaced with CefBrowserView
 
     CefRunMessageLoop();
     CefShutdown();

@@ -1,8 +1,9 @@
 import { useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
-import SettingsOverlayRoot from './pages/SettingsOverlayRoot';
-import WalletOverlayRoot from './pages/WalletOverlayRoot';
-import BackupOverlayRoot from './pages/BackupOverlayRoot';
+// TODO: CONVERT TO PANELS - Overlay component imports
+// import SettingsOverlayRoot from './pages/SettingsOverlayRoot';
+// import WalletOverlayRoot from './pages/WalletOverlayRoot';
+// import BackupOverlayRoot from './pages/BackupOverlayRoot';
 import MainBrowserView from './pages/MainBrowserView';
 // Removed identity types - now using unified wallet system
 
@@ -91,9 +92,10 @@ const App = () => {
       <Routes>
         {/* <Route path="/" element={walletExists ? <MainBrowserView /> : <OverlayRoot />} /> */}
         <Route path="/" element={<MainBrowserView />} />
-        <Route path="/settings" element={<SettingsOverlayRoot />} />
-        <Route path="/wallet" element={<WalletOverlayRoot />} />
-        <Route path="/backup" element={<BackupOverlayRoot />} />
+        {/* TODO: CONVERT TO PANELS - Overlay routing */}
+        {/* <Route path="/settings" element={<SettingsOverlayRoot />} /> */}
+        {/* <Route path="/wallet" element={<WalletOverlayRoot />} /> */}
+        {/* <Route path="/backup" element={<BackupOverlayRoot />} /> */}
       </Routes>
     </>
   );

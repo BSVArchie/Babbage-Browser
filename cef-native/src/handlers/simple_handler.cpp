@@ -760,9 +760,10 @@ bool SimpleHandler::OnProcessMessageReceived(
         LOG_DEBUG_BROWSER("💰 overlay_show_wallet message received from role: " + role_);
 
         LOG_DEBUG_BROWSER("💰 Creating wallet overlay with separate process");
+        // TODO: REMOVE AFTER MIGRATION - Wallet overlay creation
         // Create new process for wallet overlay
         extern HINSTANCE g_hInstance;
-        CreateWalletOverlayWithSeparateProcess(g_hInstance);
+        // CreateWalletOverlayWithSeparateProcess(g_hInstance);
         return true;
     }
 
@@ -770,9 +771,10 @@ bool SimpleHandler::OnProcessMessageReceived(
         LOG_DEBUG_BROWSER("💾 overlay_show_backup message received from role: " + role_);
 
         LOG_DEBUG_BROWSER("💾 Creating backup overlay with separate process");
+        // TODO: REMOVE AFTER MIGRATION - Backup overlay creation
         // Create new process for backup overlay
         extern HINSTANCE g_hInstance;
-        CreateBackupOverlayWithSeparateProcess(g_hInstance);
+        // CreateBackupOverlayWithSeparateProcess(g_hInstance);
         return true;
     }
 
@@ -780,9 +782,10 @@ bool SimpleHandler::OnProcessMessageReceived(
         LOG_DEBUG_BROWSER("🪟 overlay_show_settings message received from role: " + role_);
 
         LOG_DEBUG_BROWSER("🪟 Creating settings overlay with separate process");
+        // TODO: REMOVE AFTER MIGRATION - Settings overlay creation
         // Create new process for settings overlay
         extern HINSTANCE g_hInstance;
-        CreateSettingsOverlayWithSeparateProcess(g_hInstance);
+        // CreateSettingsOverlayWithSeparateProcess(g_hInstance);
         return true;
     }
 
