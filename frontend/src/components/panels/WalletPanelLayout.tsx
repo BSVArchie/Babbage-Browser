@@ -26,8 +26,8 @@ const WalletPanelLayout: React.FC<Props> = ({ onClose, open }) => {
       variant="temporary"
       sx={{
         '& .MuiDrawer-paper': {
-          width: '40%',  // Use full width instead of 280px
-          bgcolor: 'grey.900',
+          width: '44%',  // Made 44% wider as requested
+          bgcolor: '#2d5016', // Dark green background
           color: 'white',
         },
       }}
@@ -35,13 +35,13 @@ const WalletPanelLayout: React.FC<Props> = ({ onClose, open }) => {
       <Box display="flex" alignItems="center" p={2} justifyContent="space-between">
         <Box display="flex" alignItems="center">
           <AccountBalanceWalletIcon sx={{ mr: 1 }} />
-          <Typography variant="h6">Wallet Panel</Typography>
+          <Typography variant="h6">Bitcoin SV Wallet</Typography>
         </Box>
         <IconButton onClick={onClose} sx={{ color: 'white' }}>
           <CloseIcon />
         </IconButton>
       </Box>
-      <Divider sx={{ bgcolor: 'grey.700' }} />
+      <Divider sx={{ bgcolor: '#d4c4a8' }} />
 
       {/* Add wallet UI content here */}
       <Box p={2}>

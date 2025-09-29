@@ -1,6 +1,5 @@
 
 import { useState } from 'react';
-import { BalanceDisplay } from '../BalanceDisplay';
 import { TransactionForm } from '../TransactionForm';
 import { useBalance } from '../../hooks/useBalance';
 import { useTransaction } from '../../hooks/useTransaction';
@@ -8,6 +7,7 @@ import { useAddress } from '../../hooks/useAddress';
 // Removed useWallet import - private keys handled by Go daemon
 import type { TransactionResponse } from '../../types/transaction';
 import '../../components/TransactionComponents.css';
+import '../../components/WalletPanel.css';
 
 const WalletPanel = () => {
   const { balance, usdValue, isLoading: balanceLoading, refreshBalance } = useBalance();
@@ -70,153 +70,163 @@ const WalletPanel = () => {
   };
 
   return (
-    <div className="wallet-panel">
-      {/* Header */}
-      <div className="wallet-header">
-        <h1>Bitcoin SV Wallet</h1>
-      </div>
-
-      {/* Main Content */}
-      <div className="wallet-main-content">
-        {/* Left Panel - Navigation (Future) */}
-        <div className="wallet-left-panel">
-          <div className="nav-item">Exchange</div>
-          <div className="nav-item">Certificates (Identity)</div>
-          <div className="nav-item">Tokens/Baskets</div>
-          <div className="nav-item">History</div>
-          <div className="nav-item">Settings</div>
-        </div>
-
-        {/* Right Panel - Wallet Functionality */}
-        <div className="wallet-right-panel">
-          {/* Top Section */}
-          <div className="wallet-top-section">
-
-            {/* Balance Display */}
-            <div className="wallet-balance">
-              <BalanceDisplay
-                balance={balance}
-                usdValue={usdValue}
-                isLoading={balanceLoading}
-                onRefresh={refreshBalance}
-              />
+    <div className="wallet-panel-container">
+      {/* Balance Display */}
+      <div className="balance-display">
+          <div className="balance-header">
+            <h2>Total Balance</h2>
+            <button
+              className="refresh-button"
+              onClick={refreshBalance}
+              disabled={balanceLoading}
+            >
+              {balanceLoading ? '⏳' : '🔄'} Refresh
+            </button>
+          </div>
+          <div className="balance-content">
+            <div className="balance-primary">
+              <span className="balance-amount">
+                {balanceLoading ? '...' : (balance / 100000000).toFixed(8)}
+              </span>
+              <span className="balance-currency">BSV</span>
+            </div>
+            <span className="balance-separator">|</span>
+            <div className="balance-secondary">
+              <span className="balance-usd">
+                ${balanceLoading ? '...' : usdValue.toFixed(2)}
+              </span>
+              <span className="balance-usd-label">USD</span>
             </div>
           </div>
-
-          {/* Action Buttons */}
-          <div className="wallet-actions">
-            <button
-              className="wallet-button receive-button"
-              onClick={handleReceiveClick}
-              disabled={isGenerating}
-            >
-              {isGenerating ? 'Generating...' : 'Receive'}
-            </button>
-            <button
-              className="wallet-button send-button"
-              onClick={handleSendClick}
-            >
-              Send
-            </button>
-          </div>
-
-          {/* Dynamic Content Area */}
-          <div className="wallet-content-area">
-            {showSendForm && (
-              <div className="send-form-container">
-                <TransactionForm
-                  onTransactionCreated={handleSendSubmit}
-                  balance={balance}
-                  isLoading={transactionLoading}
-                  error={transactionError}
-                />
-              </div>
-            )}
-
-                    {showReceiveAddress && (
-                      <div className="receive-address-container">
-                        <h3>Receive Bitcoin SV</h3>
-                        <p>Address copied to clipboard!</p>
-                        <div className="address-display">
-                          <code>{currentAddress || 'Generating...'}</code>
-                          <button
-                            className="copy-button"
-                            onClick={() => navigator.clipboard.writeText(currentAddress || '')}
-                          >
-                            Copy Again
-                          </button>
-                        </div>
-                        <button
-                          className="close-button"
-                          onClick={() => setShowReceiveAddress(false)}
-                        >
-                          Close
-                        </button>
-                      </div>
-                    )}
-
-            {/* Confirmation Modal */}
-            {showConfirmation && transactionData && (
-              <div className="confirmation-modal">
-                <div className="modal-content">
-                  <h3>Confirm Transaction</h3>
-                  <div className="transaction-details">
-                    <p><strong>To:</strong> {transactionData.recipient}</p>
-                    <p><strong>Amount:</strong> {transactionData.amount} satoshis</p>
-                    <p><strong>Fee Rate:</strong> {transactionData.feeRate} sat/byte</p>
-                  </div>
-                  <div className="modal-buttons">
-                    <button onClick={handleConfirmSend} className="confirm-button">
-                      Confirm Send
-                    </button>
-                    <button onClick={() => setShowConfirmation(false)} className="cancel-button">
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Success Modal */}
-            {transactionResult && (
-              <div className="success-modal">
-                <div className="modal-content">
-                  <h3>✅ Transaction Sent!</h3>
-                  <div className="transaction-details">
-                    <p><strong>TxID:</strong> {transactionResult.txid}</p>
-                    <p><strong>Status:</strong> {transactionResult.message}</p>
-                  </div>
-                  {transactionResult.whatsOnChainUrl && (
-                    <a
-                      href={transactionResult.whatsOnChainUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="whatsonchain-link"
-                    >
-                      View on WhatsOnChain
-                    </a>
-                  )}
-                  <button onClick={() => setTransactionResult(null)} className="close-button">
-                    Close
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {!showSendForm && !showReceiveAddress && !transactionResult && (
-              <div className="content-placeholder">
-                {addressCopiedMessage ? (
-                  <div className="address-copied-message">
-                    ✅ {addressCopiedMessage}
-                  </div>
-                ) : (
-                  "Area to render stuff the user clicks on or something"
-                )}
-              </div>
-            )}
-          </div>
+          {balanceLoading && (
+            <div className="balance-loading">
+              <div className="loading-spinner"></div>
+              Fetching balance from blockchain...
+            </div>
+          )}
         </div>
-      </div>
+
+        {/* Action Buttons */}
+        <div className="wallet-actions">
+          <button
+            className="wallet-button receive-button"
+            onClick={handleReceiveClick}
+            disabled={isGenerating}
+          >
+            {isGenerating ? 'Generating...' : 'Receive'}
+          </button>
+          <button
+            className="wallet-button send-button"
+            onClick={handleSendClick}
+          >
+            Send
+          </button>
+        </div>
+
+        {/* Navigation Grid */}
+        <div className="navigation-grid">
+          <button className="nav-grid-button">Certificates</button>
+          <button className="nav-grid-button">History</button>
+          <button className="nav-grid-button">Settings</button>
+          <button className="nav-grid-button">Tokens</button>
+          <button className="nav-grid-button">Baskets</button>
+          <button className="nav-grid-button">Exchange</button>
+        </div>
+
+        {/* Dynamic Content Area */}
+        <div className="dynamic-content-area">
+          {showSendForm && (
+            <div className="send-form-container">
+              <TransactionForm
+                onTransactionCreated={handleSendSubmit}
+                balance={balance}
+                isLoading={transactionLoading}
+                error={transactionError}
+              />
+            </div>
+          )}
+
+          {showReceiveAddress && (
+            <div className="receive-address-container">
+              <h3>Receive Bitcoin SV</h3>
+              <p>Address copied to clipboard!</p>
+              <div className="address-display">
+                <code>{currentAddress || 'Generating...'}</code>
+                <button
+                  className="copy-button"
+                  onClick={() => navigator.clipboard.writeText(currentAddress || '')}
+                >
+                  Copy Again
+                </button>
+              </div>
+              <button
+                className="close-button"
+                onClick={() => setShowReceiveAddress(false)}
+              >
+                Close
+              </button>
+            </div>
+          )}
+
+          {/* Confirmation Modal */}
+          {showConfirmation && transactionData && (
+            <div className="transaction-form">
+              <div className="form-header">
+                <h3>Confirm Transaction</h3>
+              </div>
+              <div className="transaction-details">
+                <p><strong>To:</strong> {transactionData.recipient}</p>
+                <p><strong>Amount:</strong> {transactionData.amount} satoshis</p>
+                <p><strong>Fee Rate:</strong> {transactionData.feeRate} sat/byte</p>
+              </div>
+              <div className="wallet-actions">
+                <button onClick={handleConfirmSend} className="submit-button">
+                  Confirm Send
+                </button>
+                <button onClick={() => setShowConfirmation(false)} className="close-button">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Success Modal */}
+          {transactionResult && (
+            <div className="success-message">
+              <h3>✅ Transaction Sent!</h3>
+              <div className="transaction-details">
+                <p><strong>TxID:</strong> {transactionResult.txid}</p>
+                <p><strong>Status:</strong> {transactionResult.message}</p>
+              </div>
+              {transactionResult.whatsOnChainUrl && (
+                <a
+                  href={transactionResult.whatsOnChainUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="whatsonchain-link"
+                  style={{ color: 'var(--wallet-text-light)', textDecoration: 'underline' }}
+                >
+                  View on WhatsOnChain
+                </a>
+              )}
+              <button onClick={() => setTransactionResult(null)} className="close-button">
+                Close
+              </button>
+            </div>
+          )}
+
+          {!showSendForm && !showReceiveAddress && !transactionResult && (
+            <div className="content-placeholder">
+              {addressCopiedMessage ? (
+                <div className="address-copied-message">
+                  ✅ {addressCopiedMessage}
+                </div>
+              ) : (
+                "Area to render stuff the user clicks on or something"
+              )}
+            </div>
+          )}
+        </div>
     </div>
   );
 };
