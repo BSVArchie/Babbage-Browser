@@ -26,7 +26,7 @@ const WalletPanelLayout: React.FC<Props> = ({ onClose, open }) => {
       variant="temporary"
       sx={{
         '& .MuiDrawer-paper': {
-          width: '44%',  // Made 44% wider as requested
+          width: '36%',  // Reduced to 36% for better balance
           bgcolor: '#2d5016', // Dark green background
           color: 'white',
         },

@@ -82,8 +82,8 @@
   box-shadow: 0 4px 12px var(--wallet-shadow);
   position: relative;
   overflow: hidden;
-  width: 90%; /* Make it wider and centered */
-  max-width: 600px; /* Increased max width */
+  width: 85%; /* Back to reasonable size */
+  max-width: 550px; /* Reasonable max width */
 }
 
 .balance-display::before {
@@ -117,35 +117,40 @@
   align-items: center;
   gap: 24px; /* Increased gap for better spacing */
   flex-wrap: nowrap; /* Keep everything on one line */
+  white-space: nowrap; /* Prevent text wrapping */
 }
 
 .balance-primary {
   display: flex;
   align-items: center;
   gap: 8px;
+  white-space: nowrap;
 }
 
 .balance-amount {
-  font-size: 28px;
+  font-size: 24px; /* Reduced from 28px */
   font-weight: 800;
   line-height: 1;
   color: var(--wallet-gold-accent);
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  white-space: nowrap;
 }
 
 .balance-currency {
-  font-size: 28px;
+  font-size: 20px; /* Reduced from 28px */
   font-weight: 800;
   color: var(--wallet-gold-accent);
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  white-space: nowrap;
 }
 
 .balance-separator {
-  font-size: 28px;
+  font-size: 24px; /* Reduced from 28px */
   font-weight: 800;
   color: var(--wallet-gold-accent);
   opacity: 0.7;
   margin: 0 8px; /* Add margin around separator */
+  white-space: nowrap;
 }
 
 .balance-secondary {
@@ -154,20 +159,24 @@
   gap: 8px;
   color: var(--wallet-gold-accent);
   font-weight: 800;
+  white-space: nowrap;
 }
 
 .balance-usd {
-  font-size: 28px;
+  font-size: 20px; /* Smaller font to fit better */
   font-weight: 800;
   color: var(--wallet-gold-accent);
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  white-space: nowrap;
+  display: inline; /* Force inline display */
 }
 
 .balance-usd-label {
-  font-size: 28px;
+  font-size: 20px; /* Reduced from 28px */
   font-weight: 800;
   color: var(--wallet-gold-accent);
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  white-space: nowrap;
 }
 
 .balance-loading {

@@ -2,7 +2,6 @@
 import { useState } from 'react';
 import { TransactionForm } from '../TransactionForm';
 import { useBalance } from '../../hooks/useBalance';
-import { useTransaction } from '../../hooks/useTransaction';
 import { useAddress } from '../../hooks/useAddress';
 // Removed useWallet import - private keys handled by Go daemon
 import type { TransactionResponse } from '../../types/transaction';
@@ -11,12 +10,9 @@ import '../../components/WalletPanel.css';
 
 const WalletPanel = () => {
   const { balance, usdValue, isLoading: balanceLoading, refreshBalance } = useBalance();
-  const { isLoading: transactionLoading, error: transactionError, sendTransaction } = useTransaction();
   const { currentAddress, isGenerating, generateAndCopy } = useAddress();
 
   const [showSendForm, setShowSendForm] = useState(false);
-  const [showConfirmation, setShowConfirmation] = useState(false);
-  const [transactionData, setTransactionData] = useState<any>(null);
   const [transactionResult, setTransactionResult] = useState<TransactionResponse | null>(null);
   const [showReceiveAddress, setShowReceiveAddress] = useState(false);
   const [addressCopiedMessage, setAddressCopiedMessage] = useState<string | null>(null);
@@ -24,11 +20,22 @@ const WalletPanel = () => {
   // No wallet initialization needed - using hardcoded test address
 
   const handleSendClick = () => {
+    // Clear all other display states first
+    setShowReceiveAddress(false);
+    setAddressCopiedMessage(null);
+    setTransactionResult(null);
+
+    // Toggle send form
     setShowSendForm(!showSendForm);
   };
 
   const handleReceiveClick = async () => {
     console.log('🔄 Receive button clicked');
+
+    // Clear all other display states first
+    setShowSendForm(false);
+    setTransactionResult(null);
+
     try {
       // Generate address from identity
       const addressData = await generateAndCopy();
@@ -49,24 +56,25 @@ const WalletPanel = () => {
     }
   };
 
-  const handleSendSubmit = (data: any) => {
-    setTransactionData(data);
-    setShowConfirmation(true);
+  const handleSendSubmit = (result: TransactionResponse) => {
+    // Clear all other states first
+    setShowReceiveAddress(false);
+    setAddressCopiedMessage(null);
+    setTransactionResult(null);
+
+    // Set the transaction result and close the form
+    setTransactionResult(result);
+    setShowSendForm(false);
+    // Refresh balance after successful transaction
+    refreshBalance();
   };
 
-  const handleConfirmSend = async () => {
-    if (!transactionData) return;
 
-    try {
-      const result = await sendTransaction(transactionData);
-      setTransactionResult(result);
-      setShowConfirmation(false);
-      setShowSendForm(false);
-      // Refresh balance after successful transaction
-      refreshBalance();
-    } catch (error) {
-      console.error('Transaction failed:', error);
-    }
+  const clearAllStates = () => {
+    setShowSendForm(false);
+    setShowReceiveAddress(false);
+    setAddressCopiedMessage(null);
+    setTransactionResult(null);
   };
 
   return (
@@ -93,9 +101,8 @@ const WalletPanel = () => {
             <span className="balance-separator">|</span>
             <div className="balance-secondary">
               <span className="balance-usd">
-                ${balanceLoading ? '...' : usdValue.toFixed(2)}
+                ${balanceLoading ? '...' : usdValue.toFixed(2)} USD
               </span>
-              <span className="balance-usd-label">USD</span>
             </div>
           </div>
           {balanceLoading && (
@@ -125,12 +132,12 @@ const WalletPanel = () => {
 
         {/* Navigation Grid */}
         <div className="navigation-grid">
-          <button className="nav-grid-button">Certificates</button>
-          <button className="nav-grid-button">History</button>
-          <button className="nav-grid-button">Settings</button>
-          <button className="nav-grid-button">Tokens</button>
-          <button className="nav-grid-button">Baskets</button>
-          <button className="nav-grid-button">Exchange</button>
+          <button className="nav-grid-button" onClick={clearAllStates}>Certificates</button>
+          <button className="nav-grid-button" onClick={clearAllStates}>History</button>
+          <button className="nav-grid-button" onClick={clearAllStates}>Settings</button>
+          <button className="nav-grid-button" onClick={clearAllStates}>Tokens</button>
+          <button className="nav-grid-button" onClick={clearAllStates}>Baskets</button>
+          <button className="nav-grid-button" onClick={clearAllStates}>Exchange</button>
         </div>
 
         {/* Dynamic Content Area */}
@@ -140,8 +147,6 @@ const WalletPanel = () => {
               <TransactionForm
                 onTransactionCreated={handleSendSubmit}
                 balance={balance}
-                isLoading={transactionLoading}
-                error={transactionError}
               />
             </div>
           )}
@@ -168,27 +173,6 @@ const WalletPanel = () => {
             </div>
           )}
 
-          {/* Confirmation Modal */}
-          {showConfirmation && transactionData && (
-            <div className="transaction-form">
-              <div className="form-header">
-                <h3>Confirm Transaction</h3>
-              </div>
-              <div className="transaction-details">
-                <p><strong>To:</strong> {transactionData.recipient}</p>
-                <p><strong>Amount:</strong> {transactionData.amount} satoshis</p>
-                <p><strong>Fee Rate:</strong> {transactionData.feeRate} sat/byte</p>
-              </div>
-              <div className="wallet-actions">
-                <button onClick={handleConfirmSend} className="submit-button">
-                  Confirm Send
-                </button>
-                <button onClick={() => setShowConfirmation(false)} className="close-button">
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
 
           {/* Success Modal */}
           {transactionResult && (
@@ -199,15 +183,38 @@ const WalletPanel = () => {
                 <p><strong>Status:</strong> {transactionResult.message}</p>
               </div>
               {transactionResult.whatsOnChainUrl && (
-                <a
-                  href={transactionResult.whatsOnChainUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="whatsonchain-link"
-                  style={{ color: 'var(--wallet-text-light)', textDecoration: 'underline' }}
-                >
-                  View on WhatsOnChain
-                </a>
+                <div className="whatsonchain-container">
+                  <a
+                    href={transactionResult.whatsOnChainUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="whatsonchain-link"
+                    style={{ color: 'var(--wallet-text-light)', textDecoration: 'underline' }}
+                  >
+                    View on WhatsOnChain
+                  </a>
+                  <button
+                    onClick={() => {
+                      if (transactionResult.whatsOnChainUrl) {
+                        navigator.clipboard.writeText(transactionResult.whatsOnChainUrl);
+                        // You could add a temporary "Copied!" message here if desired
+                      }
+                    }}
+                    className="copy-link-button"
+                    style={{
+                      marginLeft: '10px',
+                      padding: '4px 8px',
+                      backgroundColor: 'var(--wallet-gold-accent)',
+                      color: 'var(--wallet-text-dark)',
+                      border: '1px solid var(--wallet-text-light)',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '12px'
+                    }}
+                  >
+                    Copy Link
+                  </button>
+                </div>
               )}
               <button onClick={() => setTransactionResult(null)} className="close-button">
                 Close
