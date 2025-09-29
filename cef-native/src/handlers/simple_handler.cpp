@@ -1154,6 +1154,28 @@ CefRefPtr<CefContextMenuHandler> SimpleHandler::GetContextMenuHandler() {
     return this;
 }
 
+CefRefPtr<CefKeyboardHandler> SimpleHandler::GetKeyboardHandler() {
+    return this;
+}
+
+bool SimpleHandler::OnPreKeyEvent(CefRefPtr<CefBrowser> browser,
+                                  const CefKeyEvent& event,
+                                  CefEventHandle os_event,
+                                  bool* is_keyboard_shortcut) {
+    // Log keyboard events for debugging
+    LOG_DEBUG_BROWSER("⌨️ OnPreKeyEvent - type: " + std::to_string(event.type) +
+                      ", key: " + std::to_string(event.windows_key_code) +
+                      ", modifiers: " + std::to_string(event.modifiers));
+
+    // For overlay windows, we want normal input processing, not shortcuts
+    if (role_ == "wallet" || role_ == "settings") {
+        *is_keyboard_shortcut = false;
+        return false; // Let the event be processed normally
+    }
+
+    return false; // Let other handlers process the event
+}
+
 void SimpleHandler::SetRenderHandler(CefRefPtr<CefRenderHandler> handler) {
     render_handler_ = handler;
 }

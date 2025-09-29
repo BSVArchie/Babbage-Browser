@@ -7,13 +7,15 @@
 #include "include/cef_load_handler.h"
 #include "include/cef_request_handler.h"
 #include "include/cef_context_menu_handler.h"
+#include "include/cef_keyboard_handler.h"
 
 class SimpleHandler : public CefClient,
                       public CefLifeSpanHandler,
                       public CefDisplayHandler,
                       public CefLoadHandler,
                       public CefRequestHandler,
-                      public CefContextMenuHandler {
+                      public CefContextMenuHandler,
+                      public CefKeyboardHandler {
 public:
     explicit SimpleHandler(const std::string& role);
 
@@ -23,6 +25,7 @@ public:
     CefRefPtr<CefLoadHandler> GetLoadHandler() override;
     CefRefPtr<CefRequestHandler> GetRequestHandler() override;
     CefRefPtr<CefContextMenuHandler> GetContextMenuHandler() override;
+    CefRefPtr<CefKeyboardHandler> GetKeyboardHandler() override;
     static CefRefPtr<CefBrowser> webview_browser_;
     static CefRefPtr<CefBrowser> header_browser_;
     static CefRefPtr<CefBrowser> GetOverlayBrowser();
@@ -71,6 +74,12 @@ public:
                              CefRefPtr<CefContextMenuParams> params,
                              int command_id,
                              EventFlags event_flags) override;
+
+    // CefKeyboardHandler methods
+    bool OnPreKeyEvent(CefRefPtr<CefBrowser> browser,
+                       const CefKeyEvent& event,
+                       CefEventHandle os_event,
+                       bool* is_keyboard_shortcut) override;
 
 private:
     std::string role_;

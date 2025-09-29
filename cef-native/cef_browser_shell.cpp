@@ -345,6 +345,78 @@ LRESULT CALLBACK SettingsOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
             return 0;
         }
 
+        case WM_KEYDOWN: {
+            LOG_DEBUG("⌨️ Settings Overlay received WM_KEYDOWN - key: " + std::to_string(wParam));
+            SetFocus(hwnd);
+
+            // Find the settings browser
+            CefRefPtr<CefBrowser> settings_browser = SimpleHandler::GetSettingsBrowser();
+            if (settings_browser) {
+                // Create CEF key event
+                CefKeyEvent key_event;
+                key_event.type = KEYEVENT_KEYDOWN;
+                key_event.windows_key_code = wParam;
+                key_event.native_key_code = lParam;
+                key_event.is_system_key = false;
+                key_event.modifiers = 0;
+
+                settings_browser->GetHost()->SendKeyEvent(key_event);
+                LOG_DEBUG("⌨️ Key down sent to settings overlay browser");
+            } else {
+                LOG_WARNING("⚠️ No settings overlay browser to send key down");
+            }
+
+            return 0;
+        }
+
+        case WM_KEYUP: {
+            LOG_DEBUG("⌨️ Settings Overlay received WM_KEYUP - key: " + std::to_string(wParam));
+            SetFocus(hwnd);
+
+            // Find the settings browser
+            CefRefPtr<CefBrowser> settings_browser = SimpleHandler::GetSettingsBrowser();
+            if (settings_browser) {
+                // Create CEF key event
+                CefKeyEvent key_event;
+                key_event.type = KEYEVENT_KEYUP;
+                key_event.windows_key_code = wParam;
+                key_event.native_key_code = lParam;
+                key_event.is_system_key = false;
+                key_event.modifiers = 0;
+
+                settings_browser->GetHost()->SendKeyEvent(key_event);
+                LOG_DEBUG("⌨️ Key up sent to settings overlay browser");
+            } else {
+                LOG_WARNING("⚠️ No settings overlay browser to send key up");
+            }
+
+            return 0;
+        }
+
+        case WM_CHAR: {
+            LOG_DEBUG("⌨️ Settings Overlay received WM_CHAR - char: " + std::to_string(wParam));
+            SetFocus(hwnd);
+
+            // Find the settings browser
+            CefRefPtr<CefBrowser> settings_browser = SimpleHandler::GetSettingsBrowser();
+            if (settings_browser) {
+                // Create CEF key event
+                CefKeyEvent key_event;
+                key_event.type = KEYEVENT_CHAR;
+                key_event.windows_key_code = wParam;
+                key_event.native_key_code = lParam;
+                key_event.is_system_key = false;
+                key_event.modifiers = 0;
+
+                settings_browser->GetHost()->SendKeyEvent(key_event);
+                LOG_DEBUG("⌨️ Char sent to settings overlay browser");
+            } else {
+                LOG_WARNING("⚠️ No settings overlay browser to send char");
+            }
+
+            return 0;
+        }
+
         case WM_CLOSE:
             LOG_INFO("❌ Settings Overlay received WM_CLOSE - destroying window");
             DestroyWindow(hwnd);
@@ -416,6 +488,78 @@ LRESULT CALLBACK WalletOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
                 LOG_DEBUG("🧠 Right-click sent to wallet overlay browser");
             } else {
                 LOG_DEBUG("⚠️ No wallet overlay browser to send right-click");
+            }
+
+            return 0;
+        }
+
+        case WM_KEYDOWN: {
+            LOG_DEBUG("⌨️ Wallet Overlay received WM_KEYDOWN - key: " + std::to_string(wParam));
+            SetFocus(hwnd);
+
+            // Find the wallet browser
+            CefRefPtr<CefBrowser> wallet_browser = SimpleHandler::GetWalletBrowser();
+            if (wallet_browser) {
+                // Create CEF key event
+                CefKeyEvent key_event;
+                key_event.type = KEYEVENT_KEYDOWN;
+                key_event.windows_key_code = wParam;
+                key_event.native_key_code = lParam;
+                key_event.is_system_key = false;
+                key_event.modifiers = 0;
+
+                wallet_browser->GetHost()->SendKeyEvent(key_event);
+                LOG_DEBUG("⌨️ Key down sent to wallet overlay browser");
+            } else {
+                LOG_DEBUG("⚠️ No wallet overlay browser to send key down");
+            }
+
+            return 0;
+        }
+
+        case WM_KEYUP: {
+            LOG_DEBUG("⌨️ Wallet Overlay received WM_KEYUP - key: " + std::to_string(wParam));
+            SetFocus(hwnd);
+
+            // Find the wallet browser
+            CefRefPtr<CefBrowser> wallet_browser = SimpleHandler::GetWalletBrowser();
+            if (wallet_browser) {
+                // Create CEF key event
+                CefKeyEvent key_event;
+                key_event.type = KEYEVENT_KEYUP;
+                key_event.windows_key_code = wParam;
+                key_event.native_key_code = lParam;
+                key_event.is_system_key = false;
+                key_event.modifiers = 0;
+
+                wallet_browser->GetHost()->SendKeyEvent(key_event);
+                LOG_DEBUG("⌨️ Key up sent to wallet overlay browser");
+            } else {
+                LOG_DEBUG("⚠️ No wallet overlay browser to send key up");
+            }
+
+            return 0;
+        }
+
+        case WM_CHAR: {
+            LOG_DEBUG("⌨️ Wallet Overlay received WM_CHAR - char: " + std::to_string(wParam));
+            SetFocus(hwnd);
+
+            // Find the wallet browser
+            CefRefPtr<CefBrowser> wallet_browser = SimpleHandler::GetWalletBrowser();
+            if (wallet_browser) {
+                // Create CEF key event
+                CefKeyEvent key_event;
+                key_event.type = KEYEVENT_CHAR;
+                key_event.windows_key_code = wParam;
+                key_event.native_key_code = lParam;
+                key_event.is_system_key = false;
+                key_event.modifiers = 0;
+
+                wallet_browser->GetHost()->SendKeyEvent(key_event);
+                LOG_DEBUG("⌨️ Char sent to wallet overlay browser");
+            } else {
+                LOG_DEBUG("⚠️ No wallet overlay browser to send char");
             }
 
             return 0;
