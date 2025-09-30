@@ -31,3 +31,6 @@ dist-ssr
 # Bitcoin Wallet Identity Files (sensitive data)
 python-wallet/identity.json
 **/identity.json
+
+# Reference libraries and external dependencies
+reference/
