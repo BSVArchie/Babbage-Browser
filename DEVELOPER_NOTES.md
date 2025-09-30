@@ -198,22 +198,28 @@
 ### **🚀 NEXT DEVELOPMENT PRIORITIES:**
 
 **IMMEDIATE NEXT STEPS (High Priority):**
-1. **TRANSACTION HISTORY IMPLEMENTATION**: Display recent transactions in wallet panel
+1. **BRC-100 AUTHENTICATION IMPLEMENTATION**: Add BRC-100 protocol support for app authentication
+   - **Current**: Complete Bitcoin SV wallet with transaction capabilities
+   - **Goal**: Enable authentication with BRC-100 apps (metanetapps.com)
+   - **Impact**: Users can authenticate and transact with Bitcoin SV applications
+   - **Reference**: See detailed implementation plan in `BRC-100` document
+
+2. **TRANSACTION HISTORY IMPLEMENTATION**: Display recent transactions in wallet panel
    - **Current**: Backend can create and broadcast transactions, UI is polished
    - **Goal**: Show transaction history with status, amounts, and transaction IDs
    - **Impact**: Users can see their transaction history and status
 
-2. **REAL-TIME BALANCE UPDATES**: Update balances after successful transactions
+3. **REAL-TIME BALANCE UPDATES**: Update balances after successful transactions
    - **Current**: Balances show correctly but don't update after transactions
    - **Goal**: Automatically refresh balances after transaction completion
    - **Impact**: Users see updated balances immediately after sending transactions
 
-3. **ERROR HANDLING & USER FEEDBACK**: Comprehensive error handling for transaction failures
+4. **ERROR HANDLING & USER FEEDBACK**: Comprehensive error handling for transaction failures
    - **Current**: Backend has error handling, frontend needs user feedback
    - **Goal**: Show clear error messages and success confirmations
    - **Impact**: Better user experience with clear feedback
 
-4. **SKIP BACKUP MODAL ISSUE**: Move backup modal to installation process
+5. **SKIP BACKUP MODAL ISSUE**: Move backup modal to installation process
    - **Current**: Modal blocks wallet initialization due to rendering issues
    - **Goal**: Remove modal from startup, add to installation/setup process
    - **Impact**: Unblocks core wallet development
@@ -223,6 +229,32 @@
 - **KEYBOARD INPUT SUPPORT**: ✅ **COMPLETE** - Fixed keyboard input in overlay windows
 - **WALLET UI/UX OVERHAUL**: ✅ **COMPLETE** - Modern design with improved layout and navigation
 - **TRANSACTION FLOW OPTIMIZATION**: ✅ **COMPLETE** - Streamlined send flow without crashes
+
+### **🎯 NEXT MAJOR FEATURE: BRC-100 AUTHENTICATION SYSTEM**
+
+**Overview:**
+The next major development phase focuses on implementing BRC-100 authentication protocol to enable seamless authentication and transactions with Bitcoin SV applications. This will transform the browser from a standalone wallet into a comprehensive Bitcoin SV application platform.
+
+**Key Goals:**
+- **App Authentication**: Enable users to authenticate with BRC-100 compliant applications
+- **Identity Management**: Implement selective disclosure identity certificates (BRC-52/103)
+- **Project Babbage Integration**: Leverage existing identity infrastructure
+- **BEEF Transaction Support**: Add atomic transaction construction and verification
+- **Real-World Testing**: Test with applications on metanetapps.com
+
+**Implementation Phases:**
+1. **Phase 1**: Go daemon BRC-100 foundation (identity, authentication, key derivation)
+2. **Phase 2**: BEEF transaction support and SPV verification
+3. **Phase 3**: Browser integration and frontend components
+4. **Phase 4**: Real-world testing with Metanet applications
+
+**Detailed Plan:**
+See comprehensive implementation roadmap in `BRC-100` document, including:
+- Technical architecture and file structure
+- Project Babbage integration strategy
+- Step-by-step implementation guide
+- Testing and validation approach
+- Success metrics and risk mitigation
 
 **🎯 FRONTEND INTEGRATION TASKS:**
 
@@ -1032,8 +1064,9 @@ Inspired by 90s desktop metaphors (desktop, files, folders), the wallet should f
 - ✅ **Keyboard Input**: Fixed keyboard input in overlay windows
 - ✅ **UI/UX Design**: Modern wallet interface with improved layout and navigation
 - ✅ **Transaction Flow**: Streamlined send flow without crashes
-- 🔄 **Next**: Transaction history, real-time balance updates, enhanced error handling
-- 🎯 **Goal**: Complete end-to-end Bitcoin SV transaction system ✅ **ACHIEVED**
+- 🎯 **Next Major Goal**: BRC-100 authentication system for app integration
+- 🔄 **Next Steps**: BRC-100 protocol implementation, Project Babbage integration, app authentication
+- 🎯 **Vision**: Transform browser into comprehensive Bitcoin SV application platform
 
 ---
 
