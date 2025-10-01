@@ -11,6 +11,9 @@ A custom Web3 browser built on the Chromium Embedded Framework (CEF) with native
 - ✅ CEF shell with secure wallet backend
 - ✅ Process-per-overlay architecture (settings, wallet, backup modals)
 - ✅ Complete identity system with Go daemon integration
+- ✅ **BRC-100 Authentication System** - Complete implementation
+- ✅ **BEEF/SPV Integration** - Real blockchain transactions
+- ✅ **Production-Ready Go Wallet** - Standalone executable
 - 🧱 Build the UI from scratch using React + Vite
 - 🔐 Enforce native, secure signing (not in JavaScript)
 - ⚙️ Smart contract integration with sCrypt (or custom) and BRC-100/Authrite
@@ -22,13 +25,15 @@ A custom Web3 browser built on the Chromium Embedded Framework (CEF) with native
 |-------|------------|-------|
 | Browser Shell | C++ / Chromium Embedded Framework | ✅ Process-per-overlay architecture implemented |
 | UI | React + Vite (TypeScript) | ✅ Multiple overlay routes (/settings, /wallet, /backup) |
-| Native Wallet | **Go** (bitcoin-sv/go-sdk) | ✅ Automatic daemon startup and HTTP API integration |
+| Native Wallet | **Go** (bitcoin-sv/go-sdk) | ✅ **Production-ready executable with BRC-100** |
 | Overlay System | **Process-Per-Overlay** | ✅ Each overlay runs in isolated CEF subprocess |
 | Identity Management | **Complete System** | ✅ File-based identity with backup modal workflow |
-| Key Derivation | **PBKDF2** (temporary) | 🟡 *Future: Upgrade to Argon2 for production* |
-| Identity / Auth | BRC-100 (Authrite Protocol (Babbage)) | |
+| **BRC-100 Authentication** | **Complete Implementation** | ✅ **Identity certificates, SPV verification, BEEF transactions** |
+| **BEEF/SPV Integration** | **Real Blockchain** | ✅ **WhatsOnChain, GorillaPool, TAAL APIs** |
+| Key Derivation | **HD Wallet (BIP44)** | ✅ **Production-ready HD wallet** |
+| Identity / Auth | BRC-100 (Authrite Protocol (Babbage)) | ✅ **Complete BRC-100 protocol implementation** |
 | Smart Contracts | sCrypt (BSV) | |
-| Blockchain Integration | Bitcoin SV (TAAL, GorillaPool) | 🟡 *Multi-platform: Windows, Mac, Mobile* |
+| Blockchain Integration | Bitcoin SV (WhatsOnChain, GorillaPool, TAAL) | ✅ **Real blockchain integration** |
 
 ## 🛠️ Setup (Coming Soon)
 

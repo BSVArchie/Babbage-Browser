@@ -6,6 +6,7 @@ import (
 
 	"github.com/bsv-blockchain/go-sdk/transaction"
 	"github.com/sirupsen/logrus"
+	"browser-wallet/brc100/spv"
 )
 
 // BRC100BEEFTransaction represents a BRC-100 BEEF transaction wrapper
@@ -16,6 +17,57 @@ type BRC100BEEFTransaction struct {
 	SessionID string              `json:"sessionId"`
 	AppDomain string              `json:"appDomain"`
 	Timestamp time.Time           `json:"timestamp"`
+	SPVData   *SPVData            `json:"spvData,omitempty"` // Enhanced with SPV data
+}
+
+// SPVData represents SPV verification data for BEEF transactions
+type SPVData struct {
+	MerkleProofs    []*transaction.MerklePath `json:"merkleProofs"`
+	BlockHeaders    []*BlockHeader            `json:"blockHeaders"`
+	TransactionData []*TransactionData        `json:"transactionData"`
+	IdentityProofs  []*spv.IdentityProof      `json:"identityProofs"`
+	VerificationTime time.Time                `json:"verificationTime"`
+}
+
+// BlockHeader represents block header information for SPV verification
+type BlockHeader struct {
+	Hash         string    `json:"hash"`
+	Height       int64     `json:"height"`
+	MerkleRoot   string    `json:"merkleRoot"`
+	Timestamp    time.Time `json:"timestamp"`
+	PreviousHash string    `json:"previousHash"`
+	Nonce        uint32    `json:"nonce"`
+	Bits         uint32    `json:"bits"`
+}
+
+// TransactionData represents transaction data for SPV verification
+type TransactionData struct {
+	TxID          string                 `json:"txid"`
+	Hash          string                 `json:"hash"`
+	BlockHeight   int64                  `json:"blockHeight"`
+	Confirmations int64                  `json:"confirmations"`
+	Size          int                    `json:"size"`
+	Fee           int64                  `json:"fee"`
+	Timestamp     time.Time              `json:"timestamp"`
+	Inputs        []InputData            `json:"inputs"`
+	Outputs       []OutputData           `json:"outputs"`
+	RawData       string                 `json:"rawData,omitempty"`
+}
+
+// InputData represents input data for SPV verification
+type InputData struct {
+	PrevOutHash  string `json:"prevOutHash"`
+	PrevOutIndex int    `json:"prevOutIndex"`
+	ScriptSig    string `json:"scriptSig"`
+	Sequence     uint32 `json:"sequence"`
+}
+
+// OutputData represents output data for SPV verification
+type OutputData struct {
+	Value        int64    `json:"value"`
+	ScriptPubKey string   `json:"scriptPubKey"`
+	Addresses    []string `json:"addresses"`
+	Type         string   `json:"type"`
 }
 
 // BRC100Action represents a BRC-100 action (wraps BEEF transaction)
@@ -47,7 +99,9 @@ type BRC100BEEFRequest struct {
 
 // BRC100BEEFManager manages BRC-100 BEEF transactions
 type BRC100BEEFManager struct {
-	logger *logrus.Logger
+	logger          *logrus.Logger
+	spvVerifier     *spv.SPVVerifier
+	blockchainClient *spv.BlockchainAPIClient
 }
 
 // NewBRC100BEEFManager creates a new BRC-100 BEEF manager
@@ -56,7 +110,9 @@ func NewBRC100BEEFManager() *BRC100BEEFManager {
 	logger.SetLevel(logrus.InfoLevel)
 
 	return &BRC100BEEFManager{
-		logger: logger,
+		logger:          logger,
+		spvVerifier:     spv.NewSPVVerifier(),
+		blockchainClient: spv.NewBlockchainAPIClient(),
 	}
 }
 
@@ -83,6 +139,69 @@ func (bm *BRC100BEEFManager) CreateBRC100BEEFTransaction(actions []BRC100Action,
 	brc100Tx.BEEFData = beefData
 
 	bm.logger.Info("BRC-100 BEEF transaction created successfully")
+	return brc100Tx, nil
+}
+
+// CreateBRC100BEEFTransactionWithSPV creates a new BRC-100 BEEF transaction with comprehensive SPV data
+func (bm *BRC100BEEFManager) CreateBRC100BEEFTransactionWithSPV(actions []BRC100Action, identity *IdentityContext, includeSPVData bool) (*BRC100BEEFTransaction, error) {
+	bm.logger.Info("Creating BRC-100 BEEF transaction with SPV data")
+
+	// Create BRC-100 BEEF transaction
+	brc100Tx := &BRC100BEEFTransaction{
+		Actions:   actions,
+		Identity:  identity,
+		SessionID: identity.SessionID,
+		AppDomain: identity.AppDomain,
+		Timestamp: time.Now(),
+		BEEFData:  nil, // Will be set when converting to BEEF
+	}
+
+	// Collect SPV data if requested
+	if includeSPVData {
+		spvData, err := bm.collectSPVData(actions, identity)
+		if err != nil {
+			bm.logger.WithError(err).Warn("Failed to collect SPV data, continuing without it")
+		} else {
+			brc100Tx.SPVData = spvData
+			bm.logger.Info("SPV data collected successfully")
+		}
+	}
+
+	return brc100Tx, nil
+}
+
+// CreateBRC100BEEFTransactionWithSPVFromTransaction creates a BEEF transaction and collects SPV data from a specific transaction
+func (bm *BRC100BEEFManager) CreateBRC100BEEFTransactionWithSPVFromTransaction(actions []BRC100Action, identity *IdentityContext, txID string) (*BRC100BEEFTransaction, error) {
+	bm.logger.WithField("txID", txID).Info("Creating BRC-100 BEEF transaction with SPV data from specific transaction")
+
+	// Create BRC-100 BEEF transaction
+	brc100Tx := &BRC100BEEFTransaction{
+		Actions:   actions,
+		Identity:  identity,
+		SessionID: identity.SessionID,
+		AppDomain: identity.AppDomain,
+		Timestamp: time.Now(),
+		BEEFData:  nil, // Will be set when converting to BEEF
+	}
+
+	// Collect SPV data from the specific transaction
+	spvData, err := bm.collectSPVDataFromTransaction(txID, identity)
+	if err != nil {
+		bm.logger.WithError(err).Warn("Failed to collect SPV data from transaction, continuing without it")
+	} else {
+		brc100Tx.SPVData = spvData
+		bm.logger.Info("SPV data collected successfully from transaction")
+	}
+
+	// Convert to BEEF format
+	beefData, err := bm.ConvertToBEEF(brc100Tx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert to BEEF: %v", err)
+	}
+
+	brc100Tx.BEEFData = beefData
+
+	bm.logger.Info("BRC-100 BEEF transaction with SPV data created successfully")
 	return brc100Tx, nil
 }
 
@@ -294,5 +413,224 @@ func (bm *BRC100BEEFManager) GetBRC100BEEFTransactionInfo(brc100Tx *BRC100BEEFTr
 	info["actionTypes"] = actionTypes
 
 	bm.logger.Info("BRC-100 BEEF transaction info generated successfully")
+	return info
+}
+
+// collectSPVData collects comprehensive SPV data for BEEF transactions
+func (bm *BRC100BEEFManager) collectSPVData(actions []BRC100Action, identity *IdentityContext) (*SPVData, error) {
+	bm.logger.Info("Collecting SPV data for BEEF transaction")
+
+	spvData := &SPVData{
+		MerkleProofs:    make([]*transaction.MerklePath, 0),
+		BlockHeaders:    make([]*BlockHeader, 0),
+		TransactionData: make([]*TransactionData, 0),
+		IdentityProofs:  make([]*spv.IdentityProof, 0),
+		VerificationTime: time.Now(),
+	}
+
+	// Collect SPV data for each action
+	for _, action := range actions {
+		if action.BEEFTx != nil {
+			// Get transaction ID
+			txID := action.BEEFTx.TxID().String()
+
+			// Fetch transaction data from blockchain
+			txResponse, err := bm.blockchainClient.FetchTransactionFromBlockchain(txID)
+			if err != nil {
+				bm.logger.WithError(err).Warnf("Failed to fetch transaction %s, skipping SPV data", txID)
+				continue
+			}
+
+			// Convert to our TransactionData format
+			txData := bm.convertToTransactionData(txResponse)
+			spvData.TransactionData = append(spvData.TransactionData, txData)
+
+			// Get Merkle proof
+			merkleProof, err := bm.spvVerifier.GetMerkleProof(txID, uint32(txResponse.BlockHeight))
+			if err != nil {
+				bm.logger.WithError(err).Warnf("Failed to get Merkle proof for transaction %s", txID)
+			} else {
+				spvData.MerkleProofs = append(spvData.MerkleProofs, merkleProof)
+			}
+
+			// Get block header (simplified for now)
+			blockHeader := bm.createBlockHeader(txResponse.BlockHeight, txResponse.BlockHash)
+			spvData.BlockHeaders = append(spvData.BlockHeaders, blockHeader)
+
+			// Create identity proof if identity data is available
+			if identity != nil && identity.Certificate != nil {
+				identityProof, err := bm.createIdentityProof(txID, identity.Certificate)
+				if err != nil {
+					bm.logger.WithError(err).Warnf("Failed to create identity proof for transaction %s", txID)
+				} else {
+					spvData.IdentityProofs = append(spvData.IdentityProofs, identityProof)
+				}
+			}
+		}
+	}
+
+	bm.logger.WithFields(logrus.Fields{
+		"merkleProofs":   len(spvData.MerkleProofs),
+		"blockHeaders":   len(spvData.BlockHeaders),
+		"transactionData": len(spvData.TransactionData),
+		"identityProofs": len(spvData.IdentityProofs),
+	}).Info("SPV data collection completed")
+
+	return spvData, nil
+}
+
+// collectSPVDataFromTransaction collects SPV data from a specific transaction ID
+func (bm *BRC100BEEFManager) collectSPVDataFromTransaction(txID string, identity *IdentityContext) (*SPVData, error) {
+	bm.logger.WithField("txID", txID).Info("Collecting SPV data from specific transaction")
+
+	// Initialize SPV data structure
+	spvData := &SPVData{
+		MerkleProofs:   make([]*transaction.MerklePath, 0),
+		BlockHeaders:   make([]*BlockHeader, 0),
+		TransactionData: make([]*TransactionData, 0),
+		IdentityProofs:  make([]*spv.IdentityProof, 0),
+		VerificationTime: time.Now(),
+	}
+
+	// Fetch transaction data from blockchain
+	txResponse, err := bm.blockchainClient.FetchTransactionFromBlockchain(txID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch transaction %s: %v", txID, err)
+	}
+
+	// Convert to our TransactionData format
+	txData := bm.convertToTransactionData(txResponse)
+	spvData.TransactionData = append(spvData.TransactionData, txData)
+
+	// Get Merkle proof
+	merkleProof, err := bm.spvVerifier.GetMerkleProof(txID, uint32(txResponse.BlockHeight))
+	if err != nil {
+		bm.logger.WithError(err).Warnf("Failed to get Merkle proof for transaction %s", txID)
+	} else {
+		spvData.MerkleProofs = append(spvData.MerkleProofs, merkleProof)
+	}
+
+	// Get block header
+	blockHeader := bm.createBlockHeader(txResponse.BlockHeight, txResponse.BlockHash)
+	spvData.BlockHeaders = append(spvData.BlockHeaders, blockHeader)
+
+	// Create identity proof if identity data is available
+	if identity != nil && identity.Certificate != nil {
+		identityProof, err := bm.createIdentityProof(txID, identity.Certificate)
+		if err != nil {
+			bm.logger.WithError(err).Warnf("Failed to create identity proof for transaction %s", txID)
+		} else {
+			spvData.IdentityProofs = append(spvData.IdentityProofs, identityProof)
+		}
+	}
+
+	bm.logger.WithFields(logrus.Fields{
+		"merkleProofs":   len(spvData.MerkleProofs),
+		"blockHeaders":   len(spvData.BlockHeaders),
+		"transactionData": len(spvData.TransactionData),
+		"identityProofs": len(spvData.IdentityProofs),
+	}).Info("SPV data collection from transaction completed")
+
+	return spvData, nil
+}
+
+// convertToTransactionData converts blockchain API response to our TransactionData format
+func (bm *BRC100BEEFManager) convertToTransactionData(txResponse *spv.WhatsOnChainResponse) *TransactionData {
+	// Convert inputs
+	inputs := make([]InputData, len(txResponse.Inputs))
+	for i, input := range txResponse.Inputs {
+		inputs[i] = InputData{
+			PrevOutHash:  input.PrevOut.Hash,
+			PrevOutIndex: input.PrevOut.Index,
+			ScriptSig:    input.ScriptSig,
+			Sequence:     0xffffffff, // Default sequence
+		}
+	}
+
+	// Convert outputs
+	outputs := make([]OutputData, len(txResponse.Outputs))
+	for i, output := range txResponse.Outputs {
+		outputs[i] = OutputData{
+			Value:        output.Value,
+			ScriptPubKey: output.ScriptPubKey.Hex,
+			Addresses:    output.ScriptPubKey.Addresses,
+			Type:         output.ScriptPubKey.Type,
+		}
+	}
+
+	return &TransactionData{
+		TxID:          txResponse.TxID,
+		Hash:          txResponse.Hash,
+		BlockHeight:   txResponse.BlockHeight,
+		Confirmations: txResponse.Confirmations,
+		Size:          txResponse.Size,
+		Fee:           txResponse.Fee,
+		Timestamp:     time.Unix(txResponse.Time, 0),
+		Inputs:        inputs,
+		Outputs:       outputs,
+	}
+}
+
+// createBlockHeader creates a simplified block header for SPV verification
+func (bm *BRC100BEEFManager) createBlockHeader(height int64, blockHash string) *BlockHeader {
+	// In a real implementation, we would fetch the actual block header
+	// For now, we'll create a simplified version
+	return &BlockHeader{
+		Hash:         blockHash,
+		Height:       height,
+		MerkleRoot:   "placeholder_merkle_root", // Would be fetched from block data
+		Timestamp:    time.Now(),
+		PreviousHash: "placeholder_previous_hash",
+		Nonce:        0,
+		Bits:         0,
+	}
+}
+
+// createIdentityProof creates an identity proof for SPV verification
+func (bm *BRC100BEEFManager) createIdentityProof(txID string, certificate map[string]interface{}) (*spv.IdentityProof, error) {
+	// Extract identity data from certificate
+	identityData := make(map[string]interface{})
+
+	// Copy certificate data
+	for key, value := range certificate {
+		identityData[key] = value
+	}
+
+	// Add transaction ID
+	identityData["transactionId"] = txID
+
+	// Create identity proof using SPV verifier
+	proof, err := bm.spvVerifier.CreateIdentityProof(txID, identityData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create identity proof: %v", err)
+	}
+
+	return proof, nil
+}
+
+// GetSPVDataInfo returns information about the SPV data in a BEEF transaction
+func (bm *BRC100BEEFManager) GetSPVDataInfo(spvData *SPVData) map[string]interface{} {
+	if spvData == nil {
+		return map[string]interface{}{
+			"hasSPVData": false,
+		}
+	}
+
+	info := map[string]interface{}{
+		"hasSPVData":        true,
+		"merkleProofs":      len(spvData.MerkleProofs),
+		"blockHeaders":      len(spvData.BlockHeaders),
+		"transactionData":   len(spvData.TransactionData),
+		"identityProofs":    len(spvData.IdentityProofs),
+		"verificationTime":  spvData.VerificationTime,
+	}
+
+	// Add transaction IDs
+	txIDs := make([]string, len(spvData.TransactionData))
+	for i, txData := range spvData.TransactionData {
+		txIDs[i] = txData.TxID
+	}
+	info["transactionIds"] = txIDs
+
 	return info
 }

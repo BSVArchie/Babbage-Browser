@@ -42,7 +42,7 @@
 +----------------------------+
             ↓
 +----------------------------+
-| Identity & Auth Layer      | 🚧 FUTURE
+| Identity & Auth Layer      |
 |  - BRC-100 Auth Framework  |
 |  - BRC-52/103 Certificates |
 |  - Type-42 Key Derivation  |
@@ -270,13 +270,15 @@ flowchart TD
 - **React UI Layer**: Complete with transaction forms, balance display, address management
 - **C++ Bridge Layer**: Full message handling and API injection
 - **Go Wallet Daemon**: Complete HD wallet with transaction processing
+- **BRC-100 Authentication**: Complete BRC-100 protocol implementation
+- **BEEF/SPV Integration**: Real blockchain transactions with SPV verification
 - **Process Isolation**: Each overlay runs in dedicated CEF subprocess
 - **Blockchain Integration**: Working with real Bitcoin SV network
 
 ### 🚧 In Development
 - **Window Management**: Keyboard commands and overlay HWND movement
 - **Transaction Receipt UI**: Improved confirmation and receipt display
-- **BRC-100 Authentication**: Identity management system integration
+- **Frontend BRC-100 Integration**: React authentication modals and approval flows
 
 ### 📋 Future Components
 - **Transaction History**: Local storage and display

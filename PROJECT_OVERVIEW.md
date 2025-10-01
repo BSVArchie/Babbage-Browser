@@ -4,9 +4,9 @@
 
 Bitcoin-Browser is a custom Web3 browser built on Chromium Embedded Framework (CEF) focused on the Web3 experience through **native control and seamless user experience**. Unlike traditional Web3 approaches that rely on browser plugins, external wallet tabs, or complex authentication flows, Bitcoin-Browser provides:
 
-- **Native Wallet Integration**: Built-in Go-based wallet backend (with future Rust migration) that operates independently of web content, eliminating the need for external plugins or separate wallet applications
-- **Seamless Authentication**: BRC-100 standard implementation enables frictionless authentication and transaction signing without interrupting the user's browsing experience
-- **SPV-Powered Transactions**: Simplified Payment Verification (SPV) capabilities provide fast, secure transaction verification without requiring full node synchronization
+- **Native Wallet Integration**: Built-in **production-ready Go-based wallet backend** that operates independently of web content, eliminating the need for external plugins or separate wallet applications
+- **Seamless Authentication**: **Complete BRC-100 standard implementation** enables frictionless authentication and transaction signing without interrupting the user's browsing experience
+- **SPV-Powered Transactions**: **Real blockchain SPV integration** provides fast, secure transaction verification with actual Bitcoin SV network data
 - **Security-First Architecture**: Private keys and signing logic never exposed to JavaScript, ensuring maximum security for real financial transactions
 - **Unified User Experience**: Clean, intuitive interface that prioritizes user experience over technical complexity, making Bitcoin SV micropayments as simple as traditional web interactions
 

@@ -8,6 +8,7 @@ import (
 
 	"github.com/bsv-blockchain/go-sdk/transaction"
 	"github.com/sirupsen/logrus"
+	"browser-wallet/brc100/websocket"
 )
 
 // IdentityData removed - replaced with HD wallet system
@@ -92,6 +93,10 @@ func main() {
 
 	// Setup BRC-100 routes
 	walletService.SetupBRC100Routes()
+
+	// Setup WebSocket handler for BRC-100 real-time communication
+	wsHandler := websocket.NewBRC100WebSocketHandler()
+	http.HandleFunc("/brc100/ws", wsHandler.HandleWebSocket)
 
 	// Try to load existing wallet on startup
 	if walletService.walletManager.WalletExists() {
@@ -549,6 +554,7 @@ func main() {
 	fmt.Println("  POST /brc100/beef/broadcast - Convert and broadcast BEEF")
 	fmt.Println("  POST /brc100/spv/verify - Verify identity with SPV")
 	fmt.Println("  POST /brc100/spv/proof - Create SPV identity proof")
+	fmt.Println("  WS   /brc100/ws - WebSocket for real-time BRC-100 communication")
 
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }

@@ -52,14 +52,13 @@ cmake --build . --config Release
 # Navigate to wallet directory
 cd go-wallet
 
-# Initialize Go module
+# Initialize Go module (if not already done)
 go mod init browser-wallet
 
-# Install Bitcoin SV Go SDK (correct module path)
+# Install Bitcoin SV Go SDK with BEEF/SPV support
 go get github.com/bsv-blockchain/go-sdk
 
 # Install additional dependencies
-go get github.com/gorilla/mux
 go get github.com/gorilla/websocket
 go get github.com/sirupsen/logrus
 
@@ -67,38 +66,55 @@ go get github.com/sirupsen/logrus
 go mod tidy
 ```
 
-#### Build and Run Wallet Daemon
+#### Build Wallet Executable
 ```bash
-# Build the wallet daemon
-go build -o wallet.exe main.go
+# Build the production wallet executable
+go build -o babbage-wallet.exe main.go hd_wallet.go transaction_builder.go transaction_broadcaster.go utxo_manager.go brc100_api.go
 
-# Run the wallet daemon
-./wallet.exe
+# Or use the batch file for easy startup
+./start-wallet.bat
+```
+
+#### Alternative: Run from Source
+```bash
+# Run directly from source (for development)
+go run main.go hd_wallet.go transaction_builder.go transaction_broadcaster.go utxo_manager.go brc100_api.go
 ```
 
 #### Test the API
 The wallet daemon provides these endpoints:
+
+**Core Wallet APIs:**
 - `GET http://localhost:8080/health` - Health check
-- `GET http://localhost:8080/identity/get` - Get wallet identity
-- `POST http://localhost:8080/identity/markBackedUp` - Mark wallet as backed up
+- `GET http://localhost:8080/wallet/info` - Get wallet information
+- `GET http://localhost:8080/wallet/balance` - Get total balance
+- `POST http://localhost:8080/transaction/send` - Send transaction
+
+**BRC-100 APIs:**
+- `GET http://localhost:8080/brc100/status` - BRC-100 service status
+- `POST http://localhost:8080/brc100/identity/generate` - Generate identity certificate
+- `POST http://localhost:8080/brc100/auth/challenge` - Generate authentication challenge
+- `POST http://localhost:8080/brc100/beef/create` - Create BEEF transaction
 
 **Test with PowerShell** (in a separate terminal while server is running):
 ```powershell
 # Health check
 Invoke-RestMethod -Uri "http://localhost:8080/health" -Method GET
 
-# Get identity
-Invoke-RestMethod -Uri "http://localhost:8080/identity/get" -Method GET
+# Get wallet info
+Invoke-RestMethod -Uri "http://localhost:8080/wallet/info" -Method GET
 
-# Mark as backed up
-Invoke-RestMethod -Uri "http://localhost:8080/identity/markBackedUp" -Method POST
+# Get BRC-100 status
+Invoke-RestMethod -Uri "http://localhost:8080/brc100/status" -Method GET
 ```
 
 #### Important Notes
 - The wallet daemon must be running for any wallet functionality
-- Identity files are stored in `%APPDATA%/BabbageBrowser/identity.json`
+- Wallet files are stored in `%APPDATA%/BabbageBrowser/wallet/wallet.json`
 - The daemon runs on port 8080 by default
-- Private keys are currently stored in plain text (will be encrypted in production)
+- **Production-ready**: Includes complete BRC-100 authentication system
+- **Real blockchain integration**: Works with actual Bitcoin SV network
+- **BEEF/SPV support**: Full BEEF transaction and SPV verification support
 
 ### Step 3: React Frontend Setup
 
@@ -209,13 +225,12 @@ go run main.go
 ### Go Environment
 ```go
 // go.mod
-module babbage-browser-wallet
+module browser-wallet
 
 go 1.21
 
 require (
-    github.com/bitcoin-sv/go-sdk v1.0.0
-    github.com/gorilla/mux v1.8.0
+    github.com/bsv-blockchain/go-sdk v1.2.9
     github.com/gorilla/websocket v1.5.0
     github.com/sirupsen/logrus v1.9.0
 )
