@@ -48,6 +48,9 @@
 |  - Type-42 Key Derivation  |
 |  - Selective Disclosure    |
 |  - SPV Identity Validation |
+|  - HTTP API Endpoints      |
+|  - Session Management      |
+|  - BEEF Transaction Support|
 +----------------------------+
 
 
@@ -74,6 +77,71 @@ Process-Per-Overlay Communication Architecture
 │ • overlay_show_*│                     │ • Process isolation │
 │ • overlay_close │                     │ • Real-time Updates│
 └─────────────────┘                     └─────────────────┘
+
+## 🔐 BRC-100 Authentication Architecture
+
+### BRC-100 Component Structure
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    BRC-100 Service Layer                    │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐  │
+│  │ Identity Manager│  │ Auth Manager    │  │ Session Mgr │  │
+│  │ - Certificates  │  │ - Challenges    │  │ - Sessions  │  │
+│  │ - Validation    │  │ - Type-42 Keys  │  │ - Cleanup   │  │
+│  │ - Selective     │  │ - P2P Comm      │  │ - Security  │  │
+│  └─────────────────┘  └─────────────────┘  └─────────────┘  │
+│           │                    │                    │        │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐  │
+│  │ BEEF Manager    │  │ SPV Manager     │  │ HTTP APIs   │  │
+│  │ - BRC-100 BEEF  │  │ - Verification  │  │ - REST Endpoints│ │
+│  │ - Conversion    │  │ - Merkle Proofs │  │ - JSON APIs │  │
+│  │ - Broadcasting  │  │ - SDK Integration│  │ - Error Handling│ │
+│  └─────────────────┘  └─────────────────┘  └─────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### BRC-100 Authentication Flow
+```
+1. App Request → 2. Challenge → 3. Wallet Response → 4. Verification
+      ↓              ↓              ↓              ↓
+   App Domain    Generate      Sign Challenge   Validate
+   Validation    Challenge     with Private Key  Response
+      ↓              ↓              ↓              ↓
+5. Session → 6. Type-42 → 7. BEEF → 8. SPV
+   Creation    Key Derivation  Transaction   Verification
+      ↓              ↓              ↓              ↓
+   Store Session  P2P Comm Keys  On-chain Data  Identity Proof
+```
+
+### HTTP API Endpoints (16 Total)
+```
+Identity Management:
+- POST /brc100/identity/generate
+- POST /brc100/identity/validate
+- POST /brc100/identity/selective-disclosure
+
+Authentication:
+- POST /brc100/auth/challenge
+- POST /brc100/auth/authenticate
+- POST /brc100/auth/type42
+
+Session Management:
+- POST /brc100/session/create
+- POST /brc100/session/validate
+- POST /brc100/session/revoke
+
+BEEF Transactions:
+- POST /brc100/beef/create
+- POST /brc100/beef/verify
+- POST /brc100/beef/broadcast
+
+SPV Verification:
+- POST /brc100/spv/verify
+- POST /brc100/spv/proof
+
+Status:
+- GET /brc100/status
+```
 
 ## 🔄 Transaction Flow Architecture
 

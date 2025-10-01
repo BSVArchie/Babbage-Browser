@@ -15,6 +15,116 @@ window.bitcoinBrowser.identity.markBackedUp(): Promise<boolean>
 window.bitcoinBrowser.identity.authenticate(challenge: string): Promise<AuthResponse>
 ```
 
+## 🔐 BRC-100 Authentication APIs ✅ COMPLETE
+
+### Identity Certificate Management
+```typescript
+// Generate BRC-100 identity certificate
+window.bitcoinBrowser.brc100.identity.generate(data: IdentityRequest): Promise<BRC100Response>
+
+// Validate identity certificate
+window.bitcoinBrowser.brc100.identity.validate(certificate: IdentityCertificate): Promise<BRC100Response>
+
+// Create selective disclosure
+window.bitcoinBrowser.brc100.identity.selectiveDisclosure(data: SelectiveDisclosureRequest): Promise<BRC100Response>
+
+// Request structures
+interface IdentityRequest {
+  subject: string;
+  attributes: Record<string, any>;
+}
+
+interface SelectiveDisclosureRequest {
+  identityData: Record<string, any>;
+  fields: string[];
+}
+
+interface BRC100Response {
+  success: boolean;
+  data?: Record<string, any>;
+  error?: string;
+}
+```
+
+### Authentication Flow
+```typescript
+// Generate authentication challenge
+window.bitcoinBrowser.brc100.auth.challenge(appId: string): Promise<BRC100Response>
+
+// Authenticate with challenge response
+window.bitcoinBrowser.brc100.auth.authenticate(request: AuthRequest): Promise<BRC100Response>
+
+// Derive Type-42 keys for P2P communication
+window.bitcoinBrowser.brc100.auth.type42(keys: KeyDerivationRequest): Promise<BRC100Response>
+
+interface AuthRequest {
+  appId: string;
+  challenge: string;
+  response: string;
+  sessionId?: string;
+  identityId?: string;
+}
+
+interface KeyDerivationRequest {
+  walletPublicKey: string;
+  appPublicKey: string;
+}
+```
+
+### Session Management
+```typescript
+// Create authentication session
+window.bitcoinBrowser.brc100.session.create(request: SessionRequest): Promise<BRC100Response>
+
+// Validate session
+window.bitcoinBrowser.brc100.session.validate(sessionId: string): Promise<BRC100Response>
+
+// Revoke session
+window.bitcoinBrowser.brc100.session.revoke(sessionId: string): Promise<BRC100Response>
+
+interface SessionRequest {
+  identityId: string;
+  appId: string;
+}
+```
+
+### BEEF Transactions
+```typescript
+// Create BRC-100 BEEF transaction
+window.bitcoinBrowser.brc100.beef.create(request: BEEFRequest): Promise<BRC100Response>
+
+// Verify BRC-100 BEEF transaction
+window.bitcoinBrowser.brc100.beef.verify(transaction: BRC100BEEFTransaction): Promise<BRC100Response>
+
+// Convert and broadcast BEEF
+window.bitcoinBrowser.brc100.beef.broadcast(transaction: BRC100BEEFTransaction): Promise<BRC100Response>
+
+interface BEEFRequest {
+  actions: BRC100Action[];
+  sessionId?: string;
+}
+```
+
+### SPV Verification
+```typescript
+// Verify identity with SPV
+window.bitcoinBrowser.brc100.spv.verify(request: SPVRequest): Promise<BRC100Response>
+
+// Create SPV identity proof
+window.bitcoinBrowser.brc100.spv.proof(request: SPVRequest): Promise<BRC100Response>
+
+interface SPVRequest {
+  transactionId: string;
+  identityData: Record<string, any>;
+}
+```
+
+### Service Status
+```typescript
+// Get BRC-100 service status
+window.bitcoinBrowser.brc100.status(): Promise<BRC100Response>
+```
+
 ### Transaction Management ✅ COMPLETE
 ```typescript
 // Unified transaction operations (create + sign + broadcast)

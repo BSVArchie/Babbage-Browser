@@ -90,6 +90,9 @@ func main() {
 	// Create wallet service instance
 	walletService := NewWalletService()
 
+	// Setup BRC-100 routes
+	walletService.SetupBRC100Routes()
+
 	// Try to load existing wallet on startup
 	if walletService.walletManager.WalletExists() {
 		fmt.Println("📁 Loading existing wallet...")
@@ -98,9 +101,18 @@ func main() {
 			fmt.Printf("⚠️ Failed to load existing wallet: %v\n", err)
 		} else {
 			fmt.Println("✅ Wallet loaded successfully")
+
+			// Initialize BRC-100 data for existing wallet
+			fmt.Println("🔐 Initializing BRC-100...")
+			if err := walletService.walletManager.InitializeBRC100(); err != nil {
+				fmt.Printf("⚠️ Failed to initialize BRC-100: %v\n", err)
+			} else {
+				fmt.Println("✅ BRC-100 initialized successfully")
+			}
 		}
 	} else {
 		fmt.Println("📝 No existing wallet found - will create new wallet when needed")
+		fmt.Println("🔐 BRC-100 will be initialized automatically when wallet is created")
 	}
 
 	// Set up HTTP handlers
@@ -289,9 +301,17 @@ func main() {
 			return
 		}
 
+		// Initialize BRC-100 data for the new wallet
+		err = walletService.walletManager.InitializeBRC100()
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to initialize BRC-100: %v", err), http.StatusInternalServerError)
+			return
+		}
+
 		response := map[string]interface{}{
 			"success": true,
 			"mnemonic": mnemonic,
+			"brc100Initialized": true,
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -512,6 +532,23 @@ func main() {
 	fmt.Println("  POST /wallet/address/generate - Generate new address")
 	fmt.Println("  GET  /wallet/address/current - Get current address")
 	fmt.Println("  GET  /wallet/balance - Get total balance")
+	fmt.Println("")
+	fmt.Println("🔐 BRC-100 Endpoints:")
+	fmt.Println("  GET  /brc100/status - BRC-100 service status")
+	fmt.Println("  POST /brc100/identity/generate - Generate identity certificate")
+	fmt.Println("  POST /brc100/identity/validate - Validate identity certificate")
+	fmt.Println("  POST /brc100/identity/selective-disclosure - Create selective disclosure")
+	fmt.Println("  POST /brc100/auth/challenge - Generate authentication challenge")
+	fmt.Println("  POST /brc100/auth/authenticate - Authenticate with challenge")
+	fmt.Println("  POST /brc100/auth/type42 - Derive Type-42 keys")
+	fmt.Println("  POST /brc100/session/create - Create authentication session")
+	fmt.Println("  POST /brc100/session/validate - Validate session")
+	fmt.Println("  POST /brc100/session/revoke - Revoke session")
+	fmt.Println("  POST /brc100/beef/create - Create BRC-100 BEEF transaction")
+	fmt.Println("  POST /brc100/beef/verify - Verify BRC-100 BEEF transaction")
+	fmt.Println("  POST /brc100/beef/broadcast - Convert and broadcast BEEF")
+	fmt.Println("  POST /brc100/spv/verify - Verify identity with SPV")
+	fmt.Println("  POST /brc100/spv/proof - Create SPV identity proof")
 
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }

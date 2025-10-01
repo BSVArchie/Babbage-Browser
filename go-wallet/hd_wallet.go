@@ -26,6 +26,7 @@ type Wallet struct {
 	CurrentIndex int             `json:"currentIndex"`
 	BackedUp     bool            `json:"backedUp"`
 	Settings     WalletSettings  `json:"settings"`
+	BRC100       *BRC100Data     `json:"brc100,omitempty"`
 }
 
 // WalletSettings contains wallet configuration
@@ -41,6 +42,63 @@ type AddressInfo struct {
 	PublicKey string `json:"publicKey"`
 	Used      bool   `json:"used"`
 	Balance   int64  `json:"balance"`
+}
+
+// BRC100Data represents BRC-100 related data stored in the wallet
+type BRC100Data struct {
+	Version      string                   `json:"version"`
+	Identities   []BRC100Identity         `json:"identities"`
+	Sessions     []BRC100Session          `json:"sessions"`
+	Challenges   []BRC100Challenge        `json:"challenges"`
+	Settings     BRC100Settings           `json:"settings"`
+	CreatedAt    time.Time                `json:"createdAt"`
+	LastUpdated  time.Time                `json:"lastUpdated"`
+}
+
+// BRC100Identity represents a BRC-100 identity certificate
+type BRC100Identity struct {
+	ID           string                 `json:"id"`
+	Subject      string                 `json:"subject"`
+	Issuer       string                 `json:"issuer"`
+	PublicKey    string                 `json:"publicKey"`
+	Certificate  map[string]interface{} `json:"certificate"`
+	CreatedAt    time.Time              `json:"createdAt"`
+	ExpiresAt    time.Time              `json:"expiresAt"`
+	Revoked      bool                   `json:"revoked"`
+	Transactions []string               `json:"transactions"` // Transaction IDs where this identity was used
+}
+
+// BRC100Session represents an active BRC-100 session
+type BRC100Session struct {
+	SessionID     string    `json:"sessionId"`
+	AppDomain     string    `json:"appDomain"`
+	IdentityID    string    `json:"identityId"`
+	Permissions   []string  `json:"permissions"`
+	CreatedAt     time.Time `json:"createdAt"`
+	ExpiresAt     time.Time `json:"expiresAt"`
+	LastUsed      time.Time `json:"lastUsed"`
+	Authenticated bool      `json:"authenticated"`
+}
+
+// BRC100Challenge represents a pending authentication challenge
+type BRC100Challenge struct {
+	ChallengeID   string    `json:"challengeId"`
+	AppDomain     string    `json:"appDomain"`
+	Challenge     string    `json:"challenge"`
+	CreatedAt     time.Time `json:"createdAt"`
+	ExpiresAt     time.Time `json:"expiresAt"`
+	Solved        bool      `json:"solved"`
+	Response      string    `json:"response,omitempty"`
+	SessionID     string    `json:"sessionId,omitempty"`
+}
+
+// BRC100Settings contains BRC-100 specific settings
+type BRC100Settings struct {
+	AutoApprove        bool     `json:"autoApprove"`
+	DefaultPermissions []string `json:"defaultPermissions"`
+	SessionTimeout     int      `json:"sessionTimeout"` // minutes
+	ChallengeTimeout   int      `json:"challengeTimeout"` // minutes
+	MaxSessions        int      `json:"maxSessions"`
 }
 
 // WalletManager manages unified wallet operations
@@ -361,4 +419,238 @@ func (wm *WalletManager) GetWalletInfo() (*Wallet, error) {
 	}
 
 	return wm.wallet, nil
+}
+
+// ============================================================================
+// BRC-100 Methods
+// ============================================================================
+
+// InitializeBRC100 initializes BRC-100 data for the wallet
+func (wm *WalletManager) InitializeBRC100() error {
+	if wm.wallet == nil {
+		return fmt.Errorf("wallet not initialized")
+	}
+
+	// Initialize BRC-100 data if it doesn't exist
+	if wm.wallet.BRC100 == nil {
+		wm.logger.Info("Initializing BRC-100 data for wallet")
+
+		wm.wallet.BRC100 = &BRC100Data{
+			Version:     "1.0.0",
+			Identities:  []BRC100Identity{},
+			Sessions:    []BRC100Session{},
+			Challenges:  []BRC100Challenge{},
+			CreatedAt:   time.Now(),
+			LastUpdated: time.Now(),
+			Settings: BRC100Settings{
+				AutoApprove:        false,
+				DefaultPermissions: []string{"read_profile"},
+				SessionTimeout:     60,    // 60 minutes
+				ChallengeTimeout:   5,     // 5 minutes
+				MaxSessions:        10,    // Maximum 10 concurrent sessions
+			},
+		}
+
+		// Save the updated wallet
+		if err := wm.SaveToFile(GetWalletPath()); err != nil {
+			return fmt.Errorf("failed to save wallet with BRC-100 data: %v", err)
+		}
+
+		wm.logger.Info("BRC-100 data initialized successfully")
+	}
+
+	return nil
+}
+
+// GetBRC100Data returns the BRC-100 data from the wallet
+func (wm *WalletManager) GetBRC100Data() (*BRC100Data, error) {
+	if wm.wallet == nil {
+		return nil, fmt.Errorf("wallet not initialized")
+	}
+
+	if wm.wallet.BRC100 == nil {
+		// Initialize BRC-100 data if it doesn't exist
+		if err := wm.InitializeBRC100(); err != nil {
+			return nil, fmt.Errorf("failed to initialize BRC-100 data: %v", err)
+		}
+	}
+
+	return wm.wallet.BRC100, nil
+}
+
+// SaveBRC100Data saves BRC-100 data to the wallet
+func (wm *WalletManager) SaveBRC100Data() error {
+	if wm.wallet == nil {
+		return fmt.Errorf("wallet not initialized")
+	}
+
+	if wm.wallet.BRC100 != nil {
+		wm.wallet.BRC100.LastUpdated = time.Now()
+	}
+
+	return wm.SaveToFile(GetWalletPath())
+}
+
+// AddBRC100Identity adds a new BRC-100 identity to the wallet
+func (wm *WalletManager) AddBRC100Identity(identity *BRC100Identity) error {
+	brc100Data, err := wm.GetBRC100Data()
+	if err != nil {
+		return err
+	}
+
+	// Check if identity already exists
+	for _, existing := range brc100Data.Identities {
+		if existing.ID == identity.ID {
+			return fmt.Errorf("identity with ID %s already exists", identity.ID)
+		}
+	}
+
+	brc100Data.Identities = append(brc100Data.Identities, *identity)
+
+	if err := wm.SaveBRC100Data(); err != nil {
+		return fmt.Errorf("failed to save BRC-100 identity: %v", err)
+	}
+
+	wm.logger.WithField("identityId", identity.ID).Info("BRC-100 identity added successfully")
+	return nil
+}
+
+// AddBRC100Session adds a new BRC-100 session to the wallet
+func (wm *WalletManager) AddBRC100Session(session *BRC100Session) error {
+	brc100Data, err := wm.GetBRC100Data()
+	if err != nil {
+		return err
+	}
+
+	// Check if session already exists
+	for _, existing := range brc100Data.Sessions {
+		if existing.SessionID == session.SessionID {
+			return fmt.Errorf("session with ID %s already exists", session.SessionID)
+		}
+	}
+
+	brc100Data.Sessions = append(brc100Data.Sessions, *session)
+
+	if err := wm.SaveBRC100Data(); err != nil {
+		return fmt.Errorf("failed to save BRC-100 session: %v", err)
+	}
+
+	wm.logger.WithField("sessionId", session.SessionID).Info("BRC-100 session added successfully")
+	return nil
+}
+
+// AddBRC100Challenge adds a new BRC-100 challenge to the wallet
+func (wm *WalletManager) AddBRC100Challenge(challenge *BRC100Challenge) error {
+	brc100Data, err := wm.GetBRC100Data()
+	if err != nil {
+		return err
+	}
+
+	// Check if challenge already exists
+	for _, existing := range brc100Data.Challenges {
+		if existing.ChallengeID == challenge.ChallengeID {
+			return fmt.Errorf("challenge with ID %s already exists", challenge.ChallengeID)
+		}
+	}
+
+	brc100Data.Challenges = append(brc100Data.Challenges, *challenge)
+
+	if err := wm.SaveBRC100Data(); err != nil {
+		return fmt.Errorf("failed to save BRC-100 challenge: %v", err)
+	}
+
+	wm.logger.WithField("challengeId", challenge.ChallengeID).Info("BRC-100 challenge added successfully")
+	return nil
+}
+
+// GetBRC100IdentityByID retrieves a BRC-100 identity by ID
+func (wm *WalletManager) GetBRC100IdentityByID(identityID string) (*BRC100Identity, error) {
+	brc100Data, err := wm.GetBRC100Data()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, identity := range brc100Data.Identities {
+		if identity.ID == identityID {
+			return &identity, nil
+		}
+	}
+
+	return nil, fmt.Errorf("identity with ID %s not found", identityID)
+}
+
+// GetBRC100SessionByID retrieves a BRC-100 session by ID
+func (wm *WalletManager) GetBRC100SessionByID(sessionID string) (*BRC100Session, error) {
+	brc100Data, err := wm.GetBRC100Data()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, session := range brc100Data.Sessions {
+		if session.SessionID == sessionID {
+			return &session, nil
+		}
+	}
+
+	return nil, fmt.Errorf("session with ID %s not found", sessionID)
+}
+
+// GetBRC100ChallengeByID retrieves a BRC-100 challenge by ID
+func (wm *WalletManager) GetBRC100ChallengeByID(challengeID string) (*BRC100Challenge, error) {
+	brc100Data, err := wm.GetBRC100Data()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, challenge := range brc100Data.Challenges {
+		if challenge.ChallengeID == challengeID {
+			return &challenge, nil
+		}
+	}
+
+	return nil, fmt.Errorf("challenge with ID %s not found", challengeID)
+}
+
+// CleanupExpiredBRC100Data removes expired sessions and challenges
+func (wm *WalletManager) CleanupExpiredBRC100Data() error {
+	brc100Data, err := wm.GetBRC100Data()
+	if err != nil {
+		return err
+	}
+
+	now := time.Now()
+	cleaned := false
+
+	// Clean up expired sessions
+	var activeSessions []BRC100Session
+	for _, session := range brc100Data.Sessions {
+		if session.ExpiresAt.After(now) {
+			activeSessions = append(activeSessions, session)
+		} else {
+			cleaned = true
+			wm.logger.WithField("sessionId", session.SessionID).Info("Removed expired BRC-100 session")
+		}
+	}
+	brc100Data.Sessions = activeSessions
+
+	// Clean up expired challenges
+	var activeChallenges []BRC100Challenge
+	for _, challenge := range brc100Data.Challenges {
+		if challenge.ExpiresAt.After(now) {
+			activeChallenges = append(activeChallenges, challenge)
+		} else {
+			cleaned = true
+			wm.logger.WithField("challengeId", challenge.ChallengeID).Info("Removed expired BRC-100 challenge")
+		}
+	}
+	brc100Data.Challenges = activeChallenges
+
+	if cleaned {
+		if err := wm.SaveBRC100Data(); err != nil {
+			return fmt.Errorf("failed to save cleaned BRC-100 data: %v", err)
+		}
+		wm.logger.Info("BRC-100 expired data cleanup completed")
+	}
+
+	return nil
 }
