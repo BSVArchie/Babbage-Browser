@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <cstdlib>
 #include "../../include/core/WalletService.h"
+#include "../../include/core/HttpRequestInterceptor.h"
 #include <windows.h>
 #include <iostream>
 #include <string>
@@ -292,8 +293,12 @@ bool SimpleHandler::OnProcessMessageReceived(
         LOG_DEBUG_BROWSER("🔍 Wallet status check requested");
 
         nlohmann::json response;
+        response["exists"] = false;
+        response["needsBackup"] = true;
 
         try {
+            LOG_DEBUG_BROWSER("🔄 Attempting to get wallet status...");
+
             // Call WalletService to get wallet status
             WalletService walletService;
             nlohmann::json walletStatus = walletService.getWalletStatus();
@@ -305,18 +310,19 @@ bool SimpleHandler::OnProcessMessageReceived(
 
                 LOG_DEBUG_BROWSER("📁 Wallet exists: " + std::string(exists ? "YES" : "NO"));
             } else {
-                response["exists"] = false;
-                response["needsBackup"] = true;
+                LOG_DEBUG_BROWSER("⚠️ Wallet status response missing 'exists' field");
+                if (walletStatus.contains("error")) {
+                    LOG_DEBUG_BROWSER("⚠️ Wallet status error: " + walletStatus["error"].get<std::string>());
+                }
             }
 
         } catch (const std::exception& e) {
-            response["exists"] = false;
-            response["needsBackup"] = true;
-
-            LOG_DEBUG_BROWSER("⚠️ Wallet status check failed: " + std::string(e.what()));
+            LOG_DEBUG_BROWSER("⚠️ Wallet status check exception: " + std::string(e.what()));
+        } catch (...) {
+            LOG_DEBUG_BROWSER("⚠️ Wallet status check unknown exception");
         }
 
-        // Send response back to frontend
+        // Always send a response, even if it's just the default "no wallet" state
         CefRefPtr<CefProcessMessage> cefResponse = CefProcessMessage::Create("wallet_status_check_response");
         CefRefPtr<CefListValue> responseArgs = cefResponse->GetArgumentList();
         responseArgs->SetString(0, response.dump());
@@ -1148,6 +1154,34 @@ bool SimpleHandler::OnProcessMessageReceived(
 
 CefRefPtr<CefRequestHandler> SimpleHandler::GetRequestHandler() {
     return this;
+}
+
+CefRefPtr<CefResourceRequestHandler> SimpleHandler::GetResourceRequestHandler(
+    CefRefPtr<CefBrowser> browser,
+    CefRefPtr<CefFrame> frame,
+    CefRefPtr<CefRequest> request,
+    bool is_navigation,
+    bool is_download,
+    const CefString& request_initiator,
+    bool& disable_default_handling) {
+
+    CEF_REQUIRE_IO_THREAD();
+
+    std::string url = request->GetURL().ToString();
+    std::cout << "🌐 Resource request: " << url << " (role: " << role_ << ")" << std::endl;
+    std::ofstream debugLog("debug_output.log", std::ios::app);
+    debugLog << "🌐 Resource request: " << url << " (role: " << role_ << ")" << std::endl;
+    debugLog.close();
+
+    // Intercept HTTP requests for all browsers when they're making external requests
+    // Check if the request is to localhost:8080 (our wallet daemon)
+    if (url.find("localhost:8080") != std::string::npos) {
+        std::cout << "🌐 Intercepting wallet request from browser role: " << role_ << std::endl;
+        return new HttpRequestInterceptor();
+    }
+
+    // For other requests, use default handling
+    return nullptr;
 }
 
 CefRefPtr<CefContextMenuHandler> SimpleHandler::GetContextMenuHandler() {

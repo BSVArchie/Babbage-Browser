@@ -3,6 +3,7 @@
 #include "../../include/core/IdentityHandler.h"
 #include "../../include/core/NavigationHandler.h"
 #include "../../include/core/AddressHandler.h"
+#include "BRC100Handler.h"
 #include "wrapper/cef_helpers.h"
 #include "include/cef_v8.h"
 #include <iostream>
@@ -257,6 +258,9 @@ void SimpleRenderProcessHandler::OnContextCreated(
     // Create the send function for cefMessage
     CefRefPtr<CefV8Value> sendFunction = CefV8Value::CreateFunction("send", new CefMessageSendHandler());
     cefMessageObject->SetValue("send", sendFunction, V8_PROPERTY_ATTRIBUTE_NONE);
+
+    // Register BRC-100 API
+    BRC100Handler::RegisterBRC100API(context);
 
     // For overlay browsers, signal that all systems are ready
     if (isOverlayBrowser) {

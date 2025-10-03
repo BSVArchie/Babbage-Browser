@@ -39,20 +39,6 @@ declare global {
     triggerPanel?: (panelName: string) => void;
     onAddressGenerated?: (data: AddressData) => void;
     onAddressError?: (error: string) => void;
-    bitcoinAPI?: {
-      createTransaction: (data: any) => Promise<TransactionResponse>;
-      signTransaction: (data: any) => Promise<TransactionResponse>;
-      broadcastTransaction: (data: any) => Promise<BroadcastResponse>;
-      sendTransaction: (data: any) => Promise<TransactionResponse>;
-      getBalance: (data: any) => Promise<{ balance: number }>;
-      getTransactionHistory: () => Promise<any[]>;
-    };
-    onCreateTransactionResponse?: (data: TransactionResponse) => void;
-    onCreateTransactionError?: (error: string) => void;
-    onSignTransactionResponse?: (data: TransactionResponse) => void;
-    onSignTransactionError?: (error: string) => void;
-    onBroadcastTransactionResponse?: (data: BroadcastResponse) => void;
-    onBroadcastTransactionError?: (error: string) => void;
     onSendTransactionResponse?: (data: TransactionResponse) => void;
     onSendTransactionError?: (error: string) => void;
     onGetBalanceResponse?: (data: { balance: number }) => void;

@@ -92,139 +92,6 @@ window.bitcoinBrowser.address.generate = () => {
   });
 };
 
-        // Transaction methods
-        if (!window.bitcoinAPI) {
-          window.bitcoinAPI = {
-            createTransaction: (data: any) => {
-      console.log("💰 JS: Sending create_transaction to native");
-      return new Promise((resolve, reject) => {
-        window.onCreateTransactionResponse = (data: any) => {
-          console.log("✅ Transaction created:", data);
-          resolve(data);
-          delete window.onCreateTransactionResponse;
-          delete window.onCreateTransactionError;
-        };
-
-        window.onCreateTransactionError = (error: string) => {
-          console.error("❌ Transaction creation error:", error);
-          reject(new Error(error));
-          delete window.onCreateTransactionResponse;
-          delete window.onCreateTransactionError;
-        };
-
-        window.cefMessage?.send('create_transaction', [JSON.stringify(data)]);
-      });
-    },
-
-    signTransaction: (data: any) => {
-      console.log("✍️ JS: Sending sign_transaction to native");
-      return new Promise((resolve, reject) => {
-        window.onSignTransactionResponse = (data: any) => {
-          console.log("✅ Transaction signed:", data);
-          resolve(data);
-          delete window.onSignTransactionResponse;
-          delete window.onSignTransactionError;
-        };
-
-        window.onSignTransactionError = (error: string) => {
-          console.error("❌ Transaction signing error:", error);
-          reject(new Error(error));
-          delete window.onSignTransactionResponse;
-          delete window.onSignTransactionError;
-        };
-
-        window.cefMessage?.send('sign_transaction', [JSON.stringify(data)]);
-      });
-    },
-
-    broadcastTransaction: (data: any) => {
-      console.log("📡 JS: Sending broadcast_transaction to native");
-      return new Promise((resolve, reject) => {
-        window.onBroadcastTransactionResponse = (data: any) => {
-          console.log("✅ Transaction broadcasted:", data);
-          resolve(data);
-          delete window.onBroadcastTransactionResponse;
-          delete window.onBroadcastTransactionError;
-        };
-
-        window.onBroadcastTransactionError = (error: string) => {
-          console.error("❌ Transaction broadcast error:", error);
-          reject(new Error(error));
-          delete window.onBroadcastTransactionResponse;
-          delete window.onBroadcastTransactionError;
-        };
-
-        window.cefMessage?.send('broadcast_transaction', [JSON.stringify(data)]);
-      });
-    },
-
-    getBalance: (data: any) => {
-      console.log("💳 JS: Sending get_balance to native");
-      console.log("💳 JS: Data being sent:", data);
-      console.log("💳 JS: JSON.stringify(data):", JSON.stringify(data));
-      return new Promise((resolve, reject) => {
-        window.onGetBalanceResponse = (data: any) => {
-          console.log("✅ Balance retrieved:", data);
-          resolve(data);
-          delete window.onGetBalanceResponse;
-          delete window.onGetBalanceError;
-        };
-
-        window.onGetBalanceError = (error: string) => {
-          console.error("❌ Balance retrieval error:", error);
-          reject(new Error(error));
-          delete window.onGetBalanceResponse;
-          delete window.onGetBalanceError;
-        };
-
-        window.cefMessage?.send('get_balance', [JSON.stringify(data)]);
-      });
-    },
-
-    getTransactionHistory: () => {
-      console.log("📜 JS: Sending get_transaction_history to native");
-      return new Promise((resolve, reject) => {
-        window.onGetTransactionHistoryResponse = (data: any) => {
-          console.log("✅ Transaction history retrieved:", data);
-          resolve(data);
-          delete window.onGetTransactionHistoryResponse;
-          delete window.onGetTransactionHistoryError;
-        };
-
-        window.onGetTransactionHistoryError = (error: string) => {
-          console.error("❌ Transaction history error:", error);
-          reject(new Error(error));
-          delete window.onGetTransactionHistoryResponse;
-          delete window.onGetTransactionHistoryError;
-        };
-
-        window.cefMessage?.send('get_transaction_history', []);
-      });
-    },
-
-    sendTransaction: (data: any) => {
-      console.log("🚀 JS: Sending send_transaction to native");
-      console.log("🚀 JS: Data being sent:", data);
-      return new Promise((resolve, reject) => {
-        window.onSendTransactionResponse = (data: any) => {
-          console.log("✅ Transaction sent:", data);
-          resolve(data);
-          delete window.onSendTransactionResponse;
-          delete window.onSendTransactionError;
-        };
-
-        window.onSendTransactionError = (error: string) => {
-          console.error("❌ Transaction error:", error);
-          reject(new Error(error));
-          delete window.onSendTransactionResponse;
-          delete window.onSendTransactionError;
-        };
-
-        window.cefMessage?.send('send_transaction', [JSON.stringify(data)]);
-      });
-    }
-  };
-}
 
 // Wallet methods
 if (!window.bitcoinBrowser.wallet) {
@@ -424,6 +291,69 @@ if (!window.bitcoinBrowser.wallet) {
         };
 
         window.cefMessage?.send('set_backup_modal_state', [shown]);
+      });
+    },
+
+    getBalance: () => {
+      console.log("💳 JS: Sending get_balance to native");
+      return new Promise((resolve, reject) => {
+        window.onGetBalanceResponse = (data: any) => {
+          console.log("✅ Balance retrieved:", data);
+          resolve(data);
+          delete window.onGetBalanceResponse;
+          delete window.onGetBalanceError;
+        };
+
+        window.onGetBalanceError = (error: string) => {
+          console.error("❌ Balance retrieval error:", error);
+          reject(new Error(error));
+          delete window.onGetBalanceResponse;
+          delete window.onGetBalanceError;
+        };
+
+        window.cefMessage?.send('get_balance', []);
+      });
+    },
+
+    sendTransaction: (data: any) => {
+      console.log("🚀 JS: Sending send_transaction to native");
+      return new Promise((resolve, reject) => {
+        window.onSendTransactionResponse = (data: any) => {
+          console.log("✅ Transaction sent:", data);
+          resolve(data);
+          delete window.onSendTransactionResponse;
+          delete window.onSendTransactionError;
+        };
+
+        window.onSendTransactionError = (error: string) => {
+          console.error("❌ Transaction error:", error);
+          reject(new Error(error));
+          delete window.onSendTransactionResponse;
+          delete window.onSendTransactionError;
+        };
+
+        window.cefMessage?.send('send_transaction', [JSON.stringify(data)]);
+      });
+    },
+
+    getTransactionHistory: () => {
+      console.log("📜 JS: Sending get_transaction_history to native");
+      return new Promise((resolve, reject) => {
+        window.onGetTransactionHistoryResponse = (data: any) => {
+          console.log("✅ Transaction history retrieved:", data);
+          resolve(data);
+          delete window.onGetTransactionHistoryResponse;
+          delete window.onGetTransactionHistoryError;
+        };
+
+        window.onGetTransactionHistoryError = (error: string) => {
+          console.error("❌ Transaction history error:", error);
+          reject(new Error(error));
+          delete window.onGetTransactionHistoryResponse;
+          delete window.onGetTransactionHistoryError;
+        };
+
+        window.cefMessage?.send('get_transaction_history', []);
       });
     }
   };

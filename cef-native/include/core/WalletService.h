@@ -12,6 +12,9 @@ public:
     WalletService();
     ~WalletService();
 
+    // Initialization
+    void ensureInitialized();
+
     // API Methods
     bool isHealthy();
 
@@ -44,6 +47,9 @@ public:
     void stopDaemon();
     bool isDaemonRunning();
     void setDaemonPath(const std::string& path);
+    
+    // Public HTTP method for interceptors
+    nlohmann::json makeHttpRequestPublic(const std::string& method, const std::string& endpoint, const std::string& body = "");
 
 private:
     std::string baseUrl_;

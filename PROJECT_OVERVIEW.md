@@ -1,5 +1,7 @@
 # Bitcoin-Browser Project Overview
 
+## 🚀 **The First CEF-Based Browser with Native BRC-100 Support**
+
 ## 🎯 Project Mission
 
 Bitcoin-Browser is a custom Web3 browser built on Chromium Embedded Framework (CEF) focused on the Web3 experience through **native control and seamless user experience**. Unlike traditional Web3 approaches that rely on browser plugins, external wallet tabs, or complex authentication flows, Bitcoin-Browser provides:
@@ -8,6 +10,7 @@ Bitcoin-Browser is a custom Web3 browser built on Chromium Embedded Framework (C
 - **Seamless Authentication**: **Complete BRC-100 standard implementation** enables frictionless authentication and transaction signing without interrupting the user's browsing experience
 - **SPV-Powered Transactions**: **Real blockchain SPV integration** provides fast, secure transaction verification with actual Bitcoin SV network data
 - **Security-First Architecture**: Private keys and signing logic never exposed to JavaScript, ensuring maximum security for real financial transactions
+- **HTTP Request Interception**: **Thread-safe async CEF HTTP client** enables external websites to communicate with the wallet daemon without crashes or security compromises
 - **Unified User Experience**: Clean, intuitive interface that prioritizes user experience over technical complexity, making Bitcoin SV micropayments as simple as traditional web interactions
 
 This approach eliminates the fragmented Web3 experience where users must juggle multiple tabs, plugins, and authentication steps, instead providing a cohesive, secure, and user-friendly environment for Bitcoin SV applications.

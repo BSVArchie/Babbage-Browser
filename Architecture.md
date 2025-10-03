@@ -20,6 +20,8 @@
 |  - CEF Handlers            |
 |  - Process-Per-Overlay     |
 |  - Message Routing         |
+|  - HTTP Request Interception|
+|  - Async HTTP Client       |
 +----------------------------+
             ↓
 +----------------------------+
@@ -77,6 +79,50 @@ Process-Per-Overlay Communication Architecture
 │ • overlay_show_*│                     │ • Process isolation │
 │ • overlay_close │                     │ • Real-time Updates│
 └─────────────────┘                     └─────────────────┘
+
+## 🌐 HTTP Request Interception Architecture (2025-10-02)
+
+### Async CEF HTTP Client System
+```
+External Website → HTTP Request → CEF Interceptor → UI Thread Task → Go Daemon → Response → Frontend
+```
+
+### Key Components:
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        HTTP Request Interception Layer                      │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────────┐  │
+│  │ HttpRequest     │  │ AsyncWallet     │  │ AsyncHTTPClient            │  │
+│  │ Interceptor     │  │ ResourceHandler │  │ - CefURLRequestClient      │  │
+│  │ - Intercepts    │  │ - Request Lifecycle│ │ - Response Handling       │  │
+│  │   localhost:8080│  │ - Response Stream│  │ - Data Streaming           │  │
+│  │ - Resource      │  │ - CORS Headers  │  │ - Thread Safety            │  │
+│  │   Handler       │  │ - Error Handling│  │ - Async Communication      │  │
+│  └─────────────────┘  └─────────────────┘  └─────────────────────────────┘  │
+│           │                    │                    │                      │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────────┐  │
+│  │ URLRequest      │  │ CEF Task System │  │ Go Wallet Daemon            │  │
+│  │ CreationTask    │  │ - CefPostTask   │  │ - HTTP API Endpoints        │  │
+│  │ - UI Thread Post│  │ - Thread Safety │  │ - BRC-100 Services         │  │
+│  │ - CefURLRequest │  │ - Async Handling│  │ - Real Blockchain APIs      │  │
+│  │   Creation      │  │ - Error Recovery│  │ - Transaction Processing    │  │
+│  └─────────────────┘  └─────────────────┘  └─────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Thread-Safe Communication Flow:
+1. **IO Thread**: `HttpRequestInterceptor` receives HTTP request from external website
+2. **UI Thread**: `URLRequestCreationTask` posts `CefURLRequest::Create` to UI thread
+3. **HTTP Request**: `AsyncHTTPClient` makes async request to Go daemon
+4. **Response**: `AsyncWalletResourceHandler` streams response back to frontend
+5. **Frontend**: External website receives response data
+
+### Technical Implementation:
+- **Thread Safety**: Uses CEF's task system to ensure proper thread communication
+- **Async Operations**: Non-blocking HTTP requests using `CefURLRequest`
+- **Error Handling**: Comprehensive error handling with fallback responses
+- **CORS Support**: Proper CORS headers for cross-origin requests
+- **Resource Management**: Proper cleanup and memory management
 
 ## 🔐 BRC-100 Authentication Architecture
 

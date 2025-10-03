@@ -6,6 +6,7 @@
 #include "include/cef_life_span_handler.h"
 #include "include/cef_load_handler.h"
 #include "include/cef_request_handler.h"
+#include "include/cef_resource_request_handler.h"
 #include "include/cef_context_menu_handler.h"
 #include "include/cef_keyboard_handler.h"
 
@@ -59,6 +60,16 @@ public:
                               CefRefPtr<CefFrame> frame,
                               CefProcessId source_process,
                               CefRefPtr<CefProcessMessage> message) override;
+
+    // HTTP Request Interception
+    CefRefPtr<CefResourceRequestHandler> GetResourceRequestHandler(
+        CefRefPtr<CefBrowser> browser,
+        CefRefPtr<CefFrame> frame,
+        CefRefPtr<CefRequest> request,
+        bool is_navigation,
+        bool is_download,
+        const CefString& request_initiator,
+        bool& disable_default_handling) override;
 
     void SetRenderHandler(CefRefPtr<CefRenderHandler> handler);
     CefRefPtr<CefRenderHandler> GetRenderHandler() override;

@@ -12,11 +12,11 @@ export const useTransaction = () => {
     setError(null);
 
     try {
-      if (!window.bitcoinAPI) {
-        throw new Error('Bitcoin API not available');
+      if (!window.bitcoinBrowser?.wallet) {
+        throw new Error('Bitcoin Browser wallet not available');
       }
 
-      const response = await window.bitcoinAPI.sendTransaction({
+      const response = await window.bitcoinBrowser.wallet.sendTransaction({
         toAddress: data.recipient,
         amount: Math.round(parseFloat(data.amount) * 100000000),
         feeRate: parseInt(data.feeRate)

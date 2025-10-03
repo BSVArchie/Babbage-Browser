@@ -37,6 +37,9 @@ set(SOURCES
     src/core/IdentityHandler.cpp
     src/core/NavigationHandler.cpp
     src/core/AddressHandler.cpp
+    src/core/BRC100Bridge.cpp
+    src/core/BRC100Handler.cpp
+    src/core/HttpRequestInterceptor.cpp
     # Add other source files here
 )
 

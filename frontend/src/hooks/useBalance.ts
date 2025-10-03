@@ -12,13 +12,13 @@ export const useBalance = () => {
     setError(null);
 
     try {
-      // Call C++ bridge via window.bitcoinAPI
-      if (!window.bitcoinAPI) {
-        throw new Error('Bitcoin API not available');
+      // Call C++ bridge via window.bitcoinBrowser.wallet
+      if (!window.bitcoinBrowser?.wallet) {
+        throw new Error('Bitcoin Browser wallet not available');
       }
 
       // Get total balance across all addresses (no address parameter needed)
-      const response = await window.bitcoinAPI.getBalance({});
+      const response = await window.bitcoinBrowser.wallet.getBalance();
 
       setBalance(response.balance);
       return response.balance;

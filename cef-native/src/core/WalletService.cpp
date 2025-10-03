@@ -2,6 +2,64 @@
 #include <iostream>
 #include <sstream>
 #include <fstream>
+#include <chrono>
+#include <iomanip>
+
+// Logger class for proper debug logging
+class Logger {
+private:
+    static std::string GetTimestamp() {
+        auto now = std::chrono::system_clock::now();
+        auto time_t = std::chrono::system_clock::to_time_t(now);
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now.time_since_epoch()) % 1000;
+
+        std::stringstream ss;
+        ss << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
+        ss << "." << std::setfill('0') << std::setw(3) << ms.count();
+        return ss.str();
+    }
+
+    static std::string GetProcessName(int process) {
+        switch (process) {
+            case 0: return "MAIN";
+            case 1: return "RENDER";
+            case 2: return "BROWSER";
+            default: return "UNKNOWN";
+        }
+    }
+
+    static std::string GetLogLevelName(int level) {
+        switch (level) {
+            case 0: return "DEBUG";
+            case 1: return "INFO";
+            case 2: return "WARN";
+            case 3: return "ERROR";
+            default: return "UNKNOWN";
+        }
+    }
+
+public:
+    static void Log(const std::string& message, int level = 1, int process = 2) {
+        std::string logEntry = "[" + GetTimestamp() + "] [" + GetProcessName(process) + "] [" + GetLogLevelName(level) + "] " + message;
+
+        // Write to file
+        std::ofstream logFile("debug_output.log", std::ios::app);
+        if (logFile.is_open()) {
+            logFile << logEntry << std::endl;
+            logFile.close();
+        }
+
+        // Also write to stdout (for debugging)
+        std::cout << logEntry << std::endl;
+    }
+};
+
+// Convenience macros for easier logging
+#define LOG_DEBUG_BROWSER(msg) Logger::Log(msg, 0, 2)
+#define LOG_INFO_BROWSER(msg) Logger::Log(msg, 1, 2)
+#define LOG_WARNING_BROWSER(msg) Logger::Log(msg, 2, 2)
+#define LOG_ERROR_BROWSER(msg) Logger::Log(msg, 3, 2)
 
 // Static instance for console handler
 static WalletService* g_walletService = nullptr;
@@ -14,86 +72,22 @@ WalletService::WalletService()
     , connected_(false)
     , daemonRunning_(false) {
 
-    // Set global instance for console handler
-    g_walletService = this;
+    try {
+        // Set global instance for console handler
+        g_walletService = this;
 
-    // Initialize daemon process info
-    ZeroMemory(&daemonProcess_, sizeof(PROCESS_INFORMATION));
+        // Initialize daemon process info
+        ZeroMemory(&daemonProcess_, sizeof(PROCESS_INFORMATION));
 
-    // Set default daemon path (relative to executable)
-    char exePath[MAX_PATH];
-    GetModuleFileNameA(nullptr, exePath, MAX_PATH);
-    std::string exeDir = std::string(exePath);
-    size_t lastSlash = exeDir.find_last_of("\\/");
-    if (lastSlash != std::string::npos) {
-        exeDir = exeDir.substr(0, lastSlash);
-        daemonPath_ = exeDir + "\\..\\..\\..\\..\\go-wallet\\wallet.exe";
-    }
+        LOG_DEBUG_BROWSER("🚀 WalletService constructor starting...");
 
-    std::cout << "🚀 WalletService initialized" << std::endl;
-    std::cout << "📍 Daemon path: " << daemonPath_ << std::endl;
+        // Minimal initialization - everything else deferred
+        LOG_DEBUG_BROWSER("✅ WalletService constructor completed");
 
-    // Check if daemon file exists
-    if (GetFileAttributesA(daemonPath_.c_str()) == INVALID_FILE_ATTRIBUTES) {
-        std::cerr << "❌ Go daemon executable not found at: " << daemonPath_ << std::endl;
-        std::cerr << "❌ Error code: " << GetLastError() << std::endl;
-    } else {
-        std::cout << "✅ Go daemon executable found" << std::endl;
-    }
-
-    // Set up console control handler
-    SetConsoleCtrlHandler(ConsoleCtrlHandler, TRUE);
-
-    // Try to connect to existing daemon first
-    std::cout << "🔍 Attempting to connect to existing Go daemon..." << std::endl;
-    std::ofstream debugLog("debug_output.log", std::ios::app);
-    debugLog << "🔍 Attempting to connect to existing Go daemon..." << std::endl;
-    debugLog.close();
-
-    if (initializeConnection()) {
-        std::cout << "✅ Connected to existing Go daemon" << std::endl;
-        std::ofstream debugLog2("debug_output.log", std::ios::app);
-        debugLog2 << "✅ Connected to existing Go daemon" << std::endl;
-        debugLog2.close();
-    } else {
-        // If connection fails, start our own daemon
-        std::cout << "⚠️ No existing daemon found, starting new one..." << std::endl;
-        std::cout << "🔍 Daemon path: " << daemonPath_ << std::endl;
-        std::ofstream debugLog3("debug_output.log", std::ios::app);
-        debugLog3 << "⚠️ No existing daemon found, starting new one..." << std::endl;
-        debugLog3 << "🔍 Daemon path: " << daemonPath_ << std::endl;
-        debugLog3.close();
-
-        if (startDaemon()) {
-            // Wait a moment for daemon to start
-            std::cout << "⏳ Waiting for daemon to start..." << std::endl;
-            std::ofstream debugLog4("debug_output.log", std::ios::app);
-            debugLog4 << "⏳ Waiting for daemon to start..." << std::endl;
-            debugLog4.close();
-
-            Sleep(2000);
-            std::cout << "🔍 Attempting to connect to newly started daemon..." << std::endl;
-            std::ofstream debugLog5("debug_output.log", std::ios::app);
-            debugLog5 << "🔍 Attempting to connect to newly started daemon..." << std::endl;
-            debugLog5.close();
-
-            if (initializeConnection()) {
-                std::cout << "✅ Successfully connected to newly started daemon" << std::endl;
-                std::ofstream debugLog6("debug_output.log", std::ios::app);
-                debugLog6 << "✅ Successfully connected to newly started daemon" << std::endl;
-                debugLog6.close();
-            } else {
-                std::cout << "❌ Failed to connect to newly started daemon" << std::endl;
-                std::ofstream debugLog7("debug_output.log", std::ios::app);
-                debugLog7 << "❌ Failed to connect to newly started daemon" << std::endl;
-                debugLog7.close();
-            }
-        } else {
-            std::cout << "❌ Failed to start daemon process" << std::endl;
-            std::ofstream debugLog8("debug_output.log", std::ios::app);
-            debugLog8 << "❌ Failed to start daemon process" << std::endl;
-            debugLog8.close();
-        }
+    } catch (const std::exception& e) {
+        LOG_ERROR_BROWSER("❌ WalletService constructor exception: " + std::string(e.what()));
+    } catch (...) {
+        LOG_ERROR_BROWSER("❌ WalletService constructor unknown exception");
     }
 }
 
@@ -282,19 +276,82 @@ bool WalletService::isHealthy() {
 
 // Unified Wallet Methods Implementation
 
-nlohmann::json WalletService::getWalletStatus() {
-    std::cout << "🔍 Getting wallet status from Go daemon..." << std::endl;
+void WalletService::ensureInitialized() {
+    static bool initialized = false;
+    if (initialized) return;
 
-    auto response = makeHttpRequest("GET", "/wallet/status");
+    try {
+        LOG_DEBUG_BROWSER("🔧 Initializing WalletService...");
 
-    if (response.contains("exists")) {
-        std::cout << "✅ Wallet status retrieved successfully" << std::endl;
-        std::cout << "📁 Wallet exists: " << (response["exists"].get<bool>() ? "Yes" : "No") << std::endl;
-        return response;
-    } else {
-        std::cerr << "❌ Failed to get wallet status from Go daemon" << std::endl;
-        return nlohmann::json::object();
+        // Set default daemon path (relative to executable)
+        char exePath[MAX_PATH];
+        GetModuleFileNameA(nullptr, exePath, MAX_PATH);
+        std::string exeDir = std::string(exePath);
+        size_t lastSlash = exeDir.find_last_of("\\/");
+        if (lastSlash != std::string::npos) {
+            exeDir = exeDir.substr(0, lastSlash);
+            daemonPath_ = exeDir + "\\..\\..\\..\\..\\go-wallet\\wallet.exe";
+        }
+
+        // Set up console control handler
+        SetConsoleCtrlHandler(ConsoleCtrlHandler, TRUE);
+
+        // Initialize HTTP connection to Go daemon
+        if (initializeConnection()) {
+            LOG_DEBUG_BROWSER("✅ HTTP connection to Go daemon established");
+        } else {
+            LOG_WARNING_BROWSER("⚠️ Failed to establish HTTP connection to Go daemon");
+        }
+
+        LOG_DEBUG_BROWSER("✅ WalletService initialization completed");
+
+        initialized = true;
+    } catch (const std::exception& e) {
+        LOG_ERROR_BROWSER("❌ WalletService initialization exception: " + std::string(e.what()));
+    } catch (...) {
+        LOG_ERROR_BROWSER("❌ WalletService initialization unknown exception");
     }
+}
+
+nlohmann::json WalletService::getWalletStatus() {
+    LOG_DEBUG_BROWSER("🔍 Getting wallet status from Go daemon...");
+
+    // Ensure WalletService is properly initialized
+    ensureInitialized();
+
+    try {
+        // Make actual HTTP request to Go daemon
+        LOG_DEBUG_BROWSER("🔄 Making HTTP request to /wallet/status...");
+
+        auto response = makeHttpRequest("GET", "/wallet/status");
+
+        if (response.contains("exists")) {
+            LOG_DEBUG_BROWSER("✅ Wallet status retrieved successfully from Go daemon");
+
+            // Add needsBackup field if not present (for backward compatibility)
+            if (!response.contains("needsBackup")) {
+                response["needsBackup"] = false;
+            }
+
+            return response;
+        } else {
+            LOG_WARNING_BROWSER("⚠️ Unexpected response format from Go daemon");
+        }
+    } catch (const std::exception& e) {
+        LOG_ERROR_BROWSER("❌ Error getting wallet status: " + std::string(e.what()));
+    } catch (...) {
+        LOG_ERROR_BROWSER("❌ Unknown error getting wallet status");
+    }
+
+    // Fallback response if connection fails
+    nlohmann::json fallbackResponse;
+    fallbackResponse["exists"] = false;
+    fallbackResponse["needsBackup"] = true;
+    fallbackResponse["error"] = "Failed to connect to Go daemon";
+
+    LOG_WARNING_BROWSER("📤 Returning fallback response due to connection error");
+
+    return fallbackResponse;
 }
 
 nlohmann::json WalletService::getWalletInfo() {
@@ -714,4 +771,8 @@ nlohmann::json WalletService::sendTransaction(const nlohmann::json& transactionD
         errorResponse["error"] = "Transaction failed";
         return errorResponse;
     }
+}
+
+nlohmann::json WalletService::makeHttpRequestPublic(const std::string& method, const std::string& endpoint, const std::string& body) {
+    return makeHttpRequest(method, endpoint, body);
 }

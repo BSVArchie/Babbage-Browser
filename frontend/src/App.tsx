@@ -4,10 +4,25 @@ import SettingsOverlayRoot from './pages/SettingsOverlayRoot';
 import WalletOverlayRoot from './pages/WalletOverlayRoot';
 import BackupOverlayRoot from './pages/BackupOverlayRoot';
 import MainBrowserView from './pages/MainBrowserView';
+import { AuthApprovalModal, TransactionApprovalModal, useBRC100Modals } from './components/BRC100Modals';
+import { brc100 } from './bridge/brc100';
 // Removed identity types - now using unified wallet system
 
 const App = () => {
   console.log("🔍 App component rendering, pathname:", window.location.pathname);
+
+  // BRC-100 modal management
+  const {
+    authModal,
+    transactionModal,
+    showAuthApprovalModal,
+    showTransactionApprovalModal,
+    handleAuthApprove,
+    handleAuthReject,
+    handleTransactionApprove,
+    handleTransactionReject
+  } = useBRC100Modals();
+
   // Wallet state tracking (currently unused but available for future features)
   // const [walletExists, setWalletExists] = useState(false);
 
@@ -57,7 +72,7 @@ const App = () => {
             // Wallet needs backup - create wallet first, then show modal
             console.log("🔍 Wallet needs backup, creating wallet first...");
             try {
-              const newWallet = await window.bitcoinBrowser.wallet.create();
+              await window.bitcoinBrowser.wallet.create();
               console.log("🔍 Wallet created successfully, showing backup modal");
               window.cefMessage?.send('overlay_show_backup', []);
             } catch (error) {
@@ -78,13 +93,34 @@ const App = () => {
 
     checkWalletStatus();
 
+    // Initialize BRC-100 API integration
+    const initializeBRC100 = async () => {
+      try {
+        // Check if BRC-100 is available
+        const isAvailable = await brc100.isAvailable();
+        console.log("🔐 BRC-100 available:", isAvailable);
+
+        if (isAvailable) {
+          // Override the modal methods to use our React components
+          (brc100 as any).showAuthApprovalModal = showAuthApprovalModal;
+          (brc100 as any).showTransactionApprovalModal = showTransactionApprovalModal;
+
+          console.log("🔐 BRC-100 API initialized with React modals");
+        }
+      } catch (error) {
+        console.warn("🔐 BRC-100 initialization failed:", error);
+      }
+    };
+
+    initializeBRC100();
+
     // Cleanup function to remove event listeners
     return () => {
       console.log("🧹 App cleanup - removing event listeners");
       // Note: Event listeners are automatically cleaned up when the component unmounts
       // but this ensures we have explicit cleanup logging
     };
-  }, []);
+  }, [showAuthApprovalModal, showTransactionApprovalModal]);
 
   return (
     <>
@@ -95,6 +131,21 @@ const App = () => {
         <Route path="/wallet" element={<WalletOverlayRoot />} />
         <Route path="/backup" element={<BackupOverlayRoot />} />
       </Routes>
+
+      {/* BRC-100 Approval Modals */}
+      <AuthApprovalModal
+        isOpen={authModal.isOpen}
+        request={authModal.request!}
+        onApprove={handleAuthApprove}
+        onReject={handleAuthReject}
+      />
+
+      <TransactionApprovalModal
+        isOpen={transactionModal.isOpen}
+        transaction={transactionModal.transaction!}
+        onApprove={handleTransactionApprove}
+        onReject={handleTransactionReject}
+      />
     </>
   );
 };
