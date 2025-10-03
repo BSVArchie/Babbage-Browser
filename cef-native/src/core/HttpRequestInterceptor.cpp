@@ -5,21 +5,196 @@
 #include "include/cef_request_context.h"
 #include "include/cef_browser.h"
 #include "include/cef_task.h"
+#include "include/cef_v8.h"
+#include "include/cef_frame.h"
 #include <iostream>
 #include <sstream>
 #include <algorithm>
 #include <fstream>
 #include <mutex>
 #include <condition_variable>
+#include <nlohmann/json.hpp>
+#include <cstdlib>
+#include <ctime>
+#include <chrono>
+#include <iomanip>
 
-// Simple logging function
-void LogDebug(const std::string& message) {
-    std::ofstream debugLog("debug_output.log", std::ios::app);
-    if (debugLog.is_open()) {
-        debugLog << "[HTTP] " << message << std::endl;
-        debugLog.close();
+// Logger class for proper debug logging
+class Logger {
+private:
+    static std::string GetTimestamp() {
+        auto now = std::chrono::system_clock::now();
+        auto time_t = std::chrono::system_clock::to_time_t(now);
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now.time_since_epoch()) % 1000;
+
+        std::stringstream ss;
+        ss << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
+        ss << "." << std::setfill('0') << std::setw(3) << ms.count();
+        return ss.str();
     }
-}
+
+    static std::string GetProcessName(int process) {
+        switch (process) {
+            case 0: return "MAIN";
+            case 1: return "RENDER";
+            case 2: return "BROWSER";
+            default: return "UNKNOWN";
+        }
+    }
+
+    static std::string GetLogLevelName(int level) {
+        switch (level) {
+            case 0: return "DEBUG";
+            case 1: return "INFO";
+            case 2: return "WARN";
+            case 3: return "ERROR";
+            default: return "UNKNOWN";
+        }
+    }
+
+public:
+    static void Log(const std::string& message, int level = 1, int process = 2) {
+        std::string logEntry = "[" + GetTimestamp() + "] [" + GetProcessName(process) + "] [" + GetLogLevelName(level) + "] " + message;
+
+        // Write to file
+        std::ofstream logFile("debug_output.log", std::ios::app);
+        if (logFile.is_open()) {
+            logFile << logEntry << std::endl;
+            logFile.close();
+        }
+
+        // Also output to console
+        std::cout << logEntry << std::endl;
+    }
+};
+
+// Logging macros for HTTP interceptor
+#define LOG_DEBUG_HTTP(msg) Logger::Log(msg, 0, 2)
+#define LOG_INFO_HTTP(msg) Logger::Log(msg, 1, 2)
+#define LOG_WARNING_HTTP(msg) Logger::Log(msg, 2, 2)
+#define LOG_ERROR_HTTP(msg) Logger::Log(msg, 3, 2)
+
+// Domain verification class
+class DomainVerifier {
+private:
+    std::string whitelistFilePath;
+
+public:
+    DomainVerifier() {
+        // Set path to domainWhitelist.json
+        char* homeDir = std::getenv("USERPROFILE");
+        whitelistFilePath = std::string(homeDir) + "\\AppData\\Roaming\\BabbageBrowser\\wallet\\domainWhitelist.json";
+    }
+
+    bool isDomainWhitelisted(const std::string& domain) {
+        // Read whitelist file and check domain
+        std::ifstream file(whitelistFilePath);
+        if (!file.is_open()) {
+            std::cout << "🔒 Domain whitelist file not found: " << whitelistFilePath << std::endl;
+            return false;
+        }
+
+        try {
+            nlohmann::json whitelist;
+            file >> whitelist;
+            file.close();
+
+            for (const auto& entry : whitelist) {
+                if (entry["domain"] == domain) {
+                    bool isPermanent = entry["isPermanent"];
+                    int requestCount = entry["requestCount"];
+
+                    // If one-time and already used, return false
+                    if (!isPermanent && requestCount > 0) {
+                        std::cout << "🔒 Domain " << domain << " is one-time and already used" << std::endl;
+                        return false;
+                    }
+
+                    std::cout << "🔒 Domain " << domain << " is whitelisted" << std::endl;
+                    return true;
+                }
+            }
+
+            std::cout << "🔒 Domain " << domain << " is not whitelisted" << std::endl;
+            return false;
+        } catch (const std::exception& e) {
+            std::cout << "🔒 Error reading domain whitelist: " << e.what() << std::endl;
+            file.close();
+            return false;
+        }
+    }
+
+    void addToWhitelist(const std::string& domain, bool isPermanent) {
+        // Read existing whitelist
+        nlohmann::json whitelist = nlohmann::json::array();
+        std::ifstream file(whitelistFilePath);
+        if (file.is_open()) {
+            try {
+                file >> whitelist;
+                file.close();
+            } catch (const std::exception& e) {
+                std::cout << "🔒 Error reading whitelist for update: " << e.what() << std::endl;
+                file.close();
+            }
+        }
+
+        // Add new entry
+        nlohmann::json newEntry;
+        newEntry["domain"] = domain;
+        newEntry["addedAt"] = std::time(nullptr);
+        newEntry["lastUsed"] = std::time(nullptr);
+        newEntry["requestCount"] = 0;
+        newEntry["isPermanent"] = isPermanent;
+
+        whitelist.push_back(newEntry);
+
+        // Write back to file
+        std::ofstream outFile(whitelistFilePath);
+        if (outFile.is_open()) {
+            outFile << whitelist.dump(2);
+            outFile.close();
+            std::cout << "🔒 Added domain " << domain << " to whitelist" << std::endl;
+        } else {
+            std::cout << "🔒 Error writing to whitelist file" << std::endl;
+        }
+    }
+
+    void recordRequest(const std::string& domain) {
+        // Read existing whitelist
+        nlohmann::json whitelist = nlohmann::json::array();
+        std::ifstream file(whitelistFilePath);
+        if (file.is_open()) {
+            try {
+                file >> whitelist;
+                file.close();
+            } catch (const std::exception& e) {
+                std::cout << "🔒 Error reading whitelist for recording: " << e.what() << std::endl;
+                file.close();
+                return;
+            }
+        }
+
+        // Update request count
+        for (auto& entry : whitelist) {
+            if (entry["domain"] == domain) {
+                entry["lastUsed"] = std::time(nullptr);
+                entry["requestCount"] = entry["requestCount"].get<int>() + 1;
+                break;
+            }
+        }
+
+        // Write back to file
+        std::ofstream outFile(whitelistFilePath);
+        if (outFile.is_open()) {
+            outFile << whitelist.dump(2);
+            outFile.close();
+            std::cout << "🔒 Recorded request from domain " << domain << std::endl;
+        } else {
+            std::cout << "🔒 Error writing to whitelist file for recording" << std::endl;
+        }
+    }
+};
 
 // Forward declaration
 class AsyncHTTPClient;
@@ -29,11 +204,11 @@ class AsyncWalletResourceHandler : public CefResourceHandler {
 public:
     AsyncWalletResourceHandler(const std::string& method,
                               const std::string& endpoint,
-                              const std::string& body)
-        : method_(method), endpoint_(endpoint), body_(body),
+                              const std::string& body,
+                              const std::string& requestDomain)
+        : method_(method), endpoint_(endpoint), body_(body), requestDomain_(requestDomain),
           responseOffset_(0), requestCompleted_(false) {
-        std::cout << "🌐 AsyncWalletResourceHandler constructor called for " << method << " " << endpoint << std::endl;
-        LogDebug("🌐 AsyncWalletResourceHandler constructor called for " + method + " " + endpoint);
+        LOG_DEBUG_HTTP("🌐 AsyncWalletResourceHandler constructor called for " + method + " " + endpoint + " from domain " + requestDomain);
     }
 
     bool Open(CefRefPtr<CefRequest> request,
@@ -41,15 +216,32 @@ public:
               CefRefPtr<CefCallback> callback) override {
         CEF_REQUIRE_IO_THREAD();
 
-        std::cout << "🌐 AsyncWalletResourceHandler::Open called" << std::endl;
-        LogDebug("🌐 AsyncWalletResourceHandler::Open called");
+        LOG_DEBUG_HTTP("🌐 AsyncWalletResourceHandler::Open called");
+
+        // Check if domain is whitelisted
+        DomainVerifier domainVerifier;
+        if (!domainVerifier.isDomainWhitelisted(requestDomain_)) {
+            // Domain not whitelisted, trigger approval modal
+            LOG_DEBUG_HTTP("🔒 Domain " + requestDomain_ + " not whitelisted, triggering approval modal");
+            triggerDomainApprovalModal(requestDomain_, method_, endpoint_);
+
+            // Return error response for now (will be replaced with modal response)
+            responseData_ = "{\"error\":\"Domain not whitelisted\",\"domain\":\"" + requestDomain_ + "\"}";
+            requestCompleted_ = true;
+            handle_request = true;
+            return true;
+        }
+
+        // Domain is whitelisted, proceed with request
+        LOG_DEBUG_HTTP("🔒 Domain " + requestDomain_ + " is whitelisted, proceeding with request");
+        domainVerifier.recordRequest(requestDomain_);
 
         handle_request = true;
 
         // Start async HTTP request to Go daemon
-        std::cout << "🌐 About to start async HTTP request..." << std::endl;
+        LOG_DEBUG_HTTP("🌐 About to start async HTTP request...");
         startAsyncHTTPRequest();
-        std::cout << "🌐 Async HTTP request started" << std::endl;
+        LOG_DEBUG_HTTP("🌐 Async HTTP request started");
 
         // Don't call callback->Continue() yet - wait for HTTP response
         return true;
@@ -60,7 +252,7 @@ public:
                            CefString& redirectUrl) override {
         CEF_REQUIRE_IO_THREAD();
 
-        std::cout << "🌐 AsyncWalletResourceHandler::GetResponseHeaders called" << std::endl;
+        LOG_DEBUG_HTTP("🌐 AsyncWalletResourceHandler::GetResponseHeaders called");
 
         response->SetStatus(200);
         response->SetStatusText("OK");
@@ -79,7 +271,7 @@ public:
                      CefRefPtr<CefCallback> callback) override {
         CEF_REQUIRE_IO_THREAD();
 
-        std::cout << "🌐 AsyncWalletResourceHandler::ReadResponse called, completed: " << requestCompleted_ << std::endl;
+        LOG_DEBUG_HTTP("🌐 AsyncWalletResourceHandler::ReadResponse called, completed: " + std::to_string(requestCompleted_));
 
         if (!requestCompleted_) {
             // Store callback for later use
@@ -103,7 +295,7 @@ public:
 
     void Cancel() override {
         CEF_REQUIRE_IO_THREAD();
-        std::cout << "🌐 AsyncWalletResourceHandler::Cancel called" << std::endl;
+        LOG_DEBUG_HTTP("🌐 AsyncWalletResourceHandler::Cancel called");
 
         if (urlRequest_) {
             urlRequest_->Cancel();
@@ -113,18 +305,26 @@ public:
 
     // Called by AsyncHTTPClient when HTTP response is received
     void onHTTPResponseReceived(const std::string& data) {
-        std::cout << "🌐 AsyncWalletResourceHandler received HTTP response: " << data << std::endl;
-        LogDebug("🌐 AsyncWalletResourceHandler received HTTP response: " + data);
+        LOG_DEBUG_HTTP("🌐 AsyncWalletResourceHandler received HTTP response: " + data);
 
         responseData_ = data;
         requestCompleted_ = true;
 
-        LogDebug("🌐 About to call readCallback_->Continue()");
+        LOG_DEBUG_HTTP("🌐 About to call readCallback_->Continue()");
         // Now we can continue with the response
         if (readCallback_) {
             readCallback_->Continue();
-            LogDebug("🌐 readCallback_->Continue() called successfully");
+            LOG_DEBUG_HTTP("🌐 readCallback_->Continue() called successfully");
         }
+    }
+
+    // Trigger domain approval modal
+    void triggerDomainApprovalModal(const std::string& domain, const std::string& method, const std::string& endpoint) {
+        LOG_DEBUG_HTTP("🔒 Triggering domain approval modal for " + domain);
+
+        // For now, just log the request
+        // TODO: Implement actual modal triggering
+        LOG_DEBUG_HTTP("🔒 Domain approval needed for: " + domain + " requesting " + method + " " + endpoint);
     }
 
     // Static method to create CefURLRequest on UI thread (called by URLRequestCreationTask)
@@ -140,6 +340,7 @@ private:
     std::string method_;
     std::string endpoint_;
     std::string body_;
+    std::string requestDomain_;
 
     // Response management
     std::string responseData_;
@@ -159,14 +360,14 @@ class AsyncHTTPClient : public CefURLRequestClient {
 public:
     explicit AsyncHTTPClient(AsyncWalletResourceHandler* parent)
         : parent_(parent), completed_(false) {
-        LogDebug("🌐 AsyncHTTPClient constructor called");
+        LOG_DEBUG_HTTP("🌐 AsyncHTTPClient constructor called");
     }
 
     void OnRequestComplete(CefRefPtr<CefURLRequest> request) override {
         std::lock_guard<std::mutex> lock(mutex_);
         completed_ = true;
 
-        LogDebug("🌐 AsyncHTTPClient::OnRequestComplete called, response size: " + std::to_string(responseData_.length()));
+        LOG_DEBUG_HTTP("🌐 AsyncHTTPClient::OnRequestComplete called, response size: " + std::to_string(responseData_.length()));
 
         // Notify parent handler that HTTP request completed
         if (parent_) {
@@ -185,7 +386,7 @@ public:
     void OnDownloadData(CefRefPtr<CefURLRequest> request, const void* data, size_t data_length) override {
         std::lock_guard<std::mutex> lock(mutex_);
         responseData_.append(static_cast<const char*>(data), data_length);
-        LogDebug("🌐 AsyncHTTPClient::OnDownloadData received " + std::to_string(data_length) + " bytes");
+        LOG_DEBUG_HTTP("🌐 AsyncHTTPClient::OnDownloadData received " + std::to_string(data_length) + " bytes");
     }
 
     bool GetAuthCredentials(bool isProxy,
@@ -217,7 +418,7 @@ public:
         : handler_(handler), httpRequest_(httpRequest), client_(client), context_(context) {}
 
     void Execute() override {
-        LogDebug("🌐 URLRequestCreationTask::Execute called on UI thread");
+        LOG_DEBUG_HTTP("🌐 URLRequestCreationTask::Execute called on UI thread");
         AsyncWalletResourceHandler::createURLRequestOnUIThread(handler_, httpRequest_, client_, context_);
     }
 
@@ -233,17 +434,16 @@ private:
 
 // Implementation of AsyncWalletResourceHandler::startAsyncHTTPRequest
 void AsyncWalletResourceHandler::startAsyncHTTPRequest() {
-    std::cout << "🌐 Starting async HTTP request to: " << endpoint_ << std::endl;
-    LogDebug("🌐 Starting async HTTP request to: " + endpoint_);
+    LOG_DEBUG_HTTP("🌐 Starting async HTTP request to: " + endpoint_);
 
     // Create CEF HTTP request
-    LogDebug("🌐 Creating CEF HTTP request");
+    LOG_DEBUG_HTTP("🌐 Creating CEF HTTP request");
     CefRefPtr<CefRequest> httpRequest = CefRequest::Create();
     std::string fullUrl = "http://localhost:8080" + endpoint_;
     httpRequest->SetURL(fullUrl);
     httpRequest->SetMethod(method_);
 
-    LogDebug("🌐 Setting headers for request");
+    LOG_DEBUG_HTTP("🌐 Setting headers for request");
     // Set headers
     CefRequest::HeaderMap headers;
     headers.insert(std::make_pair("Content-Type", "application/json"));
@@ -252,7 +452,7 @@ void AsyncWalletResourceHandler::startAsyncHTTPRequest() {
 
     // Set POST body if needed
     if (method_ == "POST" && !body_.empty()) {
-        LogDebug("🌐 Setting POST body");
+        LOG_DEBUG_HTTP("🌐 Setting POST body");
         CefRefPtr<CefPostData> postData = CefPostData::Create();
         CefRefPtr<CefPostDataElement> element = CefPostDataElement::Create();
         element->SetToBytes(body_.length(), body_.c_str());
@@ -261,36 +461,36 @@ void AsyncWalletResourceHandler::startAsyncHTTPRequest() {
     }
 
     // Start async request
-    LogDebug("🌐 About to create CefURLRequest");
-    LogDebug("🌐 Creating AsyncHTTPClient");
+    LOG_DEBUG_HTTP("🌐 About to create CefURLRequest");
+    LOG_DEBUG_HTTP("🌐 Creating AsyncHTTPClient");
     AsyncHTTPClient* client = new AsyncHTTPClient(this);
-    LogDebug("🌐 AsyncHTTPClient created successfully");
+    LOG_DEBUG_HTTP("🌐 AsyncHTTPClient created successfully");
 
-    LogDebug("🌐 Getting global request context");
+    LOG_DEBUG_HTTP("🌐 Getting global request context");
     CefRefPtr<CefRequestContext> context = CefRequestContext::GetGlobalContext();
-    LogDebug("🌐 Global request context obtained");
+    LOG_DEBUG_HTTP("🌐 Global request context obtained");
 
-    LogDebug("🌐 About to call CefURLRequest::Create");
-    LogDebug("🌐 HTTP Request URL: " + httpRequest->GetURL().ToString());
-    LogDebug("🌐 HTTP Request Method: " + httpRequest->GetMethod().ToString());
+    LOG_DEBUG_HTTP("🌐 About to call CefURLRequest::Create");
+    LOG_DEBUG_HTTP("🌐 HTTP Request URL: " + httpRequest->GetURL().ToString());
+    LOG_DEBUG_HTTP("🌐 HTTP Request Method: " + httpRequest->GetMethod().ToString());
 
     CefRequest::HeaderMap requestHeaders;
     httpRequest->GetHeaderMap(requestHeaders);
-    LogDebug("🌐 HTTP Request Headers count: " + std::to_string(requestHeaders.size()));
+    LOG_DEBUG_HTTP("🌐 HTTP Request Headers count: " + std::to_string(requestHeaders.size()));
 
     try {
-        LogDebug("🌐 Inside try block, about to create URL request");
-        LogDebug("🌐 Posting task to UI thread for CefURLRequest creation");
+        LOG_DEBUG_HTTP("🌐 Inside try block, about to create URL request");
+        LOG_DEBUG_HTTP("🌐 Posting task to UI thread for CefURLRequest creation");
 
         // Post task to UI thread - CefURLRequest::Create must be called from UI thread
         // Create a simple task that will call our method
         CefPostTask(TID_UI, new URLRequestCreationTask(this, httpRequest, client, context));
-        LogDebug("🌐 Task posted to UI thread successfully");
+        LOG_DEBUG_HTTP("🌐 Task posted to UI thread successfully");
 
     } catch (const std::exception& e) {
-        LogDebug("🌐 Exception caught: " + std::string(e.what()));
+        LOG_DEBUG_HTTP("🌐 Exception caught: " + std::string(e.what()));
     } catch (...) {
-        LogDebug("🌐 Unknown exception caught");
+        LOG_DEBUG_HTTP("🌐 Unknown exception caught");
     }
 }
 
@@ -299,25 +499,25 @@ void AsyncWalletResourceHandler::createURLRequestOnUIThread(AsyncWalletResourceH
                                                            CefRefPtr<CefRequest> httpRequest,
                                                            AsyncHTTPClient* client,
                                                            CefRefPtr<CefRequestContext> context) {
-    LogDebug("🌐 createURLRequestOnUIThread called on UI thread");
+    LOG_DEBUG_HTTP("🌐 createURLRequestOnUIThread called on UI thread");
 
     try {
-        LogDebug("🌐 Creating CefURLRequest on UI thread");
+        LOG_DEBUG_HTTP("🌐 Creating CefURLRequest on UI thread");
         handler->urlRequest_ = CefURLRequest::Create(httpRequest, client, context);
-        LogDebug("🌐 CefURLRequest created successfully on UI thread");
+        LOG_DEBUG_HTTP("🌐 CefURLRequest created successfully on UI thread");
     } catch (const std::exception& e) {
-        LogDebug("🌐 Exception in UI thread: " + std::string(e.what()));
+        LOG_DEBUG_HTTP("🌐 Exception in UI thread: " + std::string(e.what()));
     } catch (...) {
-        LogDebug("🌐 Unknown exception in UI thread");
+        LOG_DEBUG_HTTP("🌐 Unknown exception in UI thread");
     }
 }
 
 HttpRequestInterceptor::HttpRequestInterceptor() {
-    std::cout << "🌐 HttpRequestInterceptor created" << std::endl;
+    LOG_DEBUG_HTTP("🌐 HttpRequestInterceptor created");
 }
 
 HttpRequestInterceptor::~HttpRequestInterceptor() {
-    std::cout << "🌐 HttpRequestInterceptor destroyed" << std::endl;
+    LOG_DEBUG_HTTP("🌐 HttpRequestInterceptor destroyed");
 }
 
 CefRefPtr<CefResourceHandler> HttpRequestInterceptor::GetResourceHandler(
@@ -330,24 +530,23 @@ CefRefPtr<CefResourceHandler> HttpRequestInterceptor::GetResourceHandler(
     std::string url = request->GetURL().ToString();
     std::string method = request->GetMethod().ToString();
 
-    std::cout << "🌐 HTTP Request intercepted: " << method << " " << url << std::endl;
-    LogDebug("🌐 HTTP Request intercepted: " + method + " " + url);
+    LOG_DEBUG_HTTP("🌐 HTTP Request intercepted: " + method + " " + url);
 
-    std::cout << "🌐 About to check if wallet endpoint..." << std::endl;
+    LOG_DEBUG_HTTP("🌐 About to check if wallet endpoint...");
 
     // Check if this is a wallet endpoint
     if (!isWalletEndpoint(url)) {
-        std::cout << "🌐 Not a wallet endpoint, allowing normal processing" << std::endl;
+        LOG_DEBUG_HTTP("🌐 Not a wallet endpoint, allowing normal processing");
         return nullptr; // Let CEF handle it normally
     }
 
-    std::cout << "🌐 Wallet endpoint detected, creating async handler" << std::endl;
+    LOG_DEBUG_HTTP("🌐 Wallet endpoint detected, creating async handler");
 
     // Get request body
     std::string body;
     CefRefPtr<CefPostData> postData = request->GetPostData();
     if (postData) {
-        std::cout << "🌐 Processing POST data..." << std::endl;
+        LOG_DEBUG_HTTP("🌐 Processing POST data...");
         CefPostData::ElementVector elements;
         postData->GetElements(elements);
         for (auto& element : elements) {
@@ -370,17 +569,118 @@ CefRefPtr<CefResourceHandler> HttpRequestInterceptor::GetResourceHandler(
         }
     }
 
-    std::cout << "🌐 Extracted endpoint: " << endpoint << std::endl;
+    LOG_DEBUG_HTTP("🌐 Extracted endpoint: " + endpoint);
+
+    // Log all available frame information
+    LOG_DEBUG_HTTP("🌐 === FRAME DEBUGGING START ===");
+
+    if (frame) {
+        LOG_DEBUG_HTTP("🌐 Frame exists: YES");
+        LOG_DEBUG_HTTP("🌐 Frame URL: " + frame->GetURL().ToString());
+        LOG_DEBUG_HTTP("🌐 Frame Name: " + frame->GetName().ToString());
+        LOG_DEBUG_HTTP("🌐 Frame Identifier: " + frame->GetIdentifier().ToString());
+        LOG_DEBUG_HTTP("🌐 Frame Is Main: " + std::string(frame->IsMain() ? "YES" : "NO"));
+        LOG_DEBUG_HTTP("🌐 Frame Is Valid: " + std::string(frame->IsValid() ? "YES" : "NO"));
+    } else {
+        LOG_DEBUG_HTTP("🌐 Frame exists: NO");
+    }
+
+    if (browser) {
+        LOG_DEBUG_HTTP("🌐 Browser exists: YES");
+        CefRefPtr<CefFrame> mainFrame = browser->GetMainFrame();
+        if (mainFrame) {
+            LOG_DEBUG_HTTP("🌐 Main Frame URL: " + mainFrame->GetURL().ToString());
+            LOG_DEBUG_HTTP("🌐 Main Frame Name: " + mainFrame->GetName().ToString());
+            LOG_DEBUG_HTTP("🌐 Main Frame Identifier: " + mainFrame->GetIdentifier().ToString());
+        } else {
+            LOG_DEBUG_HTTP("🌐 Main Frame: NULL");
+        }
+    } else {
+        LOG_DEBUG_HTTP("🌐 Browser exists: NO");
+    }
+
+    // Log request information
+    LOG_DEBUG_HTTP("🌐 Request URL: " + request->GetURL().ToString());
+    LOG_DEBUG_HTTP("🌐 Request Method: " + request->GetMethod().ToString());
+    LOG_DEBUG_HTTP("🌐 Request Referrer URL: " + request->GetReferrerURL().ToString());
+    LOG_DEBUG_HTTP("🌐 Request Referrer Policy: " + std::to_string(request->GetReferrerPolicy()));
+
+    // Log request headers
+    CefRequest::HeaderMap headers;
+    request->GetHeaderMap(headers);
+    LOG_DEBUG_HTTP("🌐 Request Headers Count: " + std::to_string(headers.size()));
+    for (const auto& header : headers) {
+        LOG_DEBUG_HTTP("🌐 Header: " + header.first.ToString() + " = " + header.second.ToString());
+    }
+
+    LOG_DEBUG_HTTP("🌐 === FRAME DEBUGGING END ===");
+
+    // Extract source domain from the main frame that made the request
+    std::string domain;
+
+    // Use main frame URL as the primary source (most reliable)
+    if (browser) {
+        CefRefPtr<CefFrame> mainFrame = browser->GetMainFrame();
+        if (mainFrame && mainFrame->GetURL().length() > 0) {
+            std::string mainFrameUrl = mainFrame->GetURL().ToString();
+            LOG_DEBUG_HTTP("🌐 Using main frame URL for domain extraction: " + mainFrameUrl);
+            size_t protocolPos = mainFrameUrl.find("://");
+            if (protocolPos != std::string::npos) {
+                size_t domainStart = protocolPos + 3;
+                size_t domainEnd = mainFrameUrl.find("/", domainStart);
+                if (domainEnd != std::string::npos) {
+                    domain = mainFrameUrl.substr(domainStart, domainEnd - domainStart);
+                } else {
+                    domain = mainFrameUrl.substr(domainStart);
+                }
+            }
+        }
+    }
+
+    // Fallback to referrer URL if main frame URL is not available
+    if (domain.empty()) {
+        std::string referrerUrl = request->GetReferrerURL().ToString();
+        if (!referrerUrl.empty()) {
+            LOG_DEBUG_HTTP("🌐 Using referrer URL for domain extraction (fallback): " + referrerUrl);
+            size_t protocolPos = referrerUrl.find("://");
+            if (protocolPos != std::string::npos) {
+                size_t domainStart = protocolPos + 3;
+                size_t domainEnd = referrerUrl.find("/", domainStart);
+                if (domainEnd != std::string::npos) {
+                    domain = referrerUrl.substr(domainStart, domainEnd - domainStart);
+                } else {
+                    domain = referrerUrl.substr(domainStart);
+                }
+            }
+        }
+    }
+
+    // Final fallback: extract from request URL (target domain)
+    if (domain.empty()) {
+        LOG_DEBUG_HTTP("🌐 Using request URL for domain extraction (final fallback): " + url);
+        size_t protocolPos = url.find("://");
+        if (protocolPos != std::string::npos) {
+            size_t domainStart = protocolPos + 3;
+            size_t domainEnd = url.find("/", domainStart);
+            if (domainEnd != std::string::npos) {
+                domain = url.substr(domainStart, domainEnd - domainStart);
+            } else {
+                domain = url.substr(domainStart);
+            }
+        }
+    }
+
+    LOG_DEBUG_HTTP("🌐 Final extracted source domain: " + domain);
 
     if (!endpoint.empty()) {
-        std::cout << "🌐 About to create AsyncWalletResourceHandler..." << std::endl;
+        LOG_DEBUG_HTTP("🌐 About to create AsyncWalletResourceHandler...");
         // Create and return async handler
-        AsyncWalletResourceHandler* handler = new AsyncWalletResourceHandler(method, endpoint, body);
-        std::cout << "🌐 AsyncWalletResourceHandler created successfully" << std::endl;
+        AsyncWalletResourceHandler* handler = new AsyncWalletResourceHandler(method, endpoint, body, domain);
+        LOG_DEBUG_HTTP("🌐 AsyncWalletResourceHandler created successfully");
         return handler;
     }
 
-    std::cout << "🌐 Could not extract endpoint from URL: " << url << std::endl;
+    LOG_DEBUG_HTTP("🌐 Could not extract endpoint from URL: " + url);
     return nullptr;
 }
 
@@ -390,7 +690,7 @@ void HttpRequestInterceptor::OnResourceRedirect(CefRefPtr<CefBrowser> browser,
                                                CefRefPtr<CefResponse> response,
                                                CefString& new_url) {
     CEF_REQUIRE_IO_THREAD();
-    std::cout << "🌐 Resource redirect: " << new_url.ToString() << std::endl;
+    LOG_DEBUG_HTTP("🌐 Resource redirect: " + new_url.ToString());
 }
 
 bool HttpRequestInterceptor::OnResourceResponse(CefRefPtr<CefBrowser> browser,

@@ -1,6 +1,142 @@
 import React, { useState } from 'react';
 import type { BEEFTransaction, AuthChallengeRequest, BEEFAction } from '../bridge/brc100';
 
+interface DomainApprovalModalProps {
+  isOpen: boolean;
+  domain: string;
+  request: {
+    endpoint: string;
+    method: string;
+    purpose: string;
+  };
+  onApprove: (whitelist: boolean, oneTime: boolean) => void;
+  onReject: () => void;
+}
+
+export const DomainApprovalModal: React.FC<DomainApprovalModalProps> = ({
+  isOpen,
+  domain,
+  request,
+  onApprove,
+  onReject
+}) => {
+  const [whitelistDomain, setWhitelistDomain] = useState(true); // Checked by default
+  const [oneTimeOnly, setOneTimeOnly] = useState(false);
+
+  if (!isOpen) return null;
+
+  const handleApprove = () => {
+    onApprove(whitelistDomain, oneTimeOnly);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+        <div className="flex items-center mb-4">
+          <div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center mr-3">
+            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-semibold text-gray-900">Domain Approval</h2>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Requesting Domain
+            </label>
+            <div className="text-sm text-gray-900 bg-gray-50 p-2 rounded border">
+              {domain}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Request Type
+            </label>
+            <div className="text-sm text-gray-900 bg-gray-50 p-2 rounded border">
+              {request.method} {request.endpoint}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Purpose
+            </label>
+            <div className="text-sm text-gray-900 bg-gray-50 p-2 rounded border">
+              {request.purpose}
+            </div>
+          </div>
+
+          {/* Approval Options */}
+          <div className="space-y-3 p-3 bg-blue-50 rounded border">
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="whitelist"
+                checked={whitelistDomain}
+                onChange={(e) => setWhitelistDomain(e.target.checked)}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              />
+              <label htmlFor="whitelist" className="ml-2 text-sm text-gray-700">
+                <span className="font-medium">Add to whitelist</span>
+                <span className="text-gray-500"> - Allow future requests from this domain</span>
+              </label>
+            </div>
+
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="oneTime"
+                checked={oneTimeOnly}
+                onChange={(e) => {
+                  setOneTimeOnly(e.target.checked);
+                  if (e.target.checked) {
+                    setWhitelistDomain(false); // Can't whitelist if one-time only
+                  }
+                }}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              />
+              <label htmlFor="oneTime" className="ml-2 text-sm text-gray-700">
+                <span className="font-medium">One-time only</span>
+                <span className="text-gray-500"> - Allow this request only</span>
+              </label>
+            </div>
+          </div>
+
+          <div className="bg-orange-50 border border-orange-200 rounded p-3">
+            <div className="flex items-start">
+              <svg className="w-5 h-5 text-orange-500 mr-2 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div className="text-sm text-orange-800">
+                <p className="font-medium">Security Notice:</p>
+                <p>Only approve domains you trust. Whitelisted domains can request authentication and transactions from your wallet.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex space-x-3 mt-6">
+          <button
+            onClick={onReject}
+            className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            Reject
+          </button>
+          <button
+            onClick={handleApprove}
+            className="flex-1 px-4 py-2 bg-blue-600 border border-transparent rounded-md text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            Approve
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 interface AuthApprovalModalProps {
   isOpen: boolean;
   request: AuthChallengeRequest & { challenge: string };
@@ -263,6 +399,18 @@ export const useBRC100Modals = () => {
     resolve: null
   });
 
+  const [domainModal, setDomainModal] = useState<{
+    isOpen: boolean;
+    domain: string;
+    request: any;
+    resolve: ((value: { whitelist: boolean; oneTime: boolean }) => void) | null;
+  }>({
+    isOpen: false,
+    domain: '',
+    request: null,
+    resolve: null
+  });
+
   const showAuthApprovalModal = (
     request: AuthChallengeRequest & { challenge: string }
   ): Promise<boolean> => {
@@ -280,6 +428,20 @@ export const useBRC100Modals = () => {
       setTransactionModal({
         isOpen: true,
         transaction,
+        resolve
+      });
+    });
+  };
+
+  const showDomainApprovalModal = (
+    domain: string,
+    request: { method: string; endpoint: string; purpose: string }
+  ): Promise<{ whitelist: boolean; oneTime: boolean }> => {
+    return new Promise((resolve) => {
+      setDomainModal({
+        isOpen: true,
+        domain,
+        request,
         resolve
       });
     });
@@ -313,14 +475,32 @@ export const useBRC100Modals = () => {
     setTransactionModal({ isOpen: false, transaction: null, resolve: null });
   };
 
+  const handleDomainApprove = (whitelist: boolean, oneTime: boolean) => {
+    if (domainModal.resolve) {
+      domainModal.resolve({ whitelist, oneTime });
+    }
+    setDomainModal({ isOpen: false, domain: '', request: null, resolve: null });
+  };
+
+  const handleDomainReject = () => {
+    if (domainModal.resolve) {
+      domainModal.resolve({ whitelist: false, oneTime: false });
+    }
+    setDomainModal({ isOpen: false, domain: '', request: null, resolve: null });
+  };
+
   return {
     authModal,
     transactionModal,
+    domainModal,
     showAuthApprovalModal,
     showTransactionApprovalModal,
+    showDomainApprovalModal,
     handleAuthApprove,
     handleAuthReject,
     handleTransactionApprove,
-    handleTransactionReject
+    handleTransactionReject,
+    handleDomainApprove,
+    handleDomainReject
   };
 };

@@ -13,6 +13,19 @@ import (
 
 // IdentityData removed - replaced with HD wallet system
 
+// CORS middleware to handle cross-origin requests
+func enableCORS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+	// Handle preflight requests
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+}
+
 // AddressData represents a generated address
 type AddressData struct {
 	Address   string `json:"address"`
@@ -94,6 +107,151 @@ func main() {
 	// Setup BRC-100 routes
 	walletService.SetupBRC100Routes()
 
+	// Initialize domain whitelist manager
+	domainWhitelistManager := NewDomainWhitelistManager()
+	fmt.Println("🔒 Domain whitelist manager initialized")
+
+	// Domain whitelist endpoints
+	http.HandleFunc("/domain/whitelist/add", func(w http.ResponseWriter, r *http.Request) {
+		enableCORS(w, r)
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req struct {
+			Domain      string `json:"domain"`
+			IsPermanent bool   `json:"isPermanent"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		if req.Domain == "" {
+			http.Error(w, "Domain is required", http.StatusBadRequest)
+			return
+		}
+
+		if err := domainWhitelistManager.AddToWhitelist(req.Domain, req.IsPermanent); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to add domain to whitelist: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"message": "Domain added to whitelist",
+			"domain":  req.Domain,
+		})
+	})
+
+	http.HandleFunc("/domain/whitelist/check", func(w http.ResponseWriter, r *http.Request) {
+		enableCORS(w, r)
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		domain := r.URL.Query().Get("domain")
+		if domain == "" {
+			http.Error(w, "Domain parameter is required", http.StatusBadRequest)
+			return
+		}
+
+		isWhitelisted := domainWhitelistManager.IsDomainWhitelisted(domain)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"domain":      domain,
+			"whitelisted": isWhitelisted,
+		})
+	})
+
+	http.HandleFunc("/domain/whitelist/record", func(w http.ResponseWriter, r *http.Request) {
+		enableCORS(w, r)
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req struct {
+			Domain string `json:"domain"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		if req.Domain == "" {
+			http.Error(w, "Domain is required", http.StatusBadRequest)
+			return
+		}
+
+		if err := domainWhitelistManager.RecordRequest(req.Domain); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to record request: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"message": "Request recorded",
+		})
+	})
+
+	http.HandleFunc("/domain/whitelist/list", func(w http.ResponseWriter, r *http.Request) {
+		enableCORS(w, r)
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		whitelist := domainWhitelistManager.GetWhitelist()
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"whitelist": whitelist,
+		})
+	})
+
+	http.HandleFunc("/domain/whitelist/remove", func(w http.ResponseWriter, r *http.Request) {
+		enableCORS(w, r)
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req struct {
+			Domain string `json:"domain"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		if req.Domain == "" {
+			http.Error(w, "Domain is required", http.StatusBadRequest)
+			return
+		}
+
+		if err := domainWhitelistManager.RemoveFromWhitelist(req.Domain); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to remove domain from whitelist: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"message": "Domain removed from whitelist",
+			"domain":  req.Domain,
+		})
+	})
+
 	// Setup WebSocket handler for BRC-100 real-time communication
 	wsHandler := websocket.NewBRC100WebSocketHandler()
 	http.HandleFunc("/brc100/ws", wsHandler.HandleWebSocket)
@@ -122,6 +280,7 @@ func main() {
 
 	// Set up HTTP handlers
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		enableCORS(w, r)
 		if r.Method != "GET" {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -265,6 +424,7 @@ func main() {
 
 	// Unified Wallet Management Endpoints
 	http.HandleFunc("/wallet/status", func(w http.ResponseWriter, r *http.Request) {
+		enableCORS(w, r)
 		if r.Method != "GET" {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -555,6 +715,13 @@ func main() {
 	fmt.Println("  POST /brc100/spv/verify - Verify identity with SPV")
 	fmt.Println("  POST /brc100/spv/proof - Create SPV identity proof")
 	fmt.Println("  WS   /brc100/ws - WebSocket for real-time BRC-100 communication")
+	fmt.Println("")
+	fmt.Println("🔒 Domain Whitelist Endpoints:")
+	fmt.Println("  POST /domain/whitelist/add - Add domain to whitelist")
+	fmt.Println("  GET  /domain/whitelist/check?domain=<domain> - Check if domain is whitelisted")
+	fmt.Println("  POST /domain/whitelist/record - Record request from domain")
+	fmt.Println("  GET  /domain/whitelist/list - List all whitelisted domains")
+	fmt.Println("  POST /domain/whitelist/remove - Remove domain from whitelist")
 
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }

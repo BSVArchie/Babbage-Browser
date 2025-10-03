@@ -47,7 +47,7 @@ public:
     void stopDaemon();
     bool isDaemonRunning();
     void setDaemonPath(const std::string& path);
-    
+
     // Public HTTP method for interceptors
     nlohmann::json makeHttpRequestPublic(const std::string& method, const std::string& endpoint, const std::string& body = "");
 

@@ -319,6 +319,16 @@ func handleSelectiveDisclosure(w http.ResponseWriter, r *http.Request, service *
 // Authentication Handlers
 
 func handleAuthChallenge(w http.ResponseWriter, r *http.Request, service *BRC100Service) {
+	// Enable CORS
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	if r.Method != "POST" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -641,6 +651,16 @@ func handleSessionRevoke(w http.ResponseWriter, r *http.Request, service *BRC100
 // BEEF Transaction Handlers
 
 func handleBEEFCreate(w http.ResponseWriter, r *http.Request, service *BRC100Service) {
+	// Enable CORS
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	if r.Method != "POST" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -864,6 +884,16 @@ func handleSPVProof(w http.ResponseWriter, r *http.Request, service *BRC100Servi
 // Status Handler
 
 func handleBRC100Status(w http.ResponseWriter, r *http.Request, service *BRC100Service) {
+	// Enable CORS
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	if r.Method != "GET" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return

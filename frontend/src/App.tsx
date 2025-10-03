@@ -4,7 +4,7 @@ import SettingsOverlayRoot from './pages/SettingsOverlayRoot';
 import WalletOverlayRoot from './pages/WalletOverlayRoot';
 import BackupOverlayRoot from './pages/BackupOverlayRoot';
 import MainBrowserView from './pages/MainBrowserView';
-import { AuthApprovalModal, TransactionApprovalModal, useBRC100Modals } from './components/BRC100Modals';
+import { AuthApprovalModal, TransactionApprovalModal, DomainApprovalModal, useBRC100Modals } from './components/BRC100Modals';
 import { brc100 } from './bridge/brc100';
 // Removed identity types - now using unified wallet system
 
@@ -15,12 +15,16 @@ const App = () => {
   const {
     authModal,
     transactionModal,
+    domainModal,
     showAuthApprovalModal,
     showTransactionApprovalModal,
+    showDomainApprovalModal,
     handleAuthApprove,
     handleAuthReject,
     handleTransactionApprove,
-    handleTransactionReject
+    handleTransactionReject,
+    handleDomainApprove,
+    handleDomainReject
   } = useBRC100Modals();
 
   // Wallet state tracking (currently unused but available for future features)
@@ -28,6 +32,19 @@ const App = () => {
 
   useEffect(() => {
     console.log("🔍 useEffect started");
+
+    // Add global function for C++ to call
+    (window as any).showDomainApprovalModal = (
+      domain: string,
+      method: string,
+      endpoint: string
+    ): Promise<{ whitelist: boolean; oneTime: boolean }> => {
+      return showDomainApprovalModal(domain, {
+        method,
+        endpoint,
+        purpose: 'BRC-100 Authentication'
+      });
+    };
 
     const checkWalletStatus = async () => {
       console.log("🔍 checkWalletStatus started");
@@ -145,6 +162,14 @@ const App = () => {
         transaction={transactionModal.transaction!}
         onApprove={handleTransactionApprove}
         onReject={handleTransactionReject}
+      />
+
+      <DomainApprovalModal
+        isOpen={domainModal.isOpen}
+        domain={domainModal.domain}
+        request={domainModal.request}
+        onApprove={handleDomainApprove}
+        onReject={handleDomainReject}
       />
     </>
   );
