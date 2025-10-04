@@ -233,35 +233,42 @@
 ### **🚀 NEXT DEVELOPMENT PRIORITIES:**
 
 **IMMEDIATE NEXT STEPS (High Priority):**
-1. **BRC-100 AUTHENTICATION FLOW**: Implement complete BRC-100 authentication for external websites
-   - **Current**: Async HTTP client working, need to implement authentication modals
-   - **Goal**: Enable external websites to request BRC-100 authentication
-   - **Impact**: Users can authenticate with BRC-100 compliant applications
-   - **Testing**: Test with real BRC-100 websites and authentication flows
+1. **BRC-100 WALLET INTEGRATION**: Implement HTTP endpoints for BRC-100 websites
+   - **Current**: Domain whitelist system working, need BRC-100 wallet endpoints
+   - **Goal**: Enable external websites to communicate with wallet via port 3301
+   - **Impact**: Users can use wallet with BRC-100 compliant applications
+   - **Implementation**: Change Go daemon port to 3301, add `/getVersion` and `/getPublicKey` endpoints
+   - **Testing**: Test with peerpay.babbage.systems, paymail.us, thryll.online
 
-2. **USER APPROVAL MODALS**: Add security dialogs for sensitive operations
-   - **Current**: HTTP interception working, need user consent system
-   - **Goal**: Show approval dialogs for authentication, identity access, and payments
-   - **Impact**: Secure user experience with proper consent mechanisms
-   - **Implementation**: React modals with user approval logic
+2. **PORT CONFIGURATION**: Change Go daemon from port 8080 to 3301
+   - **Current**: Go daemon listening on port 8080
+   - **Goal**: Listen on standard BRC-100 port 3301
+   - **Impact**: BRC-100 sites can discover and communicate with wallet
+   - **Implementation**: Update `go-wallet/main.go` and HTTP interceptor
 
-3. **JSON VALIDATION & DOMAIN VERIFICATION**: Add security enhancements
-   - **Current**: Basic HTTP relay working, need security hardening
-   - **Goal**: Validate requests and verify requesting domains
+3. **BRC-100 ENDPOINTS**: Add `/getVersion`, `/getPublicKey`, `/createAction` endpoints
+   - **Current**: Go daemon running, need BRC-100 specific endpoints
+   - **Goal**: Implement standard BRC-100 wallet interface
+   - **Impact**: Compatible with existing BRC-100 websites
+   - **Implementation**: Go daemon HTTP handlers with proper CORS and domain checking
+
+4. **DOMAIN WHITELIST INTEGRATION**: Secure domain verification for BRC-100 requests
+   - **Current**: Domain whitelist system working, need BRC-100 integration
+   - **Goal**: Check domain whitelist for all BRC-100 requests
    - **Impact**: Enhanced security and protection against malicious requests
-   - **Implementation**: Request validation and domain whitelist system
+   - **Implementation**: Domain checking in BRC-100 endpoint handlers
 
-4. **BRC-100 STANDARD COMPLIANCE**: Ensure full BRC-100 protocol compliance
-   - **Current**: HTTP interception working, need to verify BRC-100 standards
-   - **Goal**: Full compliance with BRC-100 specification
-   - **Impact**: Compatible with all BRC-100 applications
-   - **Testing**: Test with official BRC-100 test suites and applications
+5. **AUTHENTICATION FLOW FIX**: Update BRC-100 challenge/authenticate endpoints
+   - **Current**: We create challenges, sites expect us to sign their challenges
+   - **Goal**: Sign site-provided challenges instead of creating our own
+   - **Impact**: Proper BRC-100 authentication flow
+   - **Implementation**: Update `handleAuthChallenge` to sign site's challenge
 
-5. **PRODUCTION SECURITY FEATURES**: Implement production-ready security
-   - **Current**: Basic functionality working, need production hardening
-   - **Goal**: Rate limiting, request logging, advanced CORS
-   - **Impact**: Production-ready security for public release
-   - **Implementation**: Comprehensive security feature set
+6. **REAL-WORLD TESTING**: Test with actual BRC-100 websites
+   - **Current**: Test page working, need real website testing
+   - **Goal**: Verify compatibility with existing BRC-100 applications
+   - **Impact**: Confirmed working integration with real applications
+   - **Testing**: Test with peerpay.babbage.systems, paymail.us, thryll.online
 
 **✅ COMPLETED (Current Session - 2025-10-02):**
 - **C++ WALLET SERVICE CONNECTION**: ✅ **COMPLETE** - Fixed connection to Go daemon, app no longer crashes
@@ -308,28 +315,29 @@ External Website → HTTP Request → CEF Interceptor → UI Thread Task → Go 
 
 This breakthrough enables the foundation for BRC-100 authentication and external website integration.
 
-### **🎯 NEXT MAJOR FEATURE: BRC-100 AUTHENTICATION SYSTEM**
+### **🎯 NEXT MAJOR FEATURE: BRC-100 WALLET INTEGRATION**
 
 **Overview:**
-The next major development phase focuses on implementing BRC-100 authentication protocol to enable seamless authentication and transactions with Bitcoin SV applications. This will transform the browser from a standalone wallet into a comprehensive Bitcoin SV application platform.
+The next major development phase focuses on implementing BRC-100 wallet integration to enable seamless communication with Bitcoin SV applications. This will transform the browser from a standalone wallet into a comprehensive Bitcoin SV application platform.
 
 **Key Goals:**
-- **App Authentication**: Enable users to authenticate with BRC-100 compliant applications
-- **Identity Management**: Implement selective disclosure identity certificates (BRC-52/103)
-- **Project Babbage Integration**: Leverage existing identity infrastructure
-- **BEEF Transaction Support**: Add atomic transaction construction and verification
-- **Real-World Testing**: Test with applications on metanetapps.com
+- **HTTP JSON-RPC Endpoints**: Add `/getVersion`, `/getPublicKey`, `/createAction` endpoints
+- **Port 3301/3321 Servers**: Enable communication with BRC-100 websites
+- **Domain Whitelist Integration**: Secure domain verification for BRC-100 requests
+- **Authentication Modal**: User approval system for BRC-100 authentication
+- **Real-World Testing**: Test with peerpay.babbage.systems, paymail.us, thryll.online
 
 **Implementation Phases:**
-1. **Phase 1**: Go daemon BRC-100 foundation (identity, authentication, key derivation) ✅ **COMPLETED**
-2. **Phase 2**: BEEF transaction support and SPV verification 🎯 **CURRENT**
-3. **Phase 3**: Browser integration and frontend components
-4. **Phase 4**: Real-world testing with Metanet applications
+1. **Phase 1**: Go daemon HTTP JSON-RPC endpoints (getVersion, getPublicKey, createAction) 🎯 **CURRENT**
+2. **Phase 2**: Domain whitelist integration and security
+3. **Phase 3**: Frontend authentication modal integration
+4. **Phase 4**: Real-world testing with BRC-100 websites
 
 **Detailed Plan:**
-See comprehensive implementation roadmap in `BRC100_IMPLEMENTATION_PLAN.md`, including:
+See comprehensive implementation roadmap in `BRC100_WALLET_INTEGRATION_PLAN.md`, including:
 - Technical architecture and file structure
-- Project Babbage integration strategy
+- HTTP JSON-RPC endpoint implementation
+- Domain whitelist integration strategy
 - Step-by-step implementation guide
 - Testing and validation approach
 - Success metrics and risk mitigation
@@ -374,11 +382,15 @@ See comprehensive implementation roadmap in `BRC100_IMPLEMENTATION_PLAN.md`, inc
 - **✅ Blockchain Integration**: Real transaction fetching and confirmation verification working
 - **✅ Address Integration**: Authentication uses real wallet address (1MBdcYaWTB3dYByNV3dBoLxkz6ibgv6Hmv)
 
-**🎯 TOMORROW'S FOCUS:**
-Continue with Phase 2 implementation:
-- **Step 2.4**: Implement real Merkle proof fetching from blockchain APIs
-- **Step 2.5**: Add WebSocket support for real-time BRC-100 communication
-- **Step 2.6**: Test complete BRC-100 flow with real BSV testnet transactions
+**🎯 CURRENT FOCUS: BRC-100 WALLET INTEGRATION**
+Based on console logs from real BRC-100 sites, we need to implement:
+- **Port 3301**: Change Go daemon to listen on standard BRC-100 port
+- **getVersion Endpoint**: Return wallet capabilities and version
+- **getPublicKey Endpoint**: Return current wallet's public key
+- **Domain Whitelist**: Check domain whitelist for all BRC-100 requests
+- **Authentication Flow**: Fix challenge/authenticate endpoints to sign site's challenges
+
+**Implementation Plan**: See `BRC100_WALLET_INTEGRATION_PLAN.md` for detailed step-by-step guide
 
 **📁 KEY FILES MODIFIED:**
 - `go-wallet/hd_wallet.go` - Extended with BRC-100 data structures and methods

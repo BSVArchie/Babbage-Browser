@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import SettingsPanelLayout from '../components/panels/SettingsPanelLayout';
+import BRC100AuthModal from '../components/BRC100AuthModal';
 
 const SettingsOverlayRoot: React.FC = () => {
   const [settingsOpen, setSettingsOpen] = useState(true);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authRequest, setAuthRequest] = useState<any>(null);
 
   useEffect(() => {
     console.log("🔧 SettingsOverlayRoot mounted");
@@ -28,9 +31,40 @@ const SettingsOverlayRoot: React.FC = () => {
         setSettingsOpen(true);
       }
     };
+
+    // Check for pending BRC-100 auth request
+    const pendingAuthRequest = (window as any).pendingBRC100AuthRequest;
+    if (pendingAuthRequest) {
+      console.log("🔐 BRC-100 auth request found, showing modal");
+      setAuthRequest({
+        domain: pendingAuthRequest.domain,
+        appId: pendingAuthRequest.domain,
+        purpose: 'Authentication Request',
+        challenge: pendingAuthRequest.body,
+        sessionDuration: 30,
+        permissions: ['Access identity certificate']
+      });
+      setAuthModalOpen(true);
+      // Clear the pending request
+      (window as any).pendingBRC100AuthRequest = null;
+    }
   }, []);
 
-  console.log("🔧 SettingsOverlayRoot render - settingsOpen:", settingsOpen);
+  const handleAuthApprove = (whitelist: boolean) => {
+    console.log('🔐 BRC-100 Auth approved, whitelist:', whitelist);
+    setAuthModalOpen(false);
+    // TODO: Send response back to HTTP interceptor
+    // TODO: Close overlay window
+  };
+
+  const handleAuthReject = () => {
+    console.log('🔐 BRC-100 Auth rejected');
+    setAuthModalOpen(false);
+    // TODO: Send response back to HTTP interceptor
+    // TODO: Close overlay window
+  };
+
+  console.log("🔧 SettingsOverlayRoot render - settingsOpen:", settingsOpen, "authModalOpen:", authModalOpen);
 
   return (
     <>
@@ -44,6 +78,15 @@ const SettingsOverlayRoot: React.FC = () => {
           window.cefMessage?.send('overlay_close', []);
         }}
       />
+      {authRequest && (
+        <BRC100AuthModal
+          open={authModalOpen}
+          onClose={() => setAuthModalOpen(false)}
+          onApprove={handleAuthApprove}
+          onReject={handleAuthReject}
+          request={authRequest}
+        />
+      )}
     </>
   );
 };

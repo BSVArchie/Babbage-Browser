@@ -27,8 +27,30 @@ if (!window.bitcoinBrowser.overlay?.show) {
   window.bitcoinBrowser.overlay.show = () => {
     console.log("🧠 JS: Sending overlay_show to native");
     console.log("Bridge is executing from URL:", window.location.href);
-    window.cefMessage?.send('overlay_show', []);
+
+    // Check if there's a pending BRC-100 auth request
+    const pendingAuth = (window as any).pendingBRC100AuthRequest;
+    if (pendingAuth) {
+      console.log("🔐 Found pending BRC-100 auth request, sending overlay_show_brc100_auth");
+      window.cefMessage?.send('overlay_show_brc100_auth', [
+        pendingAuth.domain,
+        pendingAuth.method,
+        pendingAuth.endpoint,
+        pendingAuth.body
+      ]);
+      // Clear the pending request
+      (window as any).pendingBRC100AuthRequest = null;
+    } else {
+      console.log("🔐 No pending auth request, sending overlay_show_settings");
+      window.cefMessage?.send('overlay_show_settings', []);
+    }
   };
+
+  window.bitcoinBrowser.overlay.close = () => {
+    console.log("🧠 JS: Sending overlay_close to native");
+    window.cefMessage?.send('overlay_close', []);
+  };
+
 } else {
   // Check if this is our injected method (uses chrome.runtime.sendMessage)
   const methodString = window.bitcoinBrowser.overlay.show.toString();
@@ -358,5 +380,6 @@ if (!window.bitcoinBrowser.wallet) {
     }
   };
 }
+
 
 // overlayPanel methods removed - now using process-per-overlay architecture

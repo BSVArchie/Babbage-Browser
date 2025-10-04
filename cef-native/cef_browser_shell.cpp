@@ -44,6 +44,7 @@ HINSTANCE g_hInstance = nullptr;
 HWND g_settings_overlay_hwnd = nullptr;
 HWND g_wallet_overlay_hwnd = nullptr;
 HWND g_backup_overlay_hwnd = nullptr;
+HWND g_brc100_auth_overlay_hwnd = nullptr;
 
 // Log levels
 enum class LogLevel {
@@ -195,6 +196,7 @@ void ShutdownApplication() {
     CefRefPtr<CefBrowser> settings_browser = SimpleHandler::GetSettingsBrowser();
     CefRefPtr<CefBrowser> wallet_browser = SimpleHandler::GetWalletBrowser();
     CefRefPtr<CefBrowser> backup_browser = SimpleHandler::GetBackupBrowser();
+    CefRefPtr<CefBrowser> brc100_auth_browser = SimpleHandler::GetBRC100AuthBrowser();
 
     if (header_browser) {
         LOG_INFO("🔄 Closing header browser...");
@@ -221,6 +223,11 @@ void ShutdownApplication() {
         backup_browser->GetHost()->CloseBrowser(false);
     }
 
+    if (brc100_auth_browser) {
+        LOG_INFO("🔄 Closing BRC-100 auth browser...");
+        brc100_auth_browser->GetHost()->CloseBrowser(false);
+    }
+
     // Step 2: Destroy overlay windows
     LOG_INFO("🔄 Destroying overlay windows...");
     if (g_settings_overlay_hwnd && IsWindow(g_settings_overlay_hwnd)) {
@@ -239,6 +246,12 @@ void ShutdownApplication() {
         LOG_INFO("🔄 Destroying backup overlay window...");
         DestroyWindow(g_backup_overlay_hwnd);
         g_backup_overlay_hwnd = nullptr;
+    }
+
+    if (g_brc100_auth_overlay_hwnd && IsWindow(g_brc100_auth_overlay_hwnd)) {
+        LOG_INFO("🔄 Destroying BRC-100 auth overlay window...");
+        DestroyWindow(g_brc100_auth_overlay_hwnd);
+        g_brc100_auth_overlay_hwnd = nullptr;
     }
 
     // Step 3: Destroy main windows (child windows first)
@@ -691,6 +704,69 @@ LRESULT CALLBACK BackupOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
     return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
+LRESULT CALLBACK BRC100AuthOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+        case WM_MOUSEACTIVATE:
+            LOG_DEBUG("👆 BRC-100 Auth Overlay HWND received WM_MOUSEACTIVATE");
+            return MA_ACTIVATE;
+
+        case WM_LBUTTONDOWN: {
+            LOG_DEBUG("🖱️ BRC-100 Auth Overlay received WM_LBUTTONDOWN");
+            SetFocus(hwnd);
+            POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+            CefMouseEvent mouse_event;
+            mouse_event.x = pt.x;
+            mouse_event.y = pt.y;
+            mouse_event.modifiers = 0;
+            CefRefPtr<CefBrowser> auth_browser = SimpleHandler::GetBRC100AuthBrowser();
+            if (auth_browser) {
+                auth_browser->GetHost()->SendMouseClickEvent(mouse_event, MBT_LEFT, false, 1);
+                auth_browser->GetHost()->SendMouseClickEvent(mouse_event, MBT_LEFT, true, 1);
+                LOG_DEBUG("🧠 Left-click sent to BRC-100 auth overlay browser");
+            } else {
+                LOG_DEBUG("⚠️ No BRC-100 auth overlay browser to send left-click");
+            }
+            return 0;
+        }
+
+        case WM_RBUTTONDOWN: {
+            LOG_DEBUG("🖱️ BRC-100 Auth Overlay received WM_RBUTTONDOWN");
+            SetFocus(hwnd);
+            POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+            CefMouseEvent mouse_event;
+            mouse_event.x = pt.x;
+            mouse_event.y = pt.y;
+            mouse_event.modifiers = 0;
+            CefRefPtr<CefBrowser> auth_browser = SimpleHandler::GetBRC100AuthBrowser();
+            if (auth_browser) {
+                auth_browser->GetHost()->SendMouseClickEvent(mouse_event, MBT_RIGHT, false, 1);
+                auth_browser->GetHost()->SendMouseClickEvent(mouse_event, MBT_RIGHT, true, 1);
+                LOG_DEBUG("🧠 Right-click sent to BRC-100 auth overlay browser");
+            } else {
+                LOG_DEBUG("⚠️ No BRC-100 auth overlay browser to send right-click");
+            }
+            return 0;
+        }
+
+        case WM_CLOSE:
+            LOG_DEBUG("❌ BRC-100 Auth Overlay received WM_CLOSE - destroying window");
+            DestroyWindow(hwnd);
+            return 0;
+
+        case WM_DESTROY:
+            LOG_DEBUG("❌ BRC-100 Auth Overlay received WM_DESTROY - cleaning up");
+            return 0;
+
+        case WM_ACTIVATE:
+            LOG_DEBUG("⚡ BRC-100 Auth HWND activated with state: " + std::to_string(LOWORD(wParam)));
+            break;
+
+        case WM_WINDOWPOSCHANGING:
+            break;
+    }
+    return DefWindowProc(hwnd, msg, wParam, lParam);
+}
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     g_hInstance = hInstance;
     CefMainArgs main_args(hInstance);
@@ -775,6 +851,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
 
     if (!RegisterClass(&backupOverlayClass)) {
         LOG_DEBUG("❌ Failed to register backup overlay window class. Error: " + std::to_string(GetLastError()));
+    }
+
+    // Register BRC-100 auth overlay window class
+    WNDCLASS brc100AuthOverlayClass = {};
+    brc100AuthOverlayClass.lpfnWndProc = BRC100AuthOverlayWndProc;  // ✅ BRC-100 auth-specific message handler
+    brc100AuthOverlayClass.hInstance = hInstance;
+    brc100AuthOverlayClass.lpszClassName = L"CEFBRC100AuthOverlayWindow";
+
+    if (!RegisterClass(&brc100AuthOverlayClass)) {
+        LOG_DEBUG("❌ Failed to register BRC-100 auth overlay window class. Error: " + std::to_string(GetLastError()));
     }
 
     HWND hwnd = CreateWindow(L"BitcoinBrowserWndClass", L"Bitcoin Browser / Babbage Browser",

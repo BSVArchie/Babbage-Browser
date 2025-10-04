@@ -292,6 +292,33 @@ bool SimpleRenderProcessHandler::OnProcessMessageReceived(
     std::cout << "🔍 Frame URL: " << frame->GetURL().ToString() << std::endl;
     std::cout << "🔍 Source Process: " << source_process << std::endl;
 
+        if (message_name == "brc100_auth_request") {
+            CefRefPtr<CefListValue> args = message->GetArgumentList();
+            std::string domain = args->GetString(0);
+            std::string method = args->GetString(1);
+            std::string endpoint = args->GetString(2);
+            std::string body = args->GetString(3);
+
+            LOG_DEBUG_RENDER("🔐 BRC-100 auth request received: " + domain + " " + method + " " + endpoint);
+            
+            // Send message to React component
+            std::string js = R"(
+                window.dispatchEvent(new MessageEvent('message', {
+                    data: {
+                        type: 'brc100_auth_request',
+                        payload: {
+                            domain: ')" + domain + R"(',
+                            method: ')" + method + R"(',
+                            endpoint: ')" + endpoint + R"(',
+                            body: ')" + body + R"('
+                        }
+                    }
+                }));
+            )";
+            frame->ExecuteJavaScript(js, frame->GetURL(), 0);
+            return true;
+        }
+
         if (message_name == "address_generate_response") {
             CefRefPtr<CefListValue> args = message->GetArgumentList();
             std::string addressDataJson = args->GetString(0);

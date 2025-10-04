@@ -17,12 +17,14 @@ extern HWND g_webview_hwnd;
 extern HWND g_settings_overlay_hwnd;
 extern HWND g_wallet_overlay_hwnd;
 extern HWND g_backup_overlay_hwnd;
+extern HWND g_brc100_auth_overlay_hwnd;
 
 // globals.h
 extern HINSTANCE g_hInstance;
 
 // Global functions
 void CreateSettingsOverlayWithSeparateProcess(HINSTANCE hInstance);
+void CreateBRC100AuthOverlayWithSeparateProcess(HINSTANCE hInstance);
 
 
 class SimpleApp : public CefApp,

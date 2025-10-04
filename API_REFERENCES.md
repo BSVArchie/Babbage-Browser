@@ -47,6 +47,42 @@ window.bitcoinBrowser.identity.markBackedUp(): Promise<boolean>
 window.bitcoinBrowser.identity.authenticate(challenge: string): Promise<AuthResponse>
 ```
 
+## 🔐 BRC-100 Wallet Integration APIs 🎯 IN DEVELOPMENT
+
+### BRC-100 Wallet Interface (Ports 3301/3321)
+```
+BRC-100 Website → HTTP POST → localhost:3301/3321 → Go Wallet Daemon → Response
+```
+
+### Planned Endpoints:
+- `GET /getVersion` - Get wallet version and capabilities
+- `GET /getPublicKey` - Get wallet's public key for BRC-100 operations
+- `POST /createAction` - Create BRC-100 actions (transfers, etc.)
+- `POST /signAction` - Sign BRC-100 actions
+- `POST /processAction` - Process completed BRC-100 actions
+
+### Expected Response Format:
+```json
+{
+  "version": "BitcoinBrowserWallet v0.0.1",
+  "capabilities": ["getVersion", "getPublicKey", "createAction", "signAction", "processAction"],
+  "brc100": true,
+  "timestamp": "2024-01-01T00:00:00Z"
+}
+```
+
+### Security Features:
+- **Domain Whitelist**: All BRC-100 requests checked against domain whitelist
+- **User Approval**: Authentication modal for non-whitelisted domains
+- **CORS Support**: Proper cross-origin headers for external websites
+- **Request Validation**: JSON validation and domain verification
+
+### Implementation Status:
+- **Phase 1**: HTTP JSON-RPC endpoints (getVersion, getPublicKey, createAction) 🎯 **CURRENT**
+- **Phase 2**: Domain whitelist integration and security
+- **Phase 3**: Frontend authentication modal integration
+- **Phase 4**: Real-world testing with BRC-100 websites
+
 ## 🔐 BRC-100 Authentication APIs ✅ PRODUCTION READY
 
 ### Identity Certificate Management

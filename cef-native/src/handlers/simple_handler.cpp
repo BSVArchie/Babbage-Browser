@@ -28,6 +28,8 @@ public:
 #define LOG_DEBUG_BROWSER(msg) Logger::Log(msg, 0, 2)
 #define LOG_INFO_BROWSER(msg) Logger::Log(msg, 1, 2)
 #define LOG_WARNING_BROWSER(msg) Logger::Log(msg, 2, 2)
+
+#include "../../include/core/PendingAuthRequest.h"
 #define LOG_ERROR_BROWSER(msg) Logger::Log(msg, 3, 2)
 
 extern void CreateTestOverlayWithSeparateProcess(HINSTANCE hInstance);
@@ -70,6 +72,7 @@ CefRefPtr<CefBrowser> SimpleHandler::overlay_browser_ = nullptr;
 CefRefPtr<CefBrowser> SimpleHandler::settings_browser_ = nullptr;
 CefRefPtr<CefBrowser> SimpleHandler::wallet_browser_ = nullptr;
 CefRefPtr<CefBrowser> SimpleHandler::backup_browser_ = nullptr;
+CefRefPtr<CefBrowser> SimpleHandler::brc100_auth_browser_ = nullptr;
 CefRefPtr<CefBrowser> SimpleHandler::GetOverlayBrowser() {
     return overlay_browser_;
 }
@@ -89,6 +92,10 @@ CefRefPtr<CefBrowser> SimpleHandler::GetWalletBrowser() {
 }
 CefRefPtr<CefBrowser> SimpleHandler::GetBackupBrowser() {
     return backup_browser_;
+}
+
+CefRefPtr<CefBrowser> SimpleHandler::GetBRC100AuthBrowser() {
+    return brc100_auth_browser_;
 }
 
 void SimpleHandler::TriggerDeferredPanel(const std::string& panel) {
@@ -145,6 +152,15 @@ void SimpleHandler::OnLoadingStateChange(CefRefPtr<CefBrowser> browser,
                                          bool canGoForward) {
         LOG_DEBUG_BROWSER("📡 Loading state for role " + role_ + ": " + (isLoading ? "loading..." : "done"));
 
+        // Special debug for BRC-100 auth overlay
+        if (role_ == "brc100auth") {
+            LOG_DEBUG_BROWSER("🔐 BRC-100 AUTH Loading state: " + std::string(isLoading ? "loading..." : "done"));
+            LOG_DEBUG_BROWSER("🔐 BRC-100 AUTH Browser ID: " + std::to_string(browser->GetIdentifier()));
+            LOG_DEBUG_BROWSER("🔐 BRC-100 AUTH URL: " + browser->GetMainFrame()->GetURL().ToString());
+            LOG_DEBUG_BROWSER("🔐 BRC-100 AUTH Can go back: " + std::string(canGoBack ? "true" : "false"));
+            LOG_DEBUG_BROWSER("🔐 BRC-100 AUTH Can go forward: " + std::string(canGoForward ? "true" : "false"));
+        }
+
     if (role_ == "overlay") {
         LOG_DEBUG_BROWSER("📡 Overlay URL: " + browser->GetMainFrame()->GetURL().ToString());
     }
@@ -179,6 +195,19 @@ void SimpleHandler::OnLoadingStateChange(CefRefPtr<CefBrowser> browser,
 
             extern void InjectBitcoinBrowserAPI(CefRefPtr<CefBrowser> browser);
             InjectBitcoinBrowserAPI(browser);
+        } else if (role_ == "brc100auth") {
+            // Inject the bitcoinBrowser API into BRC-100 auth browser
+            LOG_DEBUG_BROWSER("🔧 BRC-100 AUTH BROWSER LOADED - Injecting bitcoinBrowser API");
+
+            extern void InjectBitcoinBrowserAPI(CefRefPtr<CefBrowser> browser);
+            InjectBitcoinBrowserAPI(browser);
+
+            // Send pending auth request data to the overlay after React app loads
+            // Add a small delay to ensure React is fully mounted
+            CefPostDelayedTask(TID_UI, base::BindOnce([]() {
+                extern void sendAuthRequestDataToOverlay();
+                sendAuthRequestDataToOverlay();
+            }), 500);
         }
 
         // Overlay-specific logic
@@ -237,6 +266,11 @@ void SimpleHandler::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
         backup_browser_ = browser;
         LOG_DEBUG_BROWSER("💾 Backup browser initialized.");
         LOG_DEBUG_BROWSER("💾 Backup browser initialized. ID: " + std::to_string(browser->GetIdentifier()));
+    } else if (role_ == "brc100auth") {
+        brc100_auth_browser_ = browser;
+        LOG_DEBUG_BROWSER("🔐 BRC-100 Auth browser initialized.");
+        LOG_DEBUG_BROWSER("🔐 BRC-100 Auth browser initialized. ID: " + std::to_string(browser->GetIdentifier()));
+        LOG_DEBUG_BROWSER("🔐 BRC-100 Auth browser main frame URL: " + browser->GetMainFrame()->GetURL().ToString());
     }
 
     LOG_DEBUG_BROWSER("🧭 Browser Created → role: " + role_ + ", ID: " + std::to_string(browser->GetIdentifier()) + ", IsPopup: " + (browser->IsPopup() ? "true" : "false") + ", MainFrame URL: " + browser->GetMainFrame()->GetURL().ToString());
@@ -729,6 +763,11 @@ bool SimpleHandler::OnProcessMessageReceived(
             target_hwnd = FindWindow(L"CEFBackupOverlayWindow", L"Backup Overlay");
             target_browser = GetBackupBrowser();
             LOG_DEBUG_BROWSER("✅ Found backup overlay window: " + std::to_string(reinterpret_cast<uintptr_t>(target_hwnd)));
+        } else if (role_ == "brc100auth") {
+            extern HWND g_brc100_auth_overlay_hwnd;
+            target_hwnd = g_brc100_auth_overlay_hwnd;
+            target_browser = GetBRC100AuthBrowser();
+            LOG_DEBUG_BROWSER("✅ Found BRC-100 auth overlay window: " + std::to_string(reinterpret_cast<uintptr_t>(target_hwnd)));
         }
 
         if (target_hwnd && IsWindow(target_hwnd)) {
@@ -742,6 +781,7 @@ bool SimpleHandler::OnProcessMessageReceived(
                 if (role_ == "settings") settings_browser_ = nullptr;
                 else if (role_ == "wallet") wallet_browser_ = nullptr;
                 else if (role_ == "backup") backup_browser_ = nullptr;
+                else if (role_ == "brc100auth") brc100_auth_browser_ = nullptr;
             }
 
             // Then destroy the window
@@ -791,6 +831,186 @@ bool SimpleHandler::OnProcessMessageReceived(
         CreateSettingsOverlayWithSeparateProcess(g_hInstance);
         return true;
     }
+
+    if (message_name == "overlay_show_brc100_auth") {
+        LOG_DEBUG_BROWSER("🔐 overlay_show_brc100_auth message received from role: " + role_);
+
+        // Extract auth request data from message
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        if (args && args->GetSize() >= 4) {
+            std::string domain = args->GetString(0).ToString();
+            std::string method = args->GetString(1).ToString();
+            std::string endpoint = args->GetString(2).ToString();
+            std::string body = args->GetString(3).ToString();
+
+            LOG_DEBUG_BROWSER("🔐 Auth request data - Domain: " + domain + ", Method: " + method + ", Endpoint: " + endpoint);
+
+            // Store auth request data for the overlay to use
+            extern void storePendingAuthRequest(const std::string& domain, const std::string& method, const std::string& endpoint, const std::string& body);
+            storePendingAuthRequest(domain, method, endpoint, body);
+        }
+
+        LOG_DEBUG_BROWSER("🔐 Creating BRC-100 auth overlay with separate process");
+        // Create new process for BRC-100 auth overlay
+        extern HINSTANCE g_hInstance;
+        CreateBRC100AuthOverlayWithSeparateProcess(g_hInstance);
+        return true;
+    }
+
+    if (message_name == "overlay_hide") {
+        LOG_DEBUG_BROWSER("🪟 overlay_hide message received from role: " + role_);
+
+        // Close the BRC-100 auth overlay window
+        HWND auth_hwnd = FindWindow(L"CEFBRC100AuthOverlayWindow", L"BRC-100 Auth Overlay");
+        LOG_DEBUG_BROWSER("🪟 FindWindow result: " + std::to_string((uintptr_t)auth_hwnd));
+        if (auth_hwnd) {
+            LOG_DEBUG_BROWSER("🪟 Closing BRC-100 auth overlay window");
+            DestroyWindow(auth_hwnd);
+        } else {
+            LOG_DEBUG_BROWSER("🪟 BRC-100 auth overlay window not found");
+        }
+        return true;
+    }
+
+    if (message_name == "brc100_auth_response") {
+        LOG_DEBUG_BROWSER("🔐 brc100_auth_response message received from role: " + role_);
+
+        // Extract response data from JSON
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        LOG_DEBUG_BROWSER("🔐 Auth response args size: " + std::to_string(args ? args->GetSize() : 0));
+        if (args && args->GetSize() > 0) {
+            std::string responseJson = args->GetString(0).ToString();
+            LOG_DEBUG_BROWSER("🔐 Auth response JSON: " + responseJson);
+
+            // Parse JSON response
+            try {
+                nlohmann::json responseData = nlohmann::json::parse(responseJson);
+                bool approved = responseData["approved"];
+                bool whitelist = responseData["whitelist"];
+
+                LOG_DEBUG_BROWSER("🔐 Auth response - Approved: " + std::to_string(approved) + ", Whitelist: " + std::to_string(whitelist));
+
+                if (approved) {
+                    // User approved the authentication request
+                    LOG_DEBUG_BROWSER("🔐 User approved auth request, generating authentication response");
+
+                    // Get the pending auth request data from the HTTP interceptor
+                    if (g_pendingAuthRequest.isValid) {
+                        LOG_DEBUG_BROWSER("🔐 Found pending auth request, generating response for: " + g_pendingAuthRequest.domain);
+
+                        // Create HTTP request to generate authentication response
+                        CefRefPtr<CefRequest> cefRequest = CefRequest::Create();
+                        cefRequest->SetURL("http://localhost:8080" + g_pendingAuthRequest.endpoint);
+                        cefRequest->SetMethod(g_pendingAuthRequest.method);
+                        cefRequest->SetHeaderByName("Content-Type", "application/json", true);
+
+                        // Set the original request body
+                        if (!g_pendingAuthRequest.body.empty()) {
+                            CefRefPtr<CefPostData> postData = CefPostData::Create();
+                            CefRefPtr<CefPostDataElement> element = CefPostDataElement::Create();
+                            element->SetToBytes(g_pendingAuthRequest.body.length(), g_pendingAuthRequest.body.c_str());
+                            postData->AddElement(element);
+                            cefRequest->SetPostData(postData);
+                        }
+
+                        // Create a handler to process the authentication response
+                        class AuthResponseHandler : public CefURLRequestClient {
+                        public:
+                            AuthResponseHandler(CefRefPtr<CefResourceHandler> originalHandler) : originalHandler_(originalHandler) {}
+
+                            void OnRequestComplete(CefRefPtr<CefURLRequest> request) override {
+                                CefURLRequest::Status status = request->GetRequestStatus();
+                                if (status == UR_SUCCESS) {
+                                    LOG_DEBUG_BROWSER("🔐 Authentication response generated successfully");
+
+                                    // Send the response back to the original HTTP request
+                                    if (!responseData_.empty()) {
+                                        LOG_DEBUG_BROWSER("🔐 Sending auth response back to original request: " + responseData_);
+
+                                        // Call the handleAuthResponse function in HttpRequestInterceptor
+                                        extern void handleAuthResponse(const std::string& responseData);
+                                        handleAuthResponse(responseData_);
+                                    }
+                                } else {
+                                    LOG_DEBUG_BROWSER("🔐 Failed to generate authentication response (status: " + std::to_string(status) + ")");
+                                }
+                            }
+
+                            void OnDownloadData(CefRefPtr<CefURLRequest> request, const void* data, size_t data_length) override {
+                                // Store the response data
+                                responseData_.append(static_cast<const char*>(data), data_length);
+                            }
+
+                            void OnUploadProgress(CefRefPtr<CefURLRequest> request, int64_t current, int64_t total) override {}
+                            void OnDownloadProgress(CefRefPtr<CefURLRequest> request, int64_t current, int64_t total) override {}
+                            bool GetAuthCredentials(bool isProxy, const CefString& host, int port, const CefString& realm, const CefString& scheme, CefRefPtr<CefAuthCallback> callback) override { return false; }
+
+                        private:
+                            std::string responseData_;
+                            CefRefPtr<CefResourceHandler> originalHandler_;
+                            IMPLEMENT_REFCOUNTING(AuthResponseHandler);
+                            DISALLOW_COPY_AND_ASSIGN(AuthResponseHandler);
+                        };
+
+                        // Make the HTTP request to generate the authentication response
+                        CefRefPtr<CefURLRequest> authRequest = CefURLRequest::Create(
+                            cefRequest,
+                            new AuthResponseHandler(g_pendingAuthRequest.handler),
+                            nullptr
+                        );
+
+                        LOG_DEBUG_BROWSER("🔐 Authentication request sent to Go daemon");
+
+                        // Don't clear the pending request here - it will be cleared in handleAuthResponse
+                    } else {
+                        LOG_DEBUG_BROWSER("🔐 No pending auth request found");
+                    }
+                } else {
+                    // User rejected the authentication request
+                    LOG_DEBUG_BROWSER("🔐 User rejected auth request");
+
+                    // Clear the pending request
+                    g_pendingAuthRequest.isValid = false;
+                }
+            } catch (const std::exception& e) {
+                LOG_DEBUG_BROWSER("🔐 Error parsing auth response JSON: " + std::string(e.what()));
+            }
+        } else {
+            LOG_DEBUG_BROWSER("🔐 Invalid arguments for brc100_auth_response");
+        }
+        return true;
+    }
+
+    if (message_name == "add_domain_to_whitelist") {
+        LOG_DEBUG_BROWSER("🔐 add_domain_to_whitelist message received from role: " + role_);
+
+        // Extract domain and permanent flag from JSON
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        LOG_DEBUG_BROWSER("🔐 Args size: " + std::to_string(args ? args->GetSize() : 0));
+        if (args && args->GetSize() > 0) {
+            std::string whitelistJson = args->GetString(0).ToString();
+            LOG_DEBUG_BROWSER("🔐 Whitelist JSON: " + whitelistJson);
+
+            // Parse JSON data
+            try {
+                nlohmann::json whitelistData = nlohmann::json::parse(whitelistJson);
+                std::string domain = whitelistData["domain"];
+                bool permanent = whitelistData["permanent"];
+
+                LOG_DEBUG_BROWSER("🔐 Adding domain to whitelist - Domain: " + domain + ", Permanent: " + std::to_string(permanent));
+
+                // Call the domain whitelist API
+                extern void addDomainToWhitelist(const std::string& domain, bool permanent);
+                addDomainToWhitelist(domain, permanent);
+            } catch (const std::exception& e) {
+                LOG_DEBUG_BROWSER("🔐 Error parsing whitelist JSON: " + std::string(e.what()));
+            }
+        } else {
+            LOG_DEBUG_BROWSER("🔐 Invalid arguments for add_domain_to_whitelist");
+        }
+        return true;
+    }
+
 
     if (message_name == "test_settings_message") {
         LOG_DEBUG_BROWSER("🧪 test_settings_message received from role: " + role_);
@@ -1223,7 +1443,7 @@ void SimpleHandler::OnBeforeContextMenu(CefRefPtr<CefBrowser> browser,
                                         CefRefPtr<CefContextMenuParams> params,
                                         CefRefPtr<CefMenuModel> model) {
     // Enable DevTools for overlay windows in development
-    if (role_ == "settings" || role_ == "wallet" || role_ == "backup") {
+    if (role_ == "settings" || role_ == "wallet" || role_ == "backup" || role_ == "brc100auth") {
         // Add Inspect Element option - use custom menu ID
         const int MENU_ID_DEV_TOOLS_INSPECT = MENU_ID_USER_FIRST + 1;
         model->AddItem(MENU_ID_DEV_TOOLS_INSPECT, "Inspect Element");
@@ -1238,7 +1458,7 @@ bool SimpleHandler::OnContextMenuCommand(CefRefPtr<CefBrowser> browser,
                                          CefRefPtr<CefContextMenuParams> params,
                                          int command_id,
                                          EventFlags event_flags) {
-    if ((role_ == "settings" || role_ == "wallet" || role_ == "backup") && command_id == (MENU_ID_USER_FIRST + 1)) {
+    if ((role_ == "settings" || role_ == "wallet" || role_ == "backup" || role_ == "brc100auth") && command_id == (MENU_ID_USER_FIRST + 1)) {
         // Open DevTools
         browser->GetHost()->ShowDevTools(CefWindowInfo(), nullptr, CefBrowserSettings(), CefPoint());
         LOG_DEBUG_BROWSER("🔧 DevTools opened for " + role_ + " overlay");

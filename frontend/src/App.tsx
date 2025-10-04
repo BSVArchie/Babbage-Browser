@@ -1,31 +1,20 @@
-import { useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import SettingsOverlayRoot from './pages/SettingsOverlayRoot';
 import WalletOverlayRoot from './pages/WalletOverlayRoot';
 import BackupOverlayRoot from './pages/BackupOverlayRoot';
+import BRC100AuthOverlayRoot from './pages/BRC100AuthOverlayRoot';
 import MainBrowserView from './pages/MainBrowserView';
-import { AuthApprovalModal, TransactionApprovalModal, DomainApprovalModal, useBRC100Modals } from './components/BRC100Modals';
+import BRC100AuthModal from './components/BRC100AuthModal';
 import { brc100 } from './bridge/brc100';
 // Removed identity types - now using unified wallet system
 
 const App = () => {
   console.log("🔍 App component rendering, pathname:", window.location.pathname);
 
-  // BRC-100 modal management
-  const {
-    authModal,
-    transactionModal,
-    domainModal,
-    showAuthApprovalModal,
-    showTransactionApprovalModal,
-    showDomainApprovalModal,
-    handleAuthApprove,
-    handleAuthReject,
-    handleTransactionApprove,
-    handleTransactionReject,
-    handleDomainApprove,
-    handleDomainReject
-  } = useBRC100Modals();
+  // BRC-100 auth modal state
+  const [authModalOpen, setAuthModalOpen] = React.useState(false);
+  const [authRequest, setAuthRequest] = React.useState<any>(null);
 
   // Wallet state tracking (currently unused but available for future features)
   // const [walletExists, setWalletExists] = useState(false);
@@ -34,17 +23,20 @@ const App = () => {
     console.log("🔍 useEffect started");
 
     // Add global function for C++ to call
-    (window as any).showDomainApprovalModal = (
-      domain: string,
-      method: string,
-      endpoint: string
-    ): Promise<{ whitelist: boolean; oneTime: boolean }> => {
-      return showDomainApprovalModal(domain, {
-        method,
-        endpoint,
-        purpose: 'BRC-100 Authentication'
+    (window as any).showBRC100AuthApprovalModal = (
+      request: any
+    ): Promise<{ approved: boolean; whitelist: boolean }> => {
+      console.log('🔐 showBRC100AuthApprovalModal called with request:', request);
+      return new Promise((resolve) => {
+        setAuthRequest(request);
+        setAuthModalOpen(true);
+
+        // Store the resolve function to call when user responds
+        (window as any).__authModalResolve = resolve;
       });
     };
+
+    console.log('🔐 Global showBRC100AuthApprovalModal function registered');
 
     const checkWalletStatus = async () => {
       console.log("🔍 checkWalletStatus started");
@@ -118,11 +110,7 @@ const App = () => {
         console.log("🔐 BRC-100 available:", isAvailable);
 
         if (isAvailable) {
-          // Override the modal methods to use our React components
-          (brc100 as any).showAuthApprovalModal = showAuthApprovalModal;
-          (brc100 as any).showTransactionApprovalModal = showTransactionApprovalModal;
-
-          console.log("🔐 BRC-100 API initialized with React modals");
+          console.log("🔐 BRC-100 API initialized");
         }
       } catch (error) {
         console.warn("🔐 BRC-100 initialization failed:", error);
@@ -137,7 +125,24 @@ const App = () => {
       // Note: Event listeners are automatically cleaned up when the component unmounts
       // but this ensures we have explicit cleanup logging
     };
-  }, [showAuthApprovalModal, showTransactionApprovalModal]);
+  }, []);
+
+  // BRC-100 auth modal handlers
+  const handleAuthApprove = (whitelist: boolean) => {
+    setAuthModalOpen(false);
+    if ((window as any).__authModalResolve) {
+      (window as any).__authModalResolve({ approved: true, whitelist });
+      (window as any).__authModalResolve = null;
+    }
+  };
+
+  const handleAuthReject = () => {
+    setAuthModalOpen(false);
+    if ((window as any).__authModalResolve) {
+      (window as any).__authModalResolve({ approved: false, whitelist: false });
+      (window as any).__authModalResolve = null;
+    }
+  };
 
   return (
     <>
@@ -147,30 +152,19 @@ const App = () => {
         <Route path="/settings" element={<SettingsOverlayRoot />} />
         <Route path="/wallet" element={<WalletOverlayRoot />} />
         <Route path="/backup" element={<BackupOverlayRoot />} />
+        <Route path="/brc100-auth" element={<BRC100AuthOverlayRoot />} />
       </Routes>
 
-      {/* BRC-100 Approval Modals */}
-      <AuthApprovalModal
-        isOpen={authModal.isOpen}
-        request={authModal.request!}
-        onApprove={handleAuthApprove}
-        onReject={handleAuthReject}
-      />
-
-      <TransactionApprovalModal
-        isOpen={transactionModal.isOpen}
-        transaction={transactionModal.transaction!}
-        onApprove={handleTransactionApprove}
-        onReject={handleTransactionReject}
-      />
-
-      <DomainApprovalModal
-        isOpen={domainModal.isOpen}
-        domain={domainModal.domain}
-        request={domainModal.request}
-        onApprove={handleDomainApprove}
-        onReject={handleDomainReject}
-      />
+      {/* BRC-100 Authentication Modal */}
+      {authRequest && (
+        <BRC100AuthModal
+          open={authModalOpen}
+          onClose={() => setAuthModalOpen(false)}
+          onApprove={handleAuthApprove}
+          onReject={handleAuthReject}
+          request={authRequest}
+        />
+      )}
     </>
   );
 };

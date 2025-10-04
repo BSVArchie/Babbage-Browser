@@ -14,6 +14,7 @@
 extern HWND g_settings_overlay_hwnd;
 extern HWND g_wallet_overlay_hwnd;
 extern HWND g_backup_overlay_hwnd;
+extern HWND g_brc100_auth_overlay_hwnd;
 
 SimpleApp::SimpleApp()
     : render_process_handler_(new SimpleRenderProcessHandler()) {
@@ -518,6 +519,100 @@ void CreateBackupOverlayWithSeparateProcess(HINSTANCE hInstance) {
         std::cout << "❌ Failed to create backup overlay browser" << std::endl;
         std::ofstream debugLog5("debug_output.log", std::ios::app);
         debugLog5 << "❌ Failed to create backup overlay browser" << std::endl;
+        debugLog5.close();
+    }
+}
+
+void CreateBRC100AuthOverlayWithSeparateProcess(HINSTANCE hInstance) {
+    std::cout << "🔐 Creating BRC-100 auth overlay with separate process" << std::endl;
+    std::ofstream debugLog("debug_output.log", std::ios::app);
+    debugLog << "🔐 Creating BRC-100 auth overlay with separate process" << std::endl;
+    debugLog.close();
+
+    // Get main window dimensions for positioning
+    RECT mainRect;
+    GetWindowRect(g_hwnd, &mainRect);
+    int width = mainRect.right - mainRect.left;
+    int height = mainRect.bottom - mainRect.top;
+
+    // Create new HWND for BRC-100 auth overlay
+    HWND auth_hwnd = CreateWindowEx(
+        WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
+        L"CEFBRC100AuthOverlayWindow",
+        L"BRC-100 Auth Overlay",
+        WS_POPUP | WS_VISIBLE,
+        mainRect.left, mainRect.top, width, height,
+        g_hwnd, nullptr, hInstance, nullptr);
+
+    if (!auth_hwnd) {
+        std::cout << "❌ Failed to create BRC-100 auth overlay HWND. Error: " << GetLastError() << std::endl;
+        std::ofstream debugLog2("debug_output.log", std::ios::app);
+        debugLog2 << "❌ Failed to create BRC-100 auth overlay HWND. Error: " << GetLastError() << std::endl;
+        debugLog2.close();
+        return;
+    }
+
+    std::cout << "✅ BRC-100 auth overlay HWND created: " << auth_hwnd << std::endl;
+
+    // Store HWND for shutdown cleanup
+    g_brc100_auth_overlay_hwnd = auth_hwnd;
+
+    std::ofstream debugLog3("debug_output.log", std::ios::app);
+    debugLog3 << "✅ BRC-100 auth overlay HWND created: " << auth_hwnd << std::endl;
+    debugLog3.close();
+
+    // Create new CEF browser with subprocess
+    CefWindowInfo window_info;
+    window_info.windowless_rendering_enabled = true;
+    window_info.SetAsPopup(auth_hwnd, "BRC100AuthOverlay");
+
+    CefBrowserSettings settings;
+    settings.windowless_frame_rate = 30;
+    settings.background_color = CefColorSetARGB(0, 0, 0, 0); // fully transparent
+    settings.javascript = STATE_ENABLED;
+    settings.javascript_access_clipboard = STATE_ENABLED;
+    settings.javascript_dom_paste = STATE_ENABLED;
+
+    // Create new handler for BRC-100 auth overlay
+    CefRefPtr<SimpleHandler> auth_handler(new SimpleHandler("brc100auth"));
+
+    // Set render handler for BRC-100 auth overlay
+    CefRefPtr<MyOverlayRenderHandler> render_handler = new MyOverlayRenderHandler(auth_hwnd, width, height);
+    auth_handler->SetRenderHandler(render_handler);
+
+    // Create new browser with subprocess
+    bool result = CefBrowserHost::CreateBrowser(
+        window_info,
+        auth_handler,
+        "http://127.0.0.1:5137/brc100-auth",
+        settings,
+        nullptr,
+        CefRequestContext::GetGlobalContext()
+    );
+
+    if (result) {
+        std::cout << "✅ BRC-100 auth overlay browser created with subprocess" << std::endl;
+        std::ofstream debugLog4("debug_output.log", std::ios::app);
+        debugLog4 << "✅ BRC-100 auth overlay browser created with subprocess" << std::endl;
+        debugLog4.close();
+
+        // Enable mouse input for BRC-100 auth overlay
+        LONG exStyle = GetWindowLong(auth_hwnd, GWL_EXSTYLE);
+        SetWindowLong(auth_hwnd, GWL_EXSTYLE, exStyle & ~WS_EX_TRANSPARENT);
+        std::ofstream debugLog6("debug_output.log", std::ios::app);
+        debugLog6 << "🔐 Mouse input ENABLED for BRC-100 auth overlay HWND: " << auth_hwnd << std::endl;
+        debugLog6.close();
+
+        // Force a repaint to ensure the overlay is visible
+        InvalidateRect(auth_hwnd, nullptr, TRUE);
+        UpdateWindow(auth_hwnd);
+        std::ofstream debugLog7("debug_output.log", std::ios::app);
+        debugLog7 << "🔐 Forced repaint for BRC-100 auth overlay HWND: " << auth_hwnd << std::endl;
+        debugLog7.close();
+    } else {
+        std::cout << "❌ Failed to create BRC-100 auth overlay browser" << std::endl;
+        std::ofstream debugLog5("debug_output.log", std::ios::app);
+        debugLog5 << "❌ Failed to create BRC-100 auth overlay browser" << std::endl;
         debugLog5.close();
     }
 }

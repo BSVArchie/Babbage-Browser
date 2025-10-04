@@ -39,3 +39,7 @@ private:
     IMPLEMENT_REFCOUNTING(HttpRequestInterceptor);
     DISALLOW_COPY_AND_ASSIGN(HttpRequestInterceptor);
 };
+
+// Global functions for BRC-100 auth modal
+void triggerBRC100AuthApprovalModal(const std::string& domain, const std::string& method, const std::string& endpoint, const std::string& body);
+void sendAuthRequestDataToOverlay();

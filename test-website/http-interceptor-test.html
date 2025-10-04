@@ -375,19 +375,45 @@
             showResult('brc100Result', 'Testing BRC-100 auth challenge via interceptor...');
 
             try {
-                const response = await fetch('http://localhost:8080/brc100/auth/challenge', {
+                // First check if domain is whitelisted
+                const domainCheck = await fetch(`http://localhost:8080/domain/whitelist/check?domain=${encodeURIComponent(window.location.host)}`);
+                const domainResult = await domainCheck.json();
+
+                if (!domainResult.whitelisted) {
+                    showResult('brc100Result', `Domain "${window.location.host}" is NOT whitelisted`, 'error');
+                    showResult('brc100Result', '🔒 Sending BRC-100 auth request to trigger modal...', 'info');
+
+                    // Send the BRC-100 auth request to trigger the modal
+                    const response = await fetch('http://localhost:8080/brc100/auth/challenge', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({
-                        appId: window.location.host,
-                        purpose: 'HTTP Interceptor Test'
-                    })
-                });
+                        body: JSON.stringify({
+                            appId: window.location.host,
+                            purpose: 'HTTP Interceptor Test'
+                        })
+                    });
 
-                const result = await response.json();
-                showResult('brc100Result', `BRC-100 auth challenge via interceptor: ${JSON.stringify(result, null, 2)}`, 'success');
+                    const result = await response.json();
+                    showResult('brc100Result', `BRC-100 auth challenge via interceptor: ${JSON.stringify(result, null, 2)}`, 'success');
+                } else {
+                    showResult('brc100Result', `Domain "${window.location.host}" is whitelisted, proceeding with auth challenge...`, 'success');
+
+                    const response = await fetch('http://localhost:8080/brc100/auth/challenge', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            appId: window.location.host,
+                            purpose: 'HTTP Interceptor Test'
+                        })
+                    });
+
+                    const result = await response.json();
+                    showResult('brc100Result', `BRC-100 auth challenge via interceptor: ${JSON.stringify(result, null, 2)}`, 'success');
+                }
 
             } catch (error) {
                 showResult('brc100Result', `Error testing BRC-100 auth challenge: ${error.message}`, 'error');

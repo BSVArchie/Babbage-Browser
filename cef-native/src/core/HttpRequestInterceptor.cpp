@@ -7,7 +7,17 @@
 #include "include/cef_task.h"
 #include "include/cef_v8.h"
 #include "include/cef_frame.h"
+#include "../handlers/simple_handler.h"
+#include "../handlers/simple_app.h"
 #include <iostream>
+
+#include "../include/core/PendingAuthRequest.h"
+
+// Forward declaration
+class AsyncWalletResourceHandler;
+
+// Global variable to store pending auth request data
+PendingAuthRequest g_pendingAuthRequest = {"", "", "", "", false, nullptr};
 #include <sstream>
 #include <algorithm>
 #include <fstream>
@@ -205,9 +215,10 @@ public:
     AsyncWalletResourceHandler(const std::string& method,
                               const std::string& endpoint,
                               const std::string& body,
-                              const std::string& requestDomain)
+                              const std::string& requestDomain,
+                              CefRefPtr<CefBrowser> browser)
         : method_(method), endpoint_(endpoint), body_(body), requestDomain_(requestDomain),
-          responseOffset_(0), requestCompleted_(false) {
+          responseOffset_(0), requestCompleted_(false), browser_(browser) {
         LOG_DEBUG_HTTP("🌐 AsyncWalletResourceHandler constructor called for " + method + " " + endpoint + " from domain " + requestDomain);
     }
 
@@ -221,13 +232,20 @@ public:
         // Check if domain is whitelisted
         DomainVerifier domainVerifier;
         if (!domainVerifier.isDomainWhitelisted(requestDomain_)) {
-            // Domain not whitelisted, trigger approval modal
-            LOG_DEBUG_HTTP("🔒 Domain " + requestDomain_ + " not whitelisted, triggering approval modal");
-            triggerDomainApprovalModal(requestDomain_, method_, endpoint_);
+            // Domain not whitelisted, check if this is a BRC-100 auth request
+            if (endpoint_.find("/brc100/auth/") != std::string::npos) {
+                // This is a BRC-100 authentication request
+                LOG_DEBUG_HTTP("🔐 BRC-100 auth request from non-whitelisted domain: " + requestDomain_);
+                triggerBRC100AuthApprovalModal(requestDomain_, method_, endpoint_, body_, this);
+            } else {
+                // Regular request, trigger domain approval modal
+                LOG_DEBUG_HTTP("🔒 Domain " + requestDomain_ + " not whitelisted, triggering approval modal");
+                triggerDomainApprovalModal(requestDomain_, method_, endpoint_);
+            }
 
-            // Return error response for now (will be replaced with modal response)
-            responseData_ = "{\"error\":\"Domain not whitelisted\",\"domain\":\"" + requestDomain_ + "\"}";
-            requestCompleted_ = true;
+            // Don't return error response immediately - wait for user response
+            // The request will be completed when the user approves/rejects via the modal
+            LOG_DEBUG_HTTP("🔐 Waiting for user response to BRC-100 auth request");
             handle_request = true;
             return true;
         }
@@ -318,6 +336,21 @@ public:
         }
     }
 
+    // Called when user approves authentication request
+    void onAuthResponseReceived(const std::string& data) {
+        LOG_DEBUG_HTTP("🔐 AsyncWalletResourceHandler received auth response: " + data);
+
+        responseData_ = data;
+        requestCompleted_ = true;
+
+        LOG_DEBUG_HTTP("🔐 About to call readCallback_->Continue() for auth response");
+        // Now we can continue with the response
+        if (readCallback_) {
+            readCallback_->Continue();
+            LOG_DEBUG_HTTP("🔐 readCallback_->Continue() called successfully for auth response");
+        }
+    }
+
     // Trigger domain approval modal
     void triggerDomainApprovalModal(const std::string& domain, const std::string& method, const std::string& endpoint) {
         LOG_DEBUG_HTTP("🔒 Triggering domain approval modal for " + domain);
@@ -326,6 +359,50 @@ public:
         // TODO: Implement actual modal triggering
         LOG_DEBUG_HTTP("🔒 Domain approval needed for: " + domain + " requesting " + method + " " + endpoint);
     }
+
+
+    // Trigger BRC-100 authentication approval modal
+void triggerBRC100AuthApprovalModal(const std::string& domain, const std::string& method, const std::string& endpoint, const std::string& body, CefRefPtr<AsyncWalletResourceHandler> handler) {
+    LOG_DEBUG_HTTP("🔐 Triggering BRC-100 auth approval modal for " + domain);
+
+    // Store auth request data for later message passing
+    g_pendingAuthRequest.domain = domain;
+    g_pendingAuthRequest.method = method;
+    g_pendingAuthRequest.endpoint = endpoint;
+    g_pendingAuthRequest.body = body;
+    g_pendingAuthRequest.isValid = true;
+    g_pendingAuthRequest.handler = handler;
+
+    // Send message to frontend to create overlay with auth request data
+    CefRefPtr<CefBrowser> header_browser = SimpleHandler::GetHeaderBrowser();
+    if (header_browser && header_browser->GetMainFrame()) {
+        std::string js = R"(
+            console.log('🔐 BRC-100 auth request received in header browser');
+            // Set the pending auth request data
+            window.pendingBRC100AuthRequest = {
+                domain: ')" + domain + R"(',
+                method: ')" + method + R"(',
+                endpoint: ')" + endpoint + R"(',
+                body: ')" + body + R"('
+            };
+            console.log('🔐 Set pending auth request:', window.pendingBRC100AuthRequest);
+            // Create the settings overlay (which will show the BRC-100 auth modal)
+            if (window.bitcoinBrowser && window.bitcoinBrowser.overlay && window.bitcoinBrowser.overlay.show) {
+                console.log('🔐 Creating overlay for BRC-100 auth modal');
+                window.bitcoinBrowser.overlay.show();
+            } else {
+                console.error('🔐 Overlay show function not available');
+            }
+        )";
+        header_browser->GetMainFrame()->ExecuteJavaScript(js, header_browser->GetMainFrame()->GetURL(), 0);
+        LOG_DEBUG_HTTP("🔐 Sent BRC-100 auth request to frontend");
+    } else {
+        LOG_DEBUG_HTTP("🔐 Header browser not available for BRC-100 auth request");
+    }
+
+    LOG_DEBUG_HTTP("🔐 BRC-100 auth approval needed for: " + domain + " requesting " + method + " " + endpoint);
+}
+
 
     // Static method to create CefURLRequest on UI thread (called by URLRequestCreationTask)
     static void createURLRequestOnUIThread(AsyncWalletResourceHandler* handler,
@@ -347,6 +424,9 @@ private:
     size_t responseOffset_;
     bool requestCompleted_;
 
+    // Browser reference for modal triggering
+    CefRefPtr<CefBrowser> browser_;
+
     // CEF request management
     CefRefPtr<CefURLRequest> urlRequest_;
     CefRefPtr<CefCallback> readCallback_;
@@ -354,6 +434,163 @@ private:
     IMPLEMENT_REFCOUNTING(AsyncWalletResourceHandler);
     DISALLOW_COPY_AND_ASSIGN(AsyncWalletResourceHandler);
 };
+
+// Function to store pending auth request data
+void storePendingAuthRequest(const std::string& domain, const std::string& method, const std::string& endpoint, const std::string& body) {
+    g_pendingAuthRequest.domain = domain;
+    g_pendingAuthRequest.method = method;
+    g_pendingAuthRequest.endpoint = endpoint;
+    g_pendingAuthRequest.body = body;
+    g_pendingAuthRequest.isValid = true;
+    LOG_DEBUG_HTTP("🔐 Stored pending auth request data");
+}
+
+// Handler for domain whitelist requests
+class AsyncDomainWhitelistHandler : public CefURLRequestClient {
+public:
+    explicit AsyncDomainWhitelistHandler(const std::string& domain, bool permanent)
+        : domain_(domain), permanent_(permanent) {}
+
+    void OnRequestComplete(CefRefPtr<CefURLRequest> request) override {
+        LOG_DEBUG_HTTP("🔐 AsyncDomainWhitelistHandler::OnRequestComplete called for domain: " + domain_);
+        CefURLRequest::Status status = request->GetRequestStatus();
+        LOG_DEBUG_HTTP("🔐 Request status: " + std::to_string(status));
+        if (status == UR_SUCCESS) {
+            LOG_DEBUG_HTTP("🔐 Successfully added domain to whitelist: " + domain_);
+        } else {
+            LOG_DEBUG_HTTP("🔐 Failed to add domain to whitelist: " + domain_ + " (status: " + std::to_string(status) + ")");
+        }
+    }
+
+    void OnDownloadData(CefRefPtr<CefURLRequest> request, const void* data, size_t data_length) override {
+        // Handle response data if needed
+    }
+
+    void OnUploadProgress(CefRefPtr<CefURLRequest> request, int64_t current, int64_t total) override {
+        // Not needed for this use case
+    }
+
+    void OnDownloadProgress(CefRefPtr<CefURLRequest> request, int64_t current, int64_t total) override {
+        // Not needed for this use case
+    }
+
+    bool GetAuthCredentials(bool isProxy, const CefString& host, int port, const CefString& realm, const CefString& scheme, CefRefPtr<CefAuthCallback> callback) override {
+        // No authentication needed
+        return false;
+    }
+
+private:
+    std::string domain_;
+    bool permanent_;
+    IMPLEMENT_REFCOUNTING(AsyncDomainWhitelistHandler);
+    DISALLOW_COPY_AND_ASSIGN(AsyncDomainWhitelistHandler);
+};
+
+// Task class for creating domain whitelist request on UI thread
+class DomainWhitelistTask : public CefTask {
+public:
+    DomainWhitelistTask(const std::string& domain, bool permanent)
+        : domain_(domain), permanent_(permanent) {}
+
+    void Execute() override {
+        LOG_DEBUG_HTTP("🔐 DomainWhitelistTask executing on UI thread for domain: " + domain_);
+
+        // Create request
+        CefRefPtr<CefRequest> cefRequest = CefRequest::Create();
+        cefRequest->SetURL("http://localhost:8080/domain/whitelist/add");
+        cefRequest->SetMethod("POST");
+        cefRequest->SetHeaderByName("Content-Type", "application/json", true);
+
+        // Create JSON body
+        std::string jsonBody = "{\"domain\":\"" + domain_ + "\",\"permanent\":" + (permanent_ ? "true" : "false") + "}";
+        LOG_DEBUG_HTTP("🔐 Domain whitelist JSON body: " + jsonBody);
+
+        // Create post data
+        CefRefPtr<CefPostData> postData = CefPostData::Create();
+        CefRefPtr<CefPostDataElement> element = CefPostDataElement::Create();
+        element->SetToBytes(jsonBody.length(), jsonBody.c_str());
+        postData->AddElement(element);
+        cefRequest->SetPostData(postData);
+
+        LOG_DEBUG_HTTP("🔐 About to create CefURLRequest for domain whitelist");
+        // Make HTTP request to add domain to whitelist
+        CefRefPtr<CefURLRequest> request = CefURLRequest::Create(
+            cefRequest,
+            new AsyncDomainWhitelistHandler(domain_, permanent_),
+            nullptr
+        );
+
+        if (request) {
+            LOG_DEBUG_HTTP("🔐 Domain whitelist request created successfully");
+        } else {
+            LOG_DEBUG_HTTP("🔐 Failed to create domain whitelist request");
+        }
+    }
+
+private:
+    std::string domain_;
+    bool permanent_;
+    IMPLEMENT_REFCOUNTING(DomainWhitelistTask);
+    DISALLOW_COPY_AND_ASSIGN(DomainWhitelistTask);
+};
+
+// Function to add domain to whitelist
+void addDomainToWhitelist(const std::string& domain, bool permanent) {
+    LOG_DEBUG_HTTP("🔐 Adding domain to whitelist: " + domain + " (permanent: " + std::to_string(permanent) + ")");
+
+    // Post task to UI thread - CefURLRequest::Create must be called from UI thread
+    CefPostTask(TID_UI, new DomainWhitelistTask(domain, permanent));
+    LOG_DEBUG_HTTP("🔐 Domain whitelist task posted to UI thread");
+}
+
+// Function to handle auth response and send it back to the original request
+void handleAuthResponse(const std::string& responseData) {
+    LOG_DEBUG_HTTP("🔐 handleAuthResponse called with data: " + responseData);
+
+    if (g_pendingAuthRequest.isValid && g_pendingAuthRequest.handler) {
+        LOG_DEBUG_HTTP("🔐 Found pending auth request, sending response to original handler");
+
+        // Cast the handler to AsyncWalletResourceHandler and call onAuthResponseReceived
+        // We know the type since we stored it ourselves
+        AsyncWalletResourceHandler* walletHandler = static_cast<AsyncWalletResourceHandler*>(g_pendingAuthRequest.handler.get());
+        if (walletHandler) {
+            walletHandler->onAuthResponseReceived(responseData);
+            LOG_DEBUG_HTTP("🔐 Auth response sent to original HTTP request");
+        } else {
+            LOG_DEBUG_HTTP("🔐 Failed to cast handler to AsyncWalletResourceHandler");
+        }
+
+        // Clear the pending request
+        g_pendingAuthRequest.isValid = false;
+    } else {
+        LOG_DEBUG_HTTP("🔐 No pending auth request or handler found");
+    }
+}
+
+// Function to send auth request data to overlay (called after overlay loads)
+void sendAuthRequestDataToOverlay() {
+    if (!g_pendingAuthRequest.isValid) {
+        LOG_DEBUG_HTTP("🔐 No pending auth request data to send");
+        return;
+    }
+
+    CefRefPtr<CefBrowser> auth_browser = SimpleHandler::GetBRC100AuthBrowser();
+    if (auth_browser && auth_browser->GetMainFrame()) {
+        CefRefPtr<CefProcessMessage> message = CefProcessMessage::Create("brc100_auth_request");
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        args->SetString(0, g_pendingAuthRequest.domain);
+        args->SetString(1, g_pendingAuthRequest.method);
+        args->SetString(2, g_pendingAuthRequest.endpoint);
+        args->SetString(3, g_pendingAuthRequest.body);
+
+        auth_browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, message);
+        LOG_DEBUG_HTTP("🔐 Sent auth request data to overlay");
+
+        // Don't clear the pending request here - it will be cleared after auth response is processed
+    } else {
+        LOG_DEBUG_HTTP("🔐 Auth browser not available for sending data");
+    }
+}
 
 // Async HTTP Client for handling CEF URL requests
 class AsyncHTTPClient : public CefURLRequestClient {
@@ -675,7 +912,7 @@ CefRefPtr<CefResourceHandler> HttpRequestInterceptor::GetResourceHandler(
     if (!endpoint.empty()) {
         LOG_DEBUG_HTTP("🌐 About to create AsyncWalletResourceHandler...");
         // Create and return async handler
-        AsyncWalletResourceHandler* handler = new AsyncWalletResourceHandler(method, endpoint, body, domain);
+        AsyncWalletResourceHandler* handler = new AsyncWalletResourceHandler(method, endpoint, body, domain, browser);
         LOG_DEBUG_HTTP("🌐 AsyncWalletResourceHandler created successfully");
         return handler;
     }
