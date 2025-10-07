@@ -25,6 +25,7 @@
 #include "include/handlers/simple_handler.h"
 #include "include/handlers/simple_render_process_handler.h"
 #include "include/handlers/simple_app.h"
+#include "include/core/WalletService.h"
 #include <shellapi.h>
 #include <windows.h>
 #include <windowsx.h>

@@ -333,8 +333,10 @@ bool SimpleHandler::OnProcessMessageReceived(
         try {
             LOG_DEBUG_BROWSER("🔄 Attempting to get wallet status...");
 
-            // Call WalletService to get wallet status
+            // Create WalletService instance for this operation
             WalletService walletService;
+
+            // Call WalletService to get wallet status
             nlohmann::json walletStatus = walletService.getWalletStatus();
 
             if (walletStatus.contains("exists")) {

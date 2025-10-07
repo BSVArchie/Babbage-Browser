@@ -8,8 +8,21 @@
 #include "include/cef_frame.h"
 #include "include/cef_process_message.h"
 #include "../../include/core/WebSocketServerHandler.h"
+#include "../../include/core/WalletService.h"
 #include <iostream>
 #include <fstream>
+
+// Forward declaration of Logger class from main shell
+class Logger {
+public:
+    static void Log(const std::string& message, int level = 1, int process = 2);
+};
+
+// Convenience macros for easier logging
+#define LOG_DEBUG_APP(msg) Logger::Log(msg, 0, 2)
+#define LOG_INFO_APP(msg) Logger::Log(msg, 1, 2)
+#define LOG_WARNING_APP(msg) Logger::Log(msg, 2, 2)
+#define LOG_ERROR_APP(msg) Logger::Log(msg, 3, 2)
 
 // External global HWND declarations for shutdown cleanup
 extern HWND g_settings_overlay_hwnd;
@@ -82,7 +95,7 @@ void SimpleApp::OnContextInitialized() {
     log.close();
 
     // ───── WebSocket Server Setup ─────
-    std::cout << "🌐 Starting WebSocket server for Babbage connections..." << std::endl;
+    LOG_INFO_APP("🌐 Starting WebSocket server for Babbage connections...");
     WebSocketServerHandler::StartWebSocketServer();
 
     // ───── header Browser Setup ─────
