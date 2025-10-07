@@ -1214,31 +1214,61 @@ func main() {
 	fmt.Println("  POST /domain/whitelist/remove - Remove domain from whitelist")
 
 
-	// Helper function to sign data with private key using real ECDSA
-	signDataWithPrivateKey := func(data []byte, privateKeyHex string) ([]byte, error) {
+	// Helper function to derive BRC-42 child key and sign data
+	signWithDerivedKey := func(data []byte, privateKeyHex string, invoiceNumber string, counterpartyPubKey string) ([]byte, error) {
 		// Convert private key hex to bytes
 		privateKeyBytes, err := hex.DecodeString(privateKeyHex)
 		if err != nil {
 			return nil, fmt.Errorf("failed to decode private key: %v", err)
 		}
 
-		// Create ECDSA private key properly
+		// Parse counterparty public key
+		counterpartyPubKeyBytes, err := hex.DecodeString(counterpartyPubKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode counterparty public key: %v", err)
+		}
+
+		// Decode the public key point
 		curve := elliptic.P256()
-		privateKey := &ecdsa.PrivateKey{
+		x, y := elliptic.Unmarshal(curve, counterpartyPubKeyBytes)
+		if x == nil {
+			return nil, fmt.Errorf("failed to unmarshal counterparty public key")
+		}
+
+		// Compute ECDH shared secret: privateKey * counterpartyPublicKey
+		sharedSecretX, _ := curve.ScalarMult(x, y, privateKeyBytes)
+		sharedSecret := sharedSecretX.Bytes()
+
+		// Compute HMAC over invoice number using shared secret
+		mac := hmac.New(sha256.New, sharedSecret)
+		mac.Write([]byte(invoiceNumber))
+		hmacResult := mac.Sum(nil)
+
+		// Convert HMAC to scalar (big.Int)
+		hmacScalar := new(big.Int).SetBytes(hmacResult)
+
+		// Derive child private key: rootPrivateKey + hmacScalar (mod N)
+		rootPrivateKey := new(big.Int).SetBytes(privateKeyBytes)
+		curveOrder := curve.Params().N
+		childPrivateKeyInt := new(big.Int).Add(rootPrivateKey, hmacScalar)
+		childPrivateKeyInt.Mod(childPrivateKeyInt, curveOrder)
+
+		// Create ECDSA private key from derived key
+		childPrivateKey := &ecdsa.PrivateKey{
 			PublicKey: ecdsa.PublicKey{
 				Curve: curve,
 			},
-			D: new(big.Int).SetBytes(privateKeyBytes),
+			D: childPrivateKeyInt,
 		}
 
 		// Calculate the public key from the private key
-		privateKey.PublicKey.X, privateKey.PublicKey.Y = curve.ScalarBaseMult(privateKeyBytes)
+		childPrivateKey.PublicKey.X, childPrivateKey.PublicKey.Y = curve.ScalarBaseMult(childPrivateKeyInt.Bytes())
 
 		// Hash the data
 		hash := sha256.Sum256(data)
 
-		// Sign the hash using compact format (r + s)
-		sigR, sigS, err := ecdsa.Sign(rand.Reader, privateKey, hash[:])
+		// Sign the hash using the derived key
+		sigR, sigS, err := ecdsa.Sign(rand.Reader, childPrivateKey, hash[:])
 		if err != nil {
 			return nil, fmt.Errorf("failed to sign data: %v", err)
 		}
@@ -1249,6 +1279,7 @@ func main() {
 		return signature, nil
 	}
 
+	// Helper function to sign data with private key using raw ECDSA (for non-BRC-43 endpoints)
 	// Add handler for Babbage auth endpoint - respond to their challenge
 	http.HandleFunc("/.well-known/auth", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
@@ -1328,28 +1359,35 @@ func main() {
 		log.Printf("🔐 Generated our nonce: %s", ourNonceBase64)
 
 		// According to client code: ge((o.sessionNonce ?? "") + (c.initialNonce ?? ""), "base64")
-		// The client concatenates sessionNonce + initialNonce as STRINGS, then converts to bytes
-		// Where sessionNonce = their initialNonce (what we call yourNonce)
-		// And initialNonce = our new nonce (what we call nonce)
+		// The client concatenates sessionNonce + initialNonce, then converts to bytes
+		// Then verifies using BRC-43: protocolID: [2, "auth message signature"]
 
 		// Concatenate the base64 strings: theirInitialNonce + ourNonce
 		concatenatedStrings := authReq.InitialNonce + ourNonceBase64
 
-		// Convert the concatenated STRING to bytes (NOT base64 decode, just string to bytes)
+		// Convert to bytes
 		dataToSign := []byte(concatenatedStrings)
 
-		log.Printf("🔐 Signing concatenated strings (as bytes): %s", concatenatedStrings)
+		log.Printf("🔐 Data to sign (concatenated strings): %s", concatenatedStrings)
 		log.Printf("🔐 Data to sign length: %d bytes", len(dataToSign))
 
-		// Sign the concatenated string bytes using ECDSA
-		signature, err := signDataWithPrivateKey(dataToSign, privateKeyHex)
+		// Create BRC-43 invoice number: securityLevel-protocolID-keyID
+		// protocolID: "auth message signature"
+		// keyID: sessionNonce + " " + initialNonce
+		invoiceNumber := fmt.Sprintf("2-auth message signature-%s %s", authReq.InitialNonce, ourNonceBase64)
+
+		log.Printf("🔐 Using BRC-43 invoice number: %s", invoiceNumber)
+		log.Printf("🔐 Counterparty: %s", authReq.IdentityKey)
+
+		// Sign using BRC-42 derived key
+		signature, err := signWithDerivedKey(dataToSign, privateKeyHex, invoiceNumber, authReq.IdentityKey)
 		if err != nil {
-			log.Printf("Error signing concatenated strings: %v", err)
+			log.Printf("Error signing with derived key: %v", err)
 			http.Error(w, "Failed to sign", http.StatusInternalServerError)
 			return
 		}
 
-		log.Printf("🔐 Signature created successfully: %s", hex.EncodeToString(signature))
+		log.Printf("🔐 Signature created with BRC-42 derived key: %s", hex.EncodeToString(signature))
 
 		// Create the BRC-104 compliant auth response
 		authResponse := map[string]interface{}{
