@@ -81,7 +81,13 @@ WalletService::WalletService()
 
         LOG_DEBUG_BROWSER("🚀 WalletService constructor starting...");
 
-        // Minimal initialization - everything else deferred
+        // Initialize connection to Go daemon
+        if (!initializeConnection()) {
+            LOG_WARNING_BROWSER("⚠️ Failed to connect to Go daemon at " + baseUrl_);
+        } else {
+            LOG_DEBUG_BROWSER("✅ Connected to Go daemon successfully");
+        }
+
         LOG_DEBUG_BROWSER("✅ WalletService constructor completed");
 
     } catch (const std::exception& e) {

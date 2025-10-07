@@ -1240,33 +1240,22 @@ bool SimpleHandler::OnProcessMessageReceived(
         LOG_DEBUG_BROWSER("💰 Get balance requested from browser ID: " + std::to_string(browser->GetIdentifier()));
 
         try {
-            // Parse balance data from message arguments
-            CefRefPtr<CefListValue> args = message->GetArgumentList();
-            LOG_DEBUG_BROWSER("🔍 get_balance: args->GetSize() = " + std::to_string(args->GetSize()));
+            // Call WalletService to get balance (no arguments needed)
+            WalletService walletService;
 
-            if (args->GetSize() > 0) {
-                std::string balanceDataJson = args->GetString(0);
-                LOG_DEBUG_BROWSER("🔍 get_balance: received JSON = " + balanceDataJson);
+            // Pass empty JSON object to satisfy the method signature
+            nlohmann::json emptyData = nlohmann::json::object();
+            nlohmann::json result = walletService.getBalance(emptyData);
 
-                nlohmann::json balanceData = nlohmann::json::parse(balanceDataJson);
+            LOG_DEBUG_BROWSER("✅ Balance result: " + result.dump());
 
-                // Call WalletService to get balance
-                WalletService walletService;
-                nlohmann::json result = walletService.getBalance(balanceData);
+            // Send result back to the requesting browser
+            CefRefPtr<CefProcessMessage> response = CefProcessMessage::Create("get_balance_response");
+            CefRefPtr<CefListValue> responseArgs = response->GetArgumentList();
+            responseArgs->SetString(0, result.dump());
 
-                LOG_DEBUG_BROWSER("✅ Balance result: " + result.dump());
-
-                // Send result back to the requesting browser
-                CefRefPtr<CefProcessMessage> response = CefProcessMessage::Create("get_balance_response");
-                CefRefPtr<CefListValue> responseArgs = response->GetArgumentList();
-                responseArgs->SetString(0, result.dump());
-
-                browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, response);
-                LOG_DEBUG_BROWSER("📤 Balance response sent back to browser");
-            } else {
-                LOG_DEBUG_BROWSER("❌ get_balance: No arguments provided, args->GetSize() = " + std::to_string(args->GetSize()));
-                throw std::runtime_error("No balance data provided");
-            }
+            browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, response);
+            LOG_DEBUG_BROWSER("📤 Balance response sent back to browser");
 
         } catch (const std::exception& e) {
             LOG_DEBUG_BROWSER("❌ Get balance failed: " + std::string(e.what()));
