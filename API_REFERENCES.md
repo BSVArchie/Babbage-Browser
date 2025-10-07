@@ -23,6 +23,11 @@ External Website → HTTP Request → CEF Interceptor → Go Wallet Daemon → R
 - `POST /domain/whitelist/record` - Record request from domain
 - `GET /domain/whitelist/list` - List all whitelisted domains
 - `POST /domain/whitelist/remove` - Remove domain from whitelist
+- `POST /.well-known/auth` - BRC-104 authentication endpoint (BRC-42/43 signatures)
+- `GET /socket.io/` - Engine.IO polling endpoint for Socket.IO
+- `POST /listMessages` - BRC-33 PeerServ message listing
+- `POST /sendMessage` - BRC-33 PeerServ message sending
+- `POST /acknowledgeMessage` - BRC-33 PeerServ message acknowledgment
 - All other Go wallet daemon endpoints
 
 ### Technical Implementation:
@@ -471,6 +476,120 @@ Response: {"address": "1ABC...", "index": 5}
 GET /wallet/addresses
 Response: [{"address": "1ABC...", "index": 0, "balance": 1000}, ...]
 ```
+
+### BRC-104 Authentication (Babbage Protocol)
+```http
+# Mutual authentication endpoint
+POST /.well-known/auth
+Content-Type: application/json
+
+Request:
+{
+  "version": "0.1",
+  "messageType": "initialRequest",
+  "identityKey": "03d575090cc073ecf448ad49fae79993fdaf8d1643ec2c5762655ed400e20333e3",
+  "initialNonce": "base64_encoded_nonce",
+  "requestedCertificates": {
+    "certifiers": [],
+    "types": {}
+  }
+}
+
+Response:
+{
+  "version": "0.1",
+  "messageType": "initialResponse",
+  "identityKey": "03d575090cc073ecf448ad49fae79993fdaf8d1643ec2c5762655ed400e20333e3",
+  "nonce": "our_base64_nonce",
+  "yourNonce": "their_initial_nonce",
+  "signature": "hex_encoded_signature"
+}
+```
+
+**Technical Details:**
+- **Signature**: BRC-42 derived key signs concatenated nonces (theirNonce + ourNonce)
+- **Invoice Number**: `2-auth message signature-{initialNonce} {sessionNonce}`
+- **Format**: Compact signature (r + s), hex-encoded
+- **Curve**: Uses elliptic.P256() (should be secp256k1 for Bitcoin)
+
+### BRC-33 PeerServ Message Relay
+```http
+# Send message to recipient
+POST /sendMessage
+Content-Type: application/json
+
+Request:
+{
+  "message": {
+    "recipient": "028d37b9...",
+    "messageBox": "payment_inbox",
+    "body": "hello"
+  }
+}
+
+Response:
+{
+  "status": "success",
+  "messageId": 3301
+}
+
+# List messages from message box
+POST /listMessages
+Content-Type: application/json
+
+Request:
+{
+  "messageBox": "payment_inbox"
+}
+
+Response:
+{
+  "status": "success",
+  "messages": [
+    {
+      "messageId": 3301,
+      "body": "hello",
+      "sender": "028d37b9..."
+    }
+  ]
+}
+
+# Acknowledge received messages
+POST /acknowledgeMessage
+Content-Type: application/json
+
+Request:
+{
+  "messageIds": [3301, 3302]
+}
+
+Response:
+{
+  "status": "success"
+}
+```
+
+**Technical Details:**
+- **Authentication**: Requires BRC-31 authentication (via `/.well-known/auth`)
+- **Storage**: In-memory (not persistent across daemon restarts)
+- **CORS**: Full CORS support for cross-origin requests
+- **Thread-Safe**: Mutex-protected message storage
+
+### Socket.IO / Engine.IO
+```http
+# Engine.IO polling handshake
+GET /socket.io/?EIO=4&transport=polling&t={timestamp}
+
+Response:
+40{"sid":"session_1759866753834844300","upgrades":["websocket"],"pingTimeout":60000,"pingInterval":25000}
+```
+
+**Protocol Details:**
+- **Packet Format**: `40` = Engine.IO open packet (4 = message, 0 = open)
+- **Session ID**: Unique per connection
+- **Upgrades**: Advertises WebSocket upgrade capability
+- **Timeouts**: 60s ping timeout, 25s ping interval
+- **Current Status**: Polling works ✅, WebSocket upgrade not attempted ❌
 
 ### Transaction Management
 ```http

@@ -1107,7 +1107,10 @@ bool HttpRequestInterceptor::isWalletEndpoint(const std::string& url) {
             url.find("/verifyHmac") != std::string::npos ||
             url.find("/getNetwork") != std::string::npos ||
             url.find("/socket.io/") != std::string::npos ||
-            url.find("/.well-known/auth") != std::string::npos);
+            url.find("/.well-known/auth") != std::string::npos ||
+            url.find("/listMessages") != std::string::npos ||
+            url.find("/sendMessage") != std::string::npos ||
+            url.find("/acknowledgeMessage") != std::string::npos);
 }
 
 bool HttpRequestInterceptor::isSocketIOConnection(const std::string& url) {

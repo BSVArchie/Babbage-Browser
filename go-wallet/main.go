@@ -1499,6 +1499,16 @@ func main() {
 		json.NewEncoder(w).Encode(response)
 	})
 
+	// Initialize BRC-33 PeerServ message store
+	messageStore := NewMessageStore(logrus.StandardLogger())
+	log.Println("📬 BRC-33 PeerServ message store initialized")
+
+	// Register BRC-33 PeerServ message relay endpoints
+	http.HandleFunc("/sendMessage", HandleSendMessage(messageStore, walletService))
+	http.HandleFunc("/listMessages", HandleListMessages(messageStore, walletService))
+	http.HandleFunc("/acknowledgeMessage", HandleAcknowledgeMessage(messageStore, walletService))
+	log.Println("📬 BRC-33 PeerServ endpoints registered: /sendMessage, /listMessages, /acknowledgeMessage")
+
 	// Create a custom HTTP server that can handle WebSocket upgrades
 	server := &http.Server{
 		Addr: ":" + port,

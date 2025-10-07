@@ -128,38 +128,64 @@ External Website → HTTP Request → CEF Interceptor → UI Thread Task → Go 
 
 ### BRC-100 Component Structure
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    BRC-100 Service Layer                    │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐  │
-│  │ Identity Manager│  │ Auth Manager    │  │ Session Mgr │  │
-│  │ - Certificates  │  │ - Challenges    │  │ - Sessions  │  │
-│  │ - Validation    │  │ - Type-42 Keys  │  │ - Cleanup   │  │
-│  │ - Selective     │  │ - P2P Comm      │  │ - Security  │  │
-│  └─────────────────┘  └─────────────────┘  └─────────────┘  │
-│           │                    │                    │        │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐  │
-│  │ BEEF Manager    │  │ SPV Manager     │  │ HTTP APIs   │  │
-│  │ - BRC-100 BEEF  │  │ - Verification  │  │ - REST Endpoints│ │
-│  │ - Conversion    │  │ - Merkle Proofs │  │ - JSON APIs │  │
-│  │ - Broadcasting  │  │ - SDK Integration│  │ - Error Handling│ │
-│  └─────────────────┘  └─────────────────┘  └─────────────┘  │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         BRC-100 Service Layer                               │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐  ┌────────────┐  │
+│  │ Identity Manager│  │ Auth Manager    │  │ Session Mgr │  │ Message    │  │
+│  │ - Certificates  │  │ - Challenges    │  │ - Sessions  │  │ Relay      │  │
+│  │ - Validation    │  │ - Type-42 Keys  │  │ - Cleanup   │  │ (BRC-33)   │  │
+│  │ - Selective     │  │ - P2P Comm      │  │ - Security  │  │ - PeerServ │  │
+│  └─────────────────┘  └─────────────────┘  └─────────────┘  └────────────┘  │
+│           │                    │                    │              │         │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐  ┌────────────┐  │
+│  │ BEEF Manager    │  │ SPV Manager     │  │ HTTP APIs   │  │ Socket.IO  │  │
+│  │ - BRC-100 BEEF  │  │ - Verification  │  │ - REST      │  │ Handler    │  │
+│  │ - Conversion    │  │ - Merkle Proofs │  │ - JSON APIs │  │ - Engine.IO│  │
+│  │ - Broadcasting  │  │ - SDK Integration│  │ - BRC-104   │  │ - Polling  │  │
+│  └─────────────────┘  └─────────────────┘  └─────────────┘  └────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### BRC-100 Authentication Flow
+### BRC-104 Authentication Flow (Babbage Protocol)
 ```
-1. App Request → 2. Challenge → 3. Wallet Response → 4. Verification
-      ↓              ↓              ↓              ↓
-   App Domain    Generate      Sign Challenge   Validate
-   Validation    Challenge     with Private Key  Response
-      ↓              ↓              ↓              ↓
-5. Session → 6. Type-42 → 7. BEEF → 8. SPV
-   Creation    Key Derivation  Transaction   Verification
-      ↓              ↓              ↓              ↓
-   Store Session  P2P Comm Keys  On-chain Data  Identity Proof
+1. Client Request → 2. BRC-42 Derivation → 3. Sign → 4. Response
+      ↓                    ↓                   ↓          ↓
+   POST                Compute ECDH        Sign with   Return
+   /.well-known/auth   Shared Secret       Derived Key  Signature
+      ↓                    ↓                   ↓          ↓
+   {initialNonce,      HMAC over          Concatenated  {version,
+    identityKey}       invoice number     nonces        nonce,
+                                                        yourNonce,
+                                                        signature}
 ```
 
-### HTTP API Endpoints (16 Total)
+**BRC-42 Key Derivation Process:**
+```
+1. ECDH Shared Secret = privateKey * counterpartyPublicKey
+2. HMAC = HMAC-SHA256(invoiceNumber, sharedSecret)
+3. childPrivateKey = (rootPrivateKey + HMAC) mod N
+4. signature = Sign(data, childPrivateKey)
+```
+
+**BRC-43 Invoice Number:**
+```
+Format: {securityLevel}-{protocolID}-{keyID}
+Example: 2-auth message signature-{initialNonce} {sessionNonce}
+```
+
+### BRC-33 PeerServ Message Flow
+```
+1. Send Message → 2. Store → 3. List → 4. Acknowledge
+      ↓              ↓          ↓          ↓
+   POST           In-Memory   POST       POST
+   /sendMessage   Storage     /listMessages  /acknowledgeMessage
+      ↓              ↓          ↓          ↓
+   {recipient,    Thread-Safe {messageBox} {messageIds[]}
+    messageBox,   Map
+    body}
+```
+
+### HTTP API Endpoints (22 Total)
 ```
 Identity Management:
 - POST /brc100/identity/generate
@@ -170,6 +196,7 @@ Authentication:
 - POST /brc100/auth/challenge
 - POST /brc100/auth/authenticate
 - POST /brc100/auth/type42
+- POST /.well-known/auth (BRC-104 with BRC-42/43 signatures)
 
 Session Management:
 - POST /brc100/session/create
@@ -184,6 +211,14 @@ BEEF Transactions:
 SPV Verification:
 - POST /brc100/spv/verify
 - POST /brc100/spv/proof
+
+BRC-33 PeerServ Message Relay:
+- POST /sendMessage (send message to recipient)
+- POST /listMessages (list messages from message box)
+- POST /acknowledgeMessage (delete acknowledged messages)
+
+Socket.IO / Engine.IO:
+- GET /socket.io/ (Engine.IO polling handshake)
 
 Status:
 - GET /brc100/status
