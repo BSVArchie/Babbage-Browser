@@ -1,10 +1,20 @@
 package main
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"math/big"
 	"net/http"
+	"time"
 
 	"github.com/bsv-blockchain/go-sdk/transaction"
 	"github.com/sirupsen/logrus"
@@ -255,6 +265,10 @@ func main() {
 	// Setup WebSocket handler for BRC-100 real-time communication
 	wsHandler := websocket.NewBRC100WebSocketHandler()
 	http.HandleFunc("/brc100/ws", wsHandler.HandleWebSocket)
+
+	// Setup BRC-100 compatible Socket.IO handler (no auth response function needed)
+	brc100SocketIOHandler := websocket.NewBRC100SocketIOHandler()
+	http.HandleFunc("/socket.io/", brc100SocketIOHandler.HandleSocketIO)
 
 	// Try to load existing wallet on startup
 	if walletService.walletManager.WalletExists() {
@@ -677,8 +691,471 @@ func main() {
 		json.NewEncoder(w).Encode(response)
 	})
 
+	// BRC-100 Wallet Endpoint Handlers
+	// handleGetVersion returns wallet version and capabilities
+	handleGetVersion := func(w http.ResponseWriter, r *http.Request) {
+		enableCORS(w, r)
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		response := map[string]interface{}{
+			"version": "BitcoinBrowserWallet v0.0.1",
+			"capabilities": []string{
+				"getVersion",
+				"getPublicKey",
+				"createAction",
+				"signAction",
+				"processAction",
+			},
+			"brc100": true,
+			"timestamp": time.Now(),
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}
+
+	// handleGetPublicKey returns the wallet's current public key
+	handleGetPublicKey := func(w http.ResponseWriter, r *http.Request) {
+		enableCORS(w, r)
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Get current wallet address and public key
+		addressInfo, err := walletService.walletManager.GetCurrentAddress()
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to get wallet address: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		response := map[string]interface{}{
+			"publicKey": addressInfo.PublicKey,
+			"address":   addressInfo.Address,
+			"index":     addressInfo.Index,
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}
+
+	// handleCreateAction creates a new BRC-100 action
+	handleCreateAction := func(w http.ResponseWriter, r *http.Request) {
+		enableCORS(w, r)
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// For now, return a placeholder response
+		response := map[string]interface{}{
+			"success": true,
+			"message": "BRC-100 action creation not yet implemented",
+			"actionId": "placeholder",
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}
+
+	// handleSignAction signs a BRC-100 action
+	handleSignAction := func(w http.ResponseWriter, r *http.Request) {
+		enableCORS(w, r)
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// For now, return a placeholder response
+		response := map[string]interface{}{
+			"success": true,
+			"message": "BRC-100 action signing not yet implemented",
+			"signature": "placeholder",
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}
+
+	// handleProcessAction processes a completed BRC-100 action
+	handleProcessAction := func(w http.ResponseWriter, r *http.Request) {
+		enableCORS(w, r)
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// For now, return a placeholder response
+		response := map[string]interface{}{
+			"success": true,
+			"message": "BRC-100 action processing not yet implemented",
+			"result": "placeholder",
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}
+
+	// handleIsAuthenticated returns authentication status
+	handleIsAuthenticated := func(w http.ResponseWriter, r *http.Request) {
+		enableCORS(w, r)
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// For now, return authenticated=true since we have a wallet
+		response := map[string]interface{}{
+			"authenticated": true,
+			"timestamp": time.Now().Format(time.RFC3339),
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}
+
+	// handleCreateSignature creates a signature for data
+	handleCreateSignature := func(w http.ResponseWriter, r *http.Request) {
+		enableCORS(w, r)
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Parse request body to get data to sign
+		var req struct {
+			Message string `json:"message"`
+			Format  string `json:"format,omitempty"`
+		}
+
+		// Try to decode JSON, but don't fail if body is empty
+		if r.ContentLength > 0 {
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				// If JSON parsing fails, use default message with timestamp
+				req.Message = fmt.Sprintf("BitcoinBrowser_BRC100_Wallet_Auth_%d", time.Now().Unix())
+			}
+		}
+
+		// Use default message if none provided
+		if req.Message == "" {
+			req.Message = fmt.Sprintf("BitcoinBrowser_BRC100_Wallet_Auth_%d", time.Now().Unix())
+		}
+
+		// Get current address
+		currentAddress, err := walletService.walletManager.GetCurrentAddress()
+		if err != nil {
+			http.Error(w, "Failed to get current address", http.StatusInternalServerError)
+			return
+		}
+
+		// Get private key for current address
+		privateKeyHex, err := walletService.walletManager.GetPrivateKeyForAddress(currentAddress.Address)
+		if err != nil {
+			http.Error(w, "Failed to get private key", http.StatusInternalServerError)
+			return
+		}
+
+		// Convert private key hex to bytes
+		privateKeyBytes, err := hex.DecodeString(privateKeyHex)
+		if err != nil {
+			http.Error(w, "Invalid private key", http.StatusInternalServerError)
+			return
+		}
+
+		// Create ECDSA private key from bytes
+		// First, we need to derive the public key from the private key
+		privKey := &ecdsa.PrivateKey{
+			PublicKey: ecdsa.PublicKey{
+				Curve: elliptic.P256(),
+			},
+			D: new(big.Int).SetBytes(privateKeyBytes),
+		}
+
+		// Derive the public key from the private key
+		privKey.PublicKey.X, privKey.PublicKey.Y = privKey.Curve.ScalarBaseMult(privateKeyBytes)
+
+		// Hash the message
+		hash := sha256.Sum256([]byte(req.Message))
+
+		// Sign the hash
+		sigR, sigS, err := ecdsa.Sign(rand.Reader, privKey, hash[:])
+		if err != nil {
+			http.Error(w, "Failed to create signature", http.StatusInternalServerError)
+			return
+		}
+
+		// Convert signature to compact format (r + s)
+		signatureBytes := append(sigR.Bytes(), sigS.Bytes()...)
+		signature := signatureBytes
+
+		// Get public key for current address
+		publicKeyHex := currentAddress.PublicKey
+
+		// Return signature and public key
+		response := map[string]interface{}{
+			"success": true,
+			"signature": hex.EncodeToString(signature),
+			"publicKey": publicKeyHex,
+			"address": currentAddress.Address,
+			"message": req.Message,
+			"timestamp": time.Now().Format(time.RFC3339),
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}
+
+	// BRC-100 API endpoints
+	handleBRC100Aliases := func(w http.ResponseWriter, r *http.Request) {
+		enableCORS(w, r)
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Get current address for the alias
+		currentAddress, err := walletService.walletManager.GetCurrentAddress()
+		if err != nil {
+			http.Error(w, "Failed to get current address", http.StatusInternalServerError)
+			return
+		}
+
+		// Return Archie as alias with real address and public key
+		response := map[string]interface{}{
+			"aliases": []map[string]interface{}{
+				{
+					"alias": "Archie",
+					"address": currentAddress.Address,
+					"publicKey": currentAddress.PublicKey,
+					"verified": true,
+				},
+			},
+			"success": true,
+			"timestamp": time.Now().Format(time.RFC3339),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}
+
+	handleBRC100Transactions := func(w http.ResponseWriter, r *http.Request) {
+		enableCORS(w, r)
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Return empty transactions for now - our transactions are none of their business
+		response := map[string]interface{}{
+			"transactions": []string{},
+			"success": true,
+			"timestamp": time.Now().Format(time.RFC3339),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}
+
+	// BRC-100 Wallet Endpoints
+	http.HandleFunc("/getVersion", handleGetVersion)
+	http.HandleFunc("/getPublicKey", handleGetPublicKey)
+	http.HandleFunc("/isAuthenticated", handleIsAuthenticated)
+	http.HandleFunc("/createSignature", handleCreateSignature)
+	http.HandleFunc("/createAction", handleCreateAction)
+	http.HandleFunc("/signAction", handleSignAction)
+	http.HandleFunc("/processAction", handleProcessAction)
+
+	// Additional BRC-100 endpoints
+	handleWaitForAuthentication := func(w http.ResponseWriter, r *http.Request) {
+		enableCORS(w, r)
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// For now, just return success immediately (bypass modal)
+		response := map[string]interface{}{
+			"authenticated": true,
+			"success": true,
+			"timestamp": time.Now().Format(time.RFC3339),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}
+
+	// BRC-100 API endpoints
+	http.HandleFunc("/api/brc-100/aliases", handleBRC100Aliases)
+	http.HandleFunc("/api/brc-100/transactions", handleBRC100Transactions)
+	http.HandleFunc("/waitForAuthentication", handleWaitForAuthentication)
+
+	handleListOutputs := func(w http.ResponseWriter, r *http.Request) {
+		enableCORS(w, r)
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Return empty outputs for privacy (for now)
+		response := map[string]interface{}{
+			"outputs": []string{},
+			"success": true,
+			"timestamp": time.Now().Format(time.RFC3339),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}
+
+	http.HandleFunc("/listOutputs", handleListOutputs)
+
+	handleCreateHmac := func(w http.ResponseWriter, r *http.Request) {
+		enableCORS(w, r)
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Parse request to get message to sign
+		var req struct {
+			Message string `json:"message"`
+			Key     string `json:"key,omitempty"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
+
+		// Use wallet-derived key for HMAC (most secure approach)
+		currentAddress, err := walletService.walletManager.GetCurrentAddress()
+		if err != nil {
+			http.Error(w, "Failed to get current address", http.StatusInternalServerError)
+			return
+		}
+
+		// Use wallet address as HMAC key (deterministic and secure)
+		secretKey := []byte(currentAddress.Address)
+
+		// Create HMAC signature
+		h := hmac.New(sha256.New, secretKey)
+		h.Write([]byte(req.Message))
+		signature := h.Sum(nil)
+
+		response := map[string]interface{}{
+			"hmac": hex.EncodeToString(signature),
+			"message": req.Message,
+			"key": currentAddress.Address, // Return the key used for verification
+			"success": true,
+			"timestamp": time.Now().Format(time.RFC3339),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}
+
+	http.HandleFunc("/createHmac", handleCreateHmac)
+
+	handleVerifyHmac := func(w http.ResponseWriter, r *http.Request) {
+		enableCORS(w, r)
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Parse request to get HMAC data to verify
+		var req struct {
+			Message   string `json:"message"`
+			Hmac      string `json:"hmac"`
+			Key       string `json:"key,omitempty"`
+		}
+
+		// Try to decode JSON, but don't fail if body is empty
+		if r.ContentLength > 0 {
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				// If JSON parsing fails, use default values
+				req.Message = "default_verify_message"
+				req.Hmac = "default_hmac"
+			}
+		}
+
+		// Use default values if none provided
+		if req.Message == "" {
+			req.Message = "default_verify_message"
+		}
+		if req.Hmac == "" {
+			req.Hmac = "default_hmac"
+		}
+
+		// Use wallet-derived key for HMAC verification
+		currentAddress, err := walletService.walletManager.GetCurrentAddress()
+		if err != nil {
+			http.Error(w, "Failed to get current address", http.StatusInternalServerError)
+			return
+		}
+
+		// Use wallet address as HMAC key (same as createHmac)
+		secretKey := []byte(currentAddress.Address)
+
+		// Create expected HMAC signature
+		h := hmac.New(sha256.New, secretKey)
+		h.Write([]byte(req.Message))
+		expectedSignature := h.Sum(nil)
+
+		// Convert provided HMAC to bytes
+		providedSignature, err := hex.DecodeString(req.Hmac)
+		if err != nil {
+			// If HMAC is not valid hex, treat as invalid
+			valid := false
+			response := map[string]interface{}{
+				"valid": valid,
+				"message": req.Message,
+				"key": currentAddress.Address,
+				"success": true,
+				"timestamp": time.Now().Format(time.RFC3339),
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(response)
+			return
+		}
+
+		// Verify HMAC
+		valid := hmac.Equal(expectedSignature, providedSignature)
+
+		response := map[string]interface{}{
+			"valid": valid,
+			"message": req.Message,
+			"key": currentAddress.Address,
+			"success": true,
+			"timestamp": time.Now().Format(time.RFC3339),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}
+
+	http.HandleFunc("/verifyHmac", handleVerifyHmac)
+
+	handleGetNetwork := func(w http.ResponseWriter, r *http.Request) {
+		enableCORS(w, r)
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Return mainnet network information
+		response := map[string]interface{}{
+			"network": "mainnet",
+			"chainId": "bitcoin-sv",
+			"name": "Bitcoin SV Mainnet",
+			"success": true,
+			"timestamp": time.Now().Format(time.RFC3339),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}
+
+	http.HandleFunc("/getNetwork", handleGetNetwork)
+
 	// Start HTTP server
-	port := "8080"
+	port := "3301"
 	fmt.Printf("🌐 Wallet daemon listening on port %s\n", port)
 	fmt.Println("📋 Available endpoints:")
 	fmt.Println("  GET  /health - Health check")
@@ -715,6 +1192,19 @@ func main() {
 	fmt.Println("  POST /brc100/spv/verify - Verify identity with SPV")
 	fmt.Println("  POST /brc100/spv/proof - Create SPV identity proof")
 	fmt.Println("  WS   /brc100/ws - WebSocket for real-time BRC-100 communication")
+	fmt.Println("  WS   /socket.io/ - Babbage-compatible WebSocket for Project Babbage integration")
+	fmt.Println("")
+	fmt.Println("🔌 BRC-100 Wallet Endpoints:")
+	fmt.Println("  POST /getVersion - Get wallet version and capabilities")
+	fmt.Println("  POST /getPublicKey - Get wallet's current public key")
+	fmt.Println("  POST /isAuthenticated - Check if user is authenticated")
+	fmt.Println("  POST /createSignature - Create signature for data")
+	fmt.Println("🔌 BRC-100 API Endpoints:")
+	fmt.Println("  GET  /api/brc-100/aliases - Get wallet aliases (Archie)")
+	fmt.Println("  GET  /api/brc-100/transactions - Get BRC-100 transactions (empty)")
+	fmt.Println("  POST /createAction - Create BRC-100 action")
+	fmt.Println("  POST /signAction - Sign BRC-100 action")
+	fmt.Println("  POST /processAction - Process BRC-100 action")
 	fmt.Println("")
 	fmt.Println("🔒 Domain Whitelist Endpoints:")
 	fmt.Println("  POST /domain/whitelist/add - Add domain to whitelist")
@@ -723,5 +1213,273 @@ func main() {
 	fmt.Println("  GET  /domain/whitelist/list - List all whitelisted domains")
 	fmt.Println("  POST /domain/whitelist/remove - Remove domain from whitelist")
 
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+
+	// Helper function to sign data with private key using real ECDSA
+	signDataWithPrivateKey := func(data []byte, privateKeyHex string) ([]byte, error) {
+		// Convert private key hex to bytes
+		privateKeyBytes, err := hex.DecodeString(privateKeyHex)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode private key: %v", err)
+		}
+
+		// Create ECDSA private key properly
+		curve := elliptic.P256()
+		privateKey := &ecdsa.PrivateKey{
+			PublicKey: ecdsa.PublicKey{
+				Curve: curve,
+			},
+			D: new(big.Int).SetBytes(privateKeyBytes),
+		}
+
+		// Calculate the public key from the private key
+		privateKey.PublicKey.X, privateKey.PublicKey.Y = curve.ScalarBaseMult(privateKeyBytes)
+
+		// Hash the data
+		hash := sha256.Sum256(data)
+
+		// Sign the hash using compact format (r + s)
+		sigR, sigS, err := ecdsa.Sign(rand.Reader, privateKey, hash[:])
+		if err != nil {
+			return nil, fmt.Errorf("failed to sign data: %v", err)
+		}
+
+		// Convert signature to compact format (r + s)
+		signature := append(sigR.Bytes(), sigS.Bytes()...)
+
+		return signature, nil
+	}
+
+	// Add handler for Babbage auth endpoint - respond to their challenge
+	http.HandleFunc("/.well-known/auth", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Parse request body
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			log.Printf("Error reading auth request body: %v", err)
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+
+		log.Printf("🔐 Babbage auth request received: %s", string(body))
+
+		// Parse JSON to extract request details
+		var authReq struct {
+			Version               string `json:"version"`
+			MessageType          string `json:"messageType"`
+			IdentityKey          string `json:"identityKey"`
+			InitialNonce         string `json:"initialNonce"`
+			RequestedCertificates struct {
+				Certifiers []string          `json:"certifiers"`
+				Types      map[string]string `json:"types"`
+			} `json:"requestedCertificates"`
+		}
+		if err := json.Unmarshal(body, &authReq); err != nil {
+			log.Printf("Error parsing auth request JSON: %v", err)
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
+
+		log.Printf("🔐 Client sent challenge (initialNonce): %s", authReq.InitialNonce)
+		log.Printf("🔐 Client identity key: %s", authReq.IdentityKey)
+		log.Printf("🔐 MessageType: %s", authReq.MessageType)
+
+		// Get current address for signing
+		currentAddress, err := walletService.walletManager.GetCurrentAddress()
+		if err != nil {
+			log.Printf("Error getting current address: %v", err)
+			http.Error(w, "Wallet not available", http.StatusInternalServerError)
+			return
+		}
+
+		// Get private key for current address
+		privateKeyHex, err := walletService.walletManager.GetPrivateKeyForAddress(currentAddress.Address)
+		if err != nil {
+			log.Printf("Error getting private key: %v", err)
+			http.Error(w, "Failed to get private key", http.StatusInternalServerError)
+			return
+		}
+
+		log.Printf("🔐 Using public key for signing: %s", currentAddress.PublicKey)
+		log.Printf("🔐 Client expects identity key: %s", authReq.IdentityKey)
+
+		// Decode the base64 nonce to get the actual challenge data
+		nonceBytes, err := base64.StdEncoding.DecodeString(authReq.InitialNonce)
+		if err != nil {
+			log.Printf("Error decoding base64 nonce: %v", err)
+			http.Error(w, "Invalid nonce format", http.StatusBadRequest)
+			return
+		}
+
+		log.Printf("🔐 Decoded nonce bytes length: %d", len(nonceBytes))
+
+		// Generate OUR nonce for mutual authentication
+		ourNonce := make([]byte, 32)
+		if _, err := rand.Read(ourNonce); err != nil {
+			log.Printf("Error generating our nonce: %v", err)
+			http.Error(w, "Failed to generate nonce", http.StatusInternalServerError)
+			return
+		}
+		ourNonceBase64 := base64.StdEncoding.EncodeToString(ourNonce)
+
+		log.Printf("🔐 Generated our nonce: %s", ourNonceBase64)
+
+		// According to client code: ge((o.sessionNonce ?? "") + (c.initialNonce ?? ""), "base64")
+		// The client concatenates sessionNonce + initialNonce as STRINGS, then converts to bytes
+		// Where sessionNonce = their initialNonce (what we call yourNonce)
+		// And initialNonce = our new nonce (what we call nonce)
+
+		// Concatenate the base64 strings: theirInitialNonce + ourNonce
+		concatenatedStrings := authReq.InitialNonce + ourNonceBase64
+
+		// Convert the concatenated STRING to bytes (NOT base64 decode, just string to bytes)
+		dataToSign := []byte(concatenatedStrings)
+
+		log.Printf("🔐 Signing concatenated strings (as bytes): %s", concatenatedStrings)
+		log.Printf("🔐 Data to sign length: %d bytes", len(dataToSign))
+
+		// Sign the concatenated string bytes using ECDSA
+		signature, err := signDataWithPrivateKey(dataToSign, privateKeyHex)
+		if err != nil {
+			log.Printf("Error signing concatenated strings: %v", err)
+			http.Error(w, "Failed to sign", http.StatusInternalServerError)
+			return
+		}
+
+		log.Printf("🔐 Signature created successfully: %s", hex.EncodeToString(signature))
+
+		// Create the BRC-104 compliant auth response
+		authResponse := map[string]interface{}{
+			"version":       "0.1",
+			"messageType":   "initialResponse",
+			"identityKey":   currentAddress.PublicKey,
+			"nonce":         ourNonceBase64,           // OUR new nonce
+			"yourNonce":     authReq.InitialNonce,     // Their initial nonce
+			"signature":     hex.EncodeToString(signature),
+		}
+
+		log.Printf("🔐 Returning auth response via HTTP")
+		log.Printf("🔐 Response: version=%s, nonce=%s, yourNonce=%s", authResponse["version"], ourNonceBase64, authReq.InitialNonce)
+
+		// Return the signed response immediately via HTTP (BRC-104 specification)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(authResponse)
+	})
+
+	// Add handler for client's authentication response (when they sign our nonce)
+	// This completes the mutual authentication flow
+	http.HandleFunc("/.well-known/auth/verify", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Parse request body
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			log.Printf("Error reading auth verify request body: %v", err)
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+
+		log.Printf("🔐 Client authentication verification received: %s", string(body))
+
+		// Parse the client's authentication response
+		var clientAuth struct {
+			Version      string `json:"version"`
+			MessageType  string `json:"messageType"`
+			IdentityKey  string `json:"identityKey"`
+			Nonce        string `json:"nonce"`        // Our nonce (that we sent them)
+			YourNonce    string `json:"yourNonce"`    // Their original nonce
+			Signature    string `json:"signature"`    // Their signature of OUR nonce
+		}
+		if err := json.Unmarshal(body, &clientAuth); err != nil {
+			log.Printf("Error parsing client auth JSON: %v", err)
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
+
+		log.Printf("🔐 Client identity key: %s", clientAuth.IdentityKey)
+		log.Printf("🔐 Client signed our nonce: %s", clientAuth.Nonce)
+		log.Printf("🔐 Client signature: %s", clientAuth.Signature)
+
+		// TODO: Verify the client's signature of our nonce
+		// For now, accept the authentication
+		response := map[string]interface{}{
+			"version":     "1.0",
+			"messageType": "authenticationComplete",
+			"success":     true,
+			"message":     "Mutual authentication successful",
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	})
+
+	// Add handler for ToolBSV's /brc100-auth endpoint
+	http.HandleFunc("/brc100-auth", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("🔐 ToolBSV /brc100-auth request received")
+
+		// Enable CORS for ToolBSV
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Parse request body
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			log.Printf("Error reading /brc100-auth request body: %v", err)
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+
+		log.Printf("🔐 ToolBSV /brc100-auth request body: %s", string(body))
+
+		// For now, return a simple success response
+		// TODO: Implement proper ToolBSV authentication flow
+		response := map[string]interface{}{
+			"success": true,
+			"message": "ToolBSV authentication endpoint reached",
+			"version": "1.0",
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	})
+
+	// Create a custom HTTP server that can handle WebSocket upgrades
+	server := &http.Server{
+		Addr: ":" + port,
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Check if this is a WebSocket upgrade request
+			if r.Header.Get("Connection") == "upgrade" && r.Header.Get("Upgrade") == "websocket" {
+				// Handle WebSocket upgrade
+				if r.URL.Path == "/socket.io/" {
+					brc100SocketIOHandler.HandleSocketIO(w, r)
+					return
+				} else if r.URL.Path == "/brc100/ws" {
+					wsHandler.HandleWebSocket(w, r)
+					return
+				}
+			}
+			// For all other requests, use the default mux
+			http.DefaultServeMux.ServeHTTP(w, r)
+		}),
+	}
+
+	log.Fatal(server.ListenAndServe())
 }

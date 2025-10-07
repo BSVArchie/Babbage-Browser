@@ -1388,15 +1388,23 @@ CefRefPtr<CefResourceRequestHandler> SimpleHandler::GetResourceRequestHandler(
     CEF_REQUIRE_IO_THREAD();
 
     std::string url = request->GetURL().ToString();
-    std::cout << "🌐 Resource request: " << url << " (role: " << role_ << ")" << std::endl;
-    std::ofstream debugLog("debug_output.log", std::ios::app);
-    debugLog << "🌐 Resource request: " << url << " (role: " << role_ << ")" << std::endl;
-    debugLog.close();
+    std::string method = request->GetMethod().ToString();
+    std::string connection = request->GetHeaderByName("Connection");
+    std::string upgrade = request->GetHeaderByName("Upgrade");
+
+    LOG_DEBUG_BROWSER("🌐 Resource request: " + url + " (role: " + role_ + ")");
+    LOG_DEBUG_BROWSER("🌐 Method: " + method + ", Connection: " + connection + ", Upgrade: " + upgrade);
 
     // Intercept HTTP requests for all browsers when they're making external requests
-    // Check if the request is to localhost:8080 (our wallet daemon)
-    if (url.find("localhost:8080") != std::string::npos) {
-        std::cout << "🌐 Intercepting wallet request from browser role: " << role_ << std::endl;
+    // Check if the request is to localhost ports that BRC-100 sites commonly use
+    // OR if it's a BRC-104 /.well-known/auth request (standard wallet authentication endpoint)
+    if (url.find("localhost:3301") != std::string::npos ||
+        url.find("localhost:3321") != std::string::npos ||
+        url.find("localhost:2121") != std::string::npos ||
+        url.find("localhost:8080") != std::string::npos ||
+        url.find("messagebox.babbage.systems") != std::string::npos ||
+        url.find("/.well-known/auth") != std::string::npos) {
+        LOG_DEBUG_BROWSER("🌐 Intercepting wallet request from browser role: " + role_);
         return new HttpRequestInterceptor();
     }
 

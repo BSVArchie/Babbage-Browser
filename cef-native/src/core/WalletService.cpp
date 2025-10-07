@@ -65,7 +65,7 @@ public:
 static WalletService* g_walletService = nullptr;
 
 WalletService::WalletService()
-    : baseUrl_("http://localhost:8080")
+    : baseUrl_("http://localhost:3301")
     , daemonPath_("")
     , hSession_(nullptr)
     , hConnect_(nullptr)

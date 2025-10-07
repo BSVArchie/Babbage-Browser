@@ -300,7 +300,7 @@ bool SimpleRenderProcessHandler::OnProcessMessageReceived(
             std::string body = args->GetString(3);
 
             LOG_DEBUG_RENDER("🔐 BRC-100 auth request received: " + domain + " " + method + " " + endpoint);
-            
+
             // Send message to React component
             std::string js = R"(
                 window.dispatchEvent(new MessageEvent('message', {

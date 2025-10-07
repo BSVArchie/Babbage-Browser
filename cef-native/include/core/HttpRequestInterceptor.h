@@ -35,6 +35,8 @@ public:
 private:
     // Helper methods
     bool isWalletEndpoint(const std::string& url);
+    bool isSocketIOConnection(const std::string& url);
+    std::string extractDomain(CefRefPtr<CefBrowser> browser, CefRefPtr<CefRequest> request);
 
     IMPLEMENT_REFCOUNTING(HttpRequestInterceptor);
     DISALLOW_COPY_AND_ASSIGN(HttpRequestInterceptor);

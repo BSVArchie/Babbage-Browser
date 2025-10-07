@@ -318,12 +318,6 @@ func (h *BRC100WebSocketHandler) generateSessionID(appDomain string) string {
 	return fmt.Sprintf("session_%s_%d", appDomain, time.Now().UnixNano())
 }
 
-func getStringFromMap(m map[string]interface{}, key string) string {
-	if val, ok := m[key].(string); ok {
-		return val
-	}
-	return ""
-}
 
 // GetConnectedClients returns the number of connected clients
 func (h *BRC100WebSocketHandler) GetConnectedClients() int {

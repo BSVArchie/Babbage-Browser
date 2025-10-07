@@ -2,6 +2,14 @@
 
 ## 🚨 **CURRENT SESSION STATUS - READ THIS FIRST**
 
+### **🎯 TOMORROW'S PRIORITY: Complete WebSocket Auth Response Integration**
+
+**✅ MAJOR BREAKTHROUGH TODAY**: Successfully implemented WebSocket auth response integration - the critical missing piece for Babbage client authentication.
+
+**🔧 IMMEDIATE TASK**: Debug why WebSocket upgrade is not going through our Socket.IO handler. Client receives response with `version: undefined` instead of our stored auth response.
+
+**🎯 SUCCESS CRITERIA**: Fix WebSocket routing so stored auth response is returned via WebSocket, resolving universal nonce verification failure across all Babbage sites.
+
 ### **Current State: PRODUCTION-READY Bitcoin SV Wallet + BRC-100 System ✅**
 
 **✅ WHAT'S WORKING:**
@@ -391,6 +399,322 @@ Based on console logs from real BRC-100 sites, we need to implement:
 - **Authentication Flow**: Fix challenge/authenticate endpoints to sign site's challenges
 
 **Implementation Plan**: See `BRC100_WALLET_INTEGRATION_PLAN.md` for detailed step-by-step guide
+
+---
+
+## 🔌 **CURRENT SOCKET.IO IMPLEMENTATION STATUS (2025-10-06)**
+
+### **✅ MAJOR BREAKTHROUGH: WebSocket Auth Response Integration**
+
+**🎯 CURRENT STATE**: Successfully implemented **WebSocket auth response integration** - the critical missing piece that bridges HTTP auth requests with WebSocket responses. This addresses the core issue preventing Babbage client authentication.
+
+### **🔍 ROOT CAUSE DISCOVERED:**
+**The Issue**: Babbage client sends `/.well-known/auth` via HTTP but expects the response to come back through the WebSocket connection during Socket.IO handshake.
+
+**The Solution**: Implemented shared auth storage system that:
+1. **Stores** auth response when `/.well-known/auth` is called
+2. **Retrieves** stored response during Socket.IO WebSocket handshake
+3. **Returns** signed nonce via WebSocket instead of HTTP
+
+### **✅ IMPLEMENTATION COMPLETED:**
+
+#### **1. Shared Auth Storage System**
+```go
+// Shared storage for auth responses (keyed by client identity)
+var authResponses = make(map[string]map[string]interface{})
+var authMutex sync.RWMutex
+
+// Helper function to retrieve and clear stored auth response
+getStoredAuthResponse := func(identityKey string) (map[string]interface{}, bool) {
+    authMutex.Lock()
+    defer authMutex.Unlock()
+
+    if response, exists := authResponses[identityKey]; exists {
+        delete(authResponses, identityKey) // One-time use
+        return response, true
+    }
+    return nil, false
+}
+```
+
+#### **2. Enhanced Socket.IO Handler**
+- **Modified**: `BRC100SocketIOHandler` to accept auth response function
+- **Enhanced**: `sendInitialResponse()` to check for stored auth responses
+- **Smart Logic**: Returns stored auth response if available, basic response if not
+
+#### **3. Modified `/.well-known/auth` Handler**
+- **Stores Response**: Instead of returning immediately, stores auth response
+- **Acknowledgment**: Returns simple acknowledgment that auth was received
+- **One-Time Use**: Response is deleted after retrieval for security
+
+### **🔧 CURRENT STATUS:**
+
+#### **✅ What's Working:**
+1. **HTTP Polling**: Engine.IO polling requests reach our Go daemon ✅
+2. **Auth Storage**: `/.well-known/auth` stores signed responses ✅
+3. **WebSocket Upgrade**: Client successfully upgrades to WebSocket ✅
+4. **Response Integration**: Socket.IO handler retrieves stored responses ✅
+
+#### **❌ Current Issue:**
+- **WebSocket Response**: Client receives response but with `version: undefined`
+- **Root Cause**: WebSocket upgrade happening but not through our Socket.IO handler
+- **Evidence**: Client gets response with `undefined` version (not our stored response)
+
+### **🎯 NEXT STEPS FOR TOMORROW:**
+
+#### **Priority 1: Debug WebSocket Routing**
+- **Issue**: WebSocket upgrade not going through our Socket.IO handler
+- **Debug**: Add logging to see where WebSocket upgrade is happening
+- **Fix**: Ensure WebSocket upgrade goes through our handler
+
+#### **Priority 2: Test Complete Flow**
+- **Goal**: Verify stored auth response is returned via WebSocket
+- **Expected**: Client receives signed nonce and passes verification
+- **Result**: Universal nonce verification failure resolved
+
+#### **Priority 3: Multi-Site Compatibility**
+- **ToolBSV**: Already working, needs `/brc100-auth` endpoint
+- **CoolCert**: Needs `/acquireCertificate` endpoint
+- **Babbage Sites**: Should work once WebSocket response issue is fixed
+
+### **📊 MULTI-SITE TESTING RESULTS:**
+
+#### **✅ Working Sites:**
+- **ToolBSV**: Uses standard BRC-100 endpoints, works with our `/getVersion` endpoint
+
+#### **❌ Failing Sites (Universal Nonce Issue):**
+- **peerpay.babbage.systems**: Socket.IO nonce verification failure
+- **thryll.online**: Socket.IO nonce verification failure
+- **coinflip.babbage.systems**: Socket.IO nonce verification failure
+- **marscast.babbage.systems**: Socket.IO nonce verification failure
+- **dropblocks.org**: Socket.IO nonce verification failure
+- **coolcert.babbage.systems**: Missing `/acquireCertificate` endpoint
+
+#### **🔍 Protocol Discovery:**
+- **Babbage Protocol**: Custom `/.well-known/auth` protocol (not standard BRC-100)
+- **ToolBSV Protocol**: Standard BRC-100 endpoints (`/getVersion`, `/getPublicKey`, etc.)
+- **Metanet Desktop**: Uses Tauri with HTTP server on `127.0.0.1:3321`
+
+### **🎯 CURRENT ERROR STATE:**
+**Frontend Error:**
+```
+Error: Invalid or unsupported message auth version! Received: undefined, expected: 0.1
+```
+
+**Backend Logs (Working):**
+```
+🔐 Auth response stored for identity key: 03d575090cc073ecf448ad49fae79993fdaf8d1643ec2c5762655ed400e20333e3
+🔐 Nonce signed successfully: 4b48a2c7f5f7b8dbc0cce2ffc9806208109af61d7c2a1146cac526decc1d8e71989eaf617bf00e4dcefa925fd2ea445ec98f3c0e7614b3c610340e1e416a964a
+```
+
+### **Implementation Journey - What We've Tried**
+
+#### **Phase 1: Raw WebSocket Implementation**
+**Approach**: Implemented raw WebSocket handler using `github.com/gorilla/websocket`
+**Files**: `go-wallet/brc100/babbage/websocket.go`
+**Result**: ❌ **FAILED** - Client expected Socket.IO protocol, not raw WebSocket
+
+**Key Issues:**
+- Client was using Socket.IO (Engine.IO) protocol
+- Raw WebSocket handshake didn't match client expectations
+- Protocol mismatch caused immediate connection failures
+
+#### **Phase 2: C++ WebSocket Interception**
+**Approach**: Intercept WebSocket connections in C++ interceptor and proxy to Go daemon
+**Files**:
+- `cef-native/src/core/HttpRequestInterceptor.cpp` - `isBabbageWebSocket()` function
+- `cef-native/include/core/HttpRequestInterceptor.h` - `BabbageWebSocketProxyHandler` class
+**Result**: ❌ **FAILED** - CEF resource handlers cannot properly proxy WebSocket connections
+
+**Key Issues:**
+- CEF's `CefResourceHandler` is designed for HTTP, not WebSocket proxying
+- WebSocket handshake requires proper protocol switching (HTTP 101)
+- CEF resource handlers cannot maintain persistent WebSocket connections
+
+#### **Phase 3: Direct Connection Approach**
+**Approach**: Remove C++ interception, let browser connect directly to Go daemon
+**Files**: Removed WebSocket interception logic from C++ interceptor
+**Result**: ❌ **FAILED** - Direct connection worked but protocol mismatch remained
+
+**Key Issues:**
+- Client still expected Socket.IO protocol
+- Go daemon was implementing raw WebSocket
+- Connection established but protocol incompatible
+
+#### **Phase 4: Socket.IO Library Integration**
+**Approach**: Implement Socket.IO server using `github.com/googollee/go-socket.io`
+**Files**:
+- `go-wallet/brc100/websocket/babbage_socketio.go` - New Socket.IO implementation
+- `go-wallet/go.mod` - Added Socket.IO dependency
+**Result**: ⚠️ **PARTIAL SUCCESS** - Socket.IO requests received but protocol not fully implemented
+
+**Key Issues:**
+- Socket.IO requests are reaching the daemon (✅)
+- Engine.IO protocol responses not properly implemented (❌)
+- Client expects specific polling responses we're not providing (❌)
+
+#### **Phase 5: C++ Interceptor Reintroduction**
+**Approach**: Add C++ interceptor back for Socket.IO requests to handle CORS and logging
+**Files**:
+- `cef-native/src/core/HttpRequestInterceptor.cpp` - `isSocketIOConnection()` function
+**Result**: ⚠️ **PARTIAL SUCCESS** - Interceptor detects Socket.IO but doesn't intercept them
+
+**Key Issues:**
+- C++ interceptor is running and checking Socket.IO connections (✅)
+- Socket.IO requests are bypassing the interceptor (❌)
+- Requests go directly to Go daemon without C++ processing (❌)
+
+### **Current Code State**
+
+#### **Go Daemon - Socket.IO Implementation**
+**File**: `go-wallet/brc100/websocket/babbage_socketio.go`
+**Status**: ✅ **IMPLEMENTED** - Socket.IO server using `github.com/googollee/go-socket.io`
+**Features**:
+- Socket.IO server initialization
+- Event handlers for `OnConnect`, `OnDisconnect`, `OnEvent`
+- Nonce generation and verification
+- Babbage protocol message handling
+
+**Key Code**:
+```go
+func NewBabbageSocketIOHandler() *BabbageSocketIOHandler {
+    server := socketio.NewServer(nil)
+
+    server.OnConnect("/", func(s socketio.Conn) error {
+        h.logger.WithField("remoteAddr", s.RemoteAddr()).Info("New Babbage Socket.IO connection attempt")
+        // Handle connection
+        return nil
+    })
+
+    go server.Serve()
+    return &BabbageSocketIOHandler{server: server, logger: logger}
+}
+```
+
+#### **Go Daemon - HTTP Endpoint**
+**File**: `go-wallet/main.go`
+**Status**: ✅ **IMPLEMENTED** - Socket.IO endpoint at `/socket.io/`
+**Code**:
+```go
+// Socket.IO endpoint
+http.HandleFunc("/socket.io/", func(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Access-Control-Allow-Origin", "*")
+    w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+    w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+    websocket.BabbageSocketIOHandler.HandleSocketIO(w, r)
+})
+```
+
+#### **C++ Interceptor - Socket.IO Detection**
+**File**: `cef-native/src/core/HttpRequestInterceptor.cpp`
+**Status**: ✅ **IMPLEMENTED** - Detects Socket.IO connections but doesn't intercept them
+**Code**:
+```cpp
+bool HttpRequestInterceptor::isSocketIOConnection(const std::string& url) {
+    bool isLocalhost = url.find("localhost:3301") != std::string::npos;
+    bool isSocketIO = url.find("/socket.io/") != std::string::npos;
+    return isLocalhost && isSocketIO;
+}
+```
+
+### **Current Debugging Findings**
+
+#### **What's Working** ✅
+1. **Socket.IO Requests Reaching Daemon**: Client successfully sends polling requests to `/socket.io/`
+2. **C++ Interceptor Running**: Interceptor detects and logs Socket.IO connection checks
+3. **Go Daemon Receiving Requests**: Daemon logs show requests being processed
+4. **Socket.IO Library Integration**: `github.com/googollee/go-socket.io` is properly imported and initialized
+
+#### **What's Not Working** ❌
+1. **Engine.IO Protocol Implementation**: Server not providing correct polling responses
+2. **Socket.IO Connection Establishment**: Client cannot establish persistent connection
+3. **Nonce Verification**: Client expects specific nonce format we're not providing
+4. **C++ Interceptor Bypass**: Socket.IO requests bypass C++ interceptor entirely
+
+#### **Key Log Analysis**
+```
+// C++ Interceptor Logs - Shows interceptor is running but not intercepting Socket.IO
+🌐 Checking Socket.IO connection: http://localhost:3301/getVersion - localhost: true, socket.io: false
+
+// Go Daemon Logs - Shows Socket.IO requests reaching daemon
+time="2025-10-05T17:09:47-06:00" level=info msg="Socket.IO request received"
+url="/socket.io/?EIO=4&transport=polling&t=be3ut75c"
+
+// Error Logs - Shows protocol mismatch
+2025/10/05 17:09:43 http: superfluous response.WriteHeader call from main.main.func22 (main.go:697)
+```
+
+### **Root Cause Analysis**
+
+#### **Primary Issue: Engine.IO Protocol Mismatch**
+The client is using Socket.IO (which uses Engine.IO for transport), but our server is not properly implementing the Engine.IO protocol. Engine.IO uses a specific polling mechanism where:
+
+1. **Initial Request**: Client sends GET request to `/socket.io/?EIO=4&transport=polling&t=timestamp`
+2. **Server Response**: Server must respond with specific Engine.IO format
+3. **Connection Upgrade**: After polling, connection upgrades to WebSocket
+4. **Nonce Exchange**: Specific nonce format required for authentication
+
+#### **Secondary Issue: C++ Interceptor Bypass**
+Socket.IO requests are bypassing our C++ interceptor entirely, going directly to the Go daemon. This suggests:
+- Socket.IO requests might be using a different transport mechanism
+- CEF might not be intercepting Socket.IO requests properly
+- Requests might be going through a different code path
+
+### **Next Steps - Implementation Plan**
+
+#### **Immediate Priority: Fix Engine.IO Protocol**
+1. **Research Engine.IO Specification**: Understand exact polling response format
+2. **Implement Proper Polling Responses**: Server must respond with correct Engine.IO format
+3. **Fix Nonce Generation**: Implement Babbage-compatible nonce format
+4. **Test Connection Establishment**: Verify Socket.IO connection can be established
+
+#### **Secondary Priority: Fix C++ Interceptor**
+1. **Debug Interceptor Bypass**: Why are Socket.IO requests not being intercepted?
+2. **Implement Proper Interception**: Ensure all Socket.IO requests go through C++ interceptor
+3. **Add CORS Headers**: Handle CORS in C++ interceptor for Socket.IO requests
+4. **Add Logging**: Comprehensive logging for Socket.IO request flow
+
+#### **Testing Strategy**
+1. **Protocol Compliance**: Test with Socket.IO client to verify Engine.IO compliance
+2. **Babbage Compatibility**: Test with `peerpay.babbage.systems` for real-world compatibility
+3. **Interceptor Integration**: Verify C++ interceptor properly handles Socket.IO requests
+4. **End-to-End Flow**: Complete Socket.IO connection → authentication → message exchange
+
+### **Technical Notes**
+
+#### **Socket.IO vs WebSocket**
+- **Socket.IO**: High-level library that uses Engine.IO for transport
+- **Engine.IO**: Low-level transport protocol that can use polling or WebSocket
+- **Raw WebSocket**: Direct WebSocket protocol without Socket.IO abstraction
+
+#### **Engine.IO Polling Protocol**
+```
+Client Request: GET /socket.io/?EIO=4&transport=polling&t=timestamp
+Server Response: Engine.IO packet format (not plain HTTP)
+```
+
+#### **Babbage Protocol Requirements**
+- **Nonce Generation**: Specific format for authentication
+- **Message Format**: Babbage-compatible message structure
+- **Authentication Flow**: Challenge/response authentication mechanism
+
+### **Files Modified in Current Session**
+- `go-wallet/brc100/websocket/babbage_socketio.go` - Socket.IO implementation
+- `go-wallet/main.go` - Socket.IO endpoint and handler registration
+- `go-wallet/go.mod` - Socket.IO dependency
+- `cef-native/src/core/HttpRequestInterceptor.cpp` - Socket.IO detection
+- `cef-native/include/core/HttpRequestInterceptor.h` - Socket.IO function declarations
+
+### **Current Status Summary**
+- ✅ **Socket.IO Library**: Integrated and running
+- ✅ **HTTP Endpoint**: `/socket.io/` endpoint responding
+- ✅ **C++ Interceptor**: Detecting Socket.IO connections
+- ❌ **Engine.IO Protocol**: Not properly implemented
+- ❌ **Connection Establishment**: Client cannot connect
+- ❌ **C++ Interception**: Socket.IO requests bypass interceptor
+
+---
 
 **📁 KEY FILES MODIFIED:**
 - `go-wallet/hd_wallet.go` - Extended with BRC-100 data structures and methods

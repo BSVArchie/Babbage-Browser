@@ -9,7 +9,9 @@
 #include "include/cef_frame.h"
 #include "../handlers/simple_handler.h"
 #include "../handlers/simple_app.h"
+#include "../../include/core/WebSocketServerHandler.h"
 #include <iostream>
+#include <regex>
 
 #include "../include/core/PendingAuthRequest.h"
 
@@ -18,6 +20,9 @@ class AsyncWalletResourceHandler;
 
 // Global variable to store pending auth request data
 PendingAuthRequest g_pendingAuthRequest = {"", "", "", "", false, nullptr};
+
+// Global variable to track if a modal is currently pending
+std::string g_pendingModalDomain = "";
 #include <sstream>
 #include <algorithm>
 #include <fstream>
@@ -112,15 +117,8 @@ public:
 
             for (const auto& entry : whitelist) {
                 if (entry["domain"] == domain) {
-                    bool isPermanent = entry["isPermanent"];
-                    int requestCount = entry["requestCount"];
-
-                    // If one-time and already used, return false
-                    if (!isPermanent && requestCount > 0) {
-                        std::cout << "🔒 Domain " << domain << " is one-time and already used" << std::endl;
-                        return false;
-                    }
-
+                    // Domain is whitelisted - allow it regardless of request count
+                    // (one-time domains should remain approved for the session)
                     std::cout << "🔒 Domain " << domain << " is whitelisted" << std::endl;
                     return true;
                 }
@@ -209,6 +207,7 @@ public:
 // Forward declaration
 class AsyncHTTPClient;
 
+
 // Async Resource Handler for managing wallet HTTP requests
 class AsyncWalletResourceHandler : public CefResourceHandler {
 public:
@@ -229,25 +228,29 @@ public:
 
         LOG_DEBUG_HTTP("🌐 AsyncWalletResourceHandler::Open called");
 
-        // Check if domain is whitelisted
+        // Check if domain is whitelisted - NO BYPASSES
         DomainVerifier domainVerifier;
         if (!domainVerifier.isDomainWhitelisted(requestDomain_)) {
-            // Domain not whitelisted, check if this is a BRC-100 auth request
+            // Domain not whitelisted, check if this is a BRC-100 authentication request
             if (endpoint_.find("/brc100/auth/") != std::string::npos) {
                 // This is a BRC-100 authentication request
                 LOG_DEBUG_HTTP("🔐 BRC-100 auth request from non-whitelisted domain: " + requestDomain_);
                 triggerBRC100AuthApprovalModal(requestDomain_, method_, endpoint_, body_, this);
-            } else {
-                // Regular request, trigger domain approval modal
-                LOG_DEBUG_HTTP("🔒 Domain " + requestDomain_ + " not whitelisted, triggering approval modal");
-                triggerDomainApprovalModal(requestDomain_, method_, endpoint_);
-            }
 
-            // Don't return error response immediately - wait for user response
-            // The request will be completed when the user approves/rejects via the modal
-            LOG_DEBUG_HTTP("🔐 Waiting for user response to BRC-100 auth request");
-            handle_request = true;
-            return true;
+                // Don't return error response immediately - wait for user response
+                LOG_DEBUG_HTTP("🔐 Waiting for user response to BRC-100 auth request");
+                handle_request = true;
+                return true;
+            } else {
+                // ALL other requests (including wallet endpoints) require whitelist approval
+                LOG_DEBUG_HTTP("🔒 Domain " + requestDomain_ + " not whitelisted for endpoint " + endpoint_ + ", triggering approval modal");
+                triggerDomainApprovalModal(requestDomain_, method_, endpoint_);
+
+                // Don't return error response immediately - wait for user response
+                LOG_DEBUG_HTTP("🔐 Waiting for user response to domain approval request");
+                handle_request = true;
+                return true;
+            }
         }
 
         // Domain is whitelisted, proceed with request
@@ -351,12 +354,55 @@ public:
         }
     }
 
-    // Trigger domain approval modal
+    // Trigger domain approval modal using the existing BRC-100 auth modal system
     void triggerDomainApprovalModal(const std::string& domain, const std::string& method, const std::string& endpoint) {
         LOG_DEBUG_HTTP("🔒 Triggering domain approval modal for " + domain);
 
-        // For now, just log the request
-        // TODO: Implement actual modal triggering
+        // Check if a modal is already pending for this domain
+        if (g_pendingModalDomain == domain) {
+            LOG_DEBUG_HTTP("🔒 Modal already pending for domain " + domain + ", skipping duplicate request");
+            return;
+        }
+
+        // Set pending modal domain
+        g_pendingModalDomain = domain;
+
+        // Store domain approval request data for later message passing (using BRC-100 auth system)
+        g_pendingAuthRequest.domain = domain;
+        g_pendingAuthRequest.method = method;
+        g_pendingAuthRequest.endpoint = endpoint;
+        g_pendingAuthRequest.body = ""; // No body for domain approval
+        g_pendingAuthRequest.isValid = true;
+        g_pendingAuthRequest.handler = nullptr; // Will be set when we create the handler
+
+        // Send message to frontend to create overlay with domain approval request data
+        CefRefPtr<CefBrowser> header_browser = SimpleHandler::GetHeaderBrowser();
+        if (header_browser && header_browser->GetMainFrame()) {
+            std::string js = R"(
+                console.log('🔒 Domain approval request received in header browser');
+                // Set the pending BRC-100 auth request data (reusing existing system)
+                window.pendingBRC100AuthRequest = {
+                    domain: ')" + domain + R"(',
+                    method: ')" + method + R"(',
+                    endpoint: ')" + endpoint + R"(',
+                    body: '',
+                    type: 'domain_approval'
+                };
+                console.log('🔒 Set pending BRC-100 auth request for domain approval:', window.pendingBRC100AuthRequest);
+                // Create the settings overlay (which will show the BRC-100 auth modal)
+                if (window.bitcoinBrowser && window.bitcoinBrowser.overlay && window.bitcoinBrowser.overlay.show) {
+                    console.log('🔒 Creating overlay for domain approval modal');
+                    window.bitcoinBrowser.overlay.show();
+                } else {
+                    console.error('🔒 Overlay show function not available');
+                }
+            )";
+            header_browser->GetMainFrame()->ExecuteJavaScript(js, header_browser->GetMainFrame()->GetURL(), 0);
+            LOG_DEBUG_HTTP("🔒 Sent domain approval request to frontend");
+        } else {
+            LOG_DEBUG_HTTP("🔒 Header browser not available for domain approval request");
+        }
+
         LOG_DEBUG_HTTP("🔒 Domain approval needed for: " + domain + " requesting " + method + " " + endpoint);
     }
 
@@ -364,6 +410,15 @@ public:
     // Trigger BRC-100 authentication approval modal
 void triggerBRC100AuthApprovalModal(const std::string& domain, const std::string& method, const std::string& endpoint, const std::string& body, CefRefPtr<AsyncWalletResourceHandler> handler) {
     LOG_DEBUG_HTTP("🔐 Triggering BRC-100 auth approval modal for " + domain);
+
+    // Check if a modal is already pending for this domain
+    if (g_pendingModalDomain == domain) {
+        LOG_DEBUG_HTTP("🔐 Modal already pending for domain " + domain + ", skipping duplicate request");
+        return;
+    }
+
+    // Set pending modal domain
+    g_pendingModalDomain = domain;
 
     // Store auth request data for later message passing
     g_pendingAuthRequest.domain = domain;
@@ -497,7 +552,7 @@ public:
 
         // Create request
         CefRefPtr<CefRequest> cefRequest = CefRequest::Create();
-        cefRequest->SetURL("http://localhost:8080/domain/whitelist/add");
+        cefRequest->SetURL("http://localhost:3301/domain/whitelist/add");
         cefRequest->SetMethod("POST");
         cefRequest->SetHeaderByName("Content-Type", "application/json", true);
 
@@ -546,6 +601,9 @@ void addDomainToWhitelist(const std::string& domain, bool permanent) {
 // Function to handle auth response and send it back to the original request
 void handleAuthResponse(const std::string& responseData) {
     LOG_DEBUG_HTTP("🔐 handleAuthResponse called with data: " + responseData);
+
+    // Clear the pending modal domain when user responds
+    g_pendingModalDomain = "";
 
     if (g_pendingAuthRequest.isValid && g_pendingAuthRequest.handler) {
         LOG_DEBUG_HTTP("🔐 Found pending auth request, sending response to original handler");
@@ -676,7 +734,7 @@ void AsyncWalletResourceHandler::startAsyncHTTPRequest() {
     // Create CEF HTTP request
     LOG_DEBUG_HTTP("🌐 Creating CEF HTTP request");
     CefRefPtr<CefRequest> httpRequest = CefRequest::Create();
-    std::string fullUrl = "http://localhost:8080" + endpoint_;
+    std::string fullUrl = "http://localhost:3301" + endpoint_;
     httpRequest->SetURL(fullUrl);
     httpRequest->SetMethod(method_);
 
@@ -769,7 +827,151 @@ CefRefPtr<CefResourceHandler> HttpRequestInterceptor::GetResourceHandler(
 
     LOG_DEBUG_HTTP("🌐 HTTP Request intercepted: " + method + " " + url);
 
+    // Normalize BRC-100 wallet requests to our standard port 3301
+    std::string originalUrl = url;
+
+    // Handle localhost port redirection
+    std::regex localhostPortPattern(R"(localhost:\d{4})");
+    if (std::regex_search(url, localhostPortPattern)) {
+        // Only redirect if it's not already port 3301
+        if (url.find("localhost:3301") == std::string::npos) {
+            url = std::regex_replace(url, localhostPortPattern, "localhost:3301");
+            LOG_DEBUG_HTTP("🌐 localhost Port redirection: " + originalUrl + " -> " + url);
+            request->SetURL(url);
+        }
+    }
+
+    // Handle 127.0.0.1 port redirection
+    std::regex localhostIPPattern(R"(127\.0\.0\.1:\d{4})");
+    if (std::regex_search(url, localhostIPPattern)) {
+        // Only redirect if it's not already port 3301
+        if (url.find("127.0.0.1:3301") == std::string::npos) {
+            url = std::regex_replace(url, localhostIPPattern, "127.0.0.1:3301");
+            LOG_DEBUG_HTTP("🌐 127.0.0.1 Port redirection: " + originalUrl + " -> " + url);
+            request->SetURL(url);
+        }
+    }
+
     LOG_DEBUG_HTTP("🌐 About to check if wallet endpoint...");
+
+    // Generic BRC-104 authentication endpoint interception
+    // Intercept ALL /.well-known/auth requests regardless of domain and redirect to local wallet
+    if (url.find("/.well-known/auth") != std::string::npos) {
+        LOG_DEBUG_HTTP("🌐 BRC-104 /.well-known/auth request detected, redirecting to local wallet");
+
+        // Extract the original domain for logging
+        std::string originalDomain = url;
+        size_t protocolEnd = originalDomain.find("://");
+        if (protocolEnd != std::string::npos) {
+            originalDomain = originalDomain.substr(protocolEnd + 3);
+            size_t pathStart = originalDomain.find("/");
+            if (pathStart != std::string::npos) {
+                originalDomain = originalDomain.substr(0, pathStart);
+            }
+        }
+
+        // Replace the domain with localhost:3301
+        std::regex domainPattern(R"(https?://[^/]+)");
+        url = std::regex_replace(url, domainPattern, "http://localhost:3301");
+
+        LOG_DEBUG_HTTP("🌐 BRC-104 auth redirection: " + originalUrl + " -> " + url);
+        request->SetURL(url);
+    }
+
+    // Check if this is a Babbage messagebox request that needs redirection
+    if (url.find("messagebox.babbage.systems") != std::string::npos) {
+        LOG_DEBUG_HTTP("🌐 Babbage messagebox request detected, redirecting to local server");
+
+        // Check if this is a WebSocket upgrade request
+        std::string connection = request->GetHeaderByName("Connection");
+        std::string upgrade = request->GetHeaderByName("Upgrade");
+        bool isWebSocketUpgrade = (connection == "upgrade" && upgrade == "websocket");
+
+        if (isWebSocketUpgrade) {
+            LOG_DEBUG_HTTP("🌐 WebSocket upgrade request detected for messagebox.babbage.systems");
+            LOG_DEBUG_HTTP("🌐 Redirecting WebSocket to Go daemon on localhost:3301");
+
+            // Redirect WebSocket connections to Go daemon
+            std::string redirectedUrl = url;
+            size_t pos = redirectedUrl.find("messagebox.babbage.systems");
+            if (pos != std::string::npos) {
+                redirectedUrl.replace(pos, 26, "localhost:3301");
+                // Change wss to ws for WebSocket connections
+                if (redirectedUrl.find("wss://") == 0) {
+                    redirectedUrl.replace(0, 6, "ws://");
+                }
+                LOG_DEBUG_HTTP("🌐 WebSocket redirection: " + url + " -> " + redirectedUrl);
+                request->SetURL(redirectedUrl);
+                url = redirectedUrl;
+            }
+        } else {
+            // Redirect HTTP requests to Go daemon
+            std::string redirectedUrl = url;
+            size_t pos = redirectedUrl.find("messagebox.babbage.systems");
+            if (pos != std::string::npos) {
+                redirectedUrl.replace(pos, 26, "localhost:3301");
+                // Also change https to http since our daemon only supports HTTP
+                if (redirectedUrl.find("https://") == 0) {
+                    redirectedUrl.replace(0, 8, "http://");
+                }
+                LOG_DEBUG_HTTP("🌐 HTTP redirection: " + url + " -> " + redirectedUrl);
+                request->SetURL(redirectedUrl);
+                url = redirectedUrl;
+            }
+        }
+    }
+
+    // Check if this is a Socket.IO connection first
+    if (isSocketIOConnection(url)) {
+        LOG_DEBUG_HTTP("🌐 Socket.IO connection detected");
+
+        // Extract domain using existing logic
+        std::string domain = extractDomain(browser, request);
+        LOG_DEBUG_HTTP("🌐 Extracted domain for Socket.IO: " + domain);
+
+        // Check whitelist (for logging only - no modal for now)
+        DomainVerifier domainVerifier;
+        if (!domainVerifier.isDomainWhitelisted(domain)) {
+            LOG_DEBUG_HTTP("🔒 Socket.IO connection from non-whitelisted domain: " + domain + " - allowing for now");
+        } else {
+            LOG_DEBUG_HTTP("🔒 Socket.IO connection from whitelisted domain: " + domain);
+        }
+
+        // Create AsyncWalletResourceHandler for Socket.IO requests
+        LOG_DEBUG_HTTP("🌐 Creating AsyncWalletResourceHandler for Socket.IO request");
+
+        // Extract endpoint from URL
+        std::string endpoint;
+        size_t pos = url.find("://");
+        if (pos != std::string::npos) {
+            pos = url.find("/", pos + 3);
+            if (pos != std::string::npos) {
+                endpoint = url.substr(pos);
+            }
+        }
+
+        LOG_DEBUG_HTTP("🌐 Socket.IO endpoint: " + endpoint);
+
+        // Get request body
+        std::string body;
+        CefRefPtr<CefPostData> postData = request->GetPostData();
+        if (postData) {
+            LOG_DEBUG_HTTP("🌐 Processing Socket.IO POST data...");
+            CefPostData::ElementVector elements;
+            postData->GetElements(elements);
+            for (auto& element : elements) {
+                if (element->GetType() == PDE_TYPE_BYTES) {
+                    size_t size = element->GetBytesCount();
+                    std::vector<char> buffer(size);
+                    element->GetBytes(size, buffer.data());
+                    body = std::string(buffer.data(), size);
+                }
+            }
+        }
+
+        // Create AsyncWalletResourceHandler for Socket.IO
+        return new AsyncWalletResourceHandler(method, endpoint, body, domain, browser);
+    }
 
     // Check if this is a wallet endpoint
     if (!isWalletEndpoint(url)) {
@@ -853,6 +1055,73 @@ CefRefPtr<CefResourceHandler> HttpRequestInterceptor::GetResourceHandler(
     LOG_DEBUG_HTTP("🌐 === FRAME DEBUGGING END ===");
 
     // Extract source domain from the main frame that made the request
+    std::string domain = extractDomain(browser, request);
+    LOG_DEBUG_HTTP("🌐 Final extracted source domain: " + domain);
+
+    if (!endpoint.empty()) {
+        LOG_DEBUG_HTTP("🌐 About to create AsyncWalletResourceHandler...");
+        // Create and return async handler
+        AsyncWalletResourceHandler* handler = new AsyncWalletResourceHandler(method, endpoint, body, domain, browser);
+        LOG_DEBUG_HTTP("🌐 AsyncWalletResourceHandler created successfully");
+        return handler;
+    }
+
+    LOG_DEBUG_HTTP("🌐 Could not extract endpoint from URL: " + url);
+    return nullptr;
+}
+
+void HttpRequestInterceptor::OnResourceRedirect(CefRefPtr<CefBrowser> browser,
+                                               CefRefPtr<CefFrame> frame,
+                                               CefRefPtr<CefRequest> request,
+                                               CefRefPtr<CefResponse> response,
+                                               CefString& new_url) {
+    CEF_REQUIRE_IO_THREAD();
+    LOG_DEBUG_HTTP("🌐 Resource redirect: " + new_url.ToString());
+}
+
+bool HttpRequestInterceptor::OnResourceResponse(CefRefPtr<CefBrowser> browser,
+                                              CefRefPtr<CefFrame> frame,
+                                              CefRefPtr<CefRequest> request,
+                                              CefRefPtr<CefResponse> response) {
+    CEF_REQUIRE_IO_THREAD();
+    return false;
+}
+
+
+bool HttpRequestInterceptor::isWalletEndpoint(const std::string& url) {
+    // Check if URL contains wallet endpoints
+    return (url.find("/brc100/") != std::string::npos ||
+            url.find("/wallet/") != std::string::npos ||
+            url.find("/transaction/") != std::string::npos ||
+            url.find("/getVersion") != std::string::npos ||
+            url.find("/getPublicKey") != std::string::npos ||
+            url.find("/createAction") != std::string::npos ||
+            url.find("/signAction") != std::string::npos ||
+            url.find("/processAction") != std::string::npos ||
+            url.find("/isAuthenticated") != std::string::npos ||
+            url.find("/createSignature") != std::string::npos ||
+            url.find("/api/brc-100/") != std::string::npos ||
+            url.find("/waitForAuthentication") != std::string::npos ||
+            url.find("/listOutputs") != std::string::npos ||
+            url.find("/createHmac") != std::string::npos ||
+            url.find("/verifyHmac") != std::string::npos ||
+            url.find("/getNetwork") != std::string::npos ||
+            url.find("/socket.io/") != std::string::npos ||
+            url.find("/.well-known/auth") != std::string::npos);
+}
+
+bool HttpRequestInterceptor::isSocketIOConnection(const std::string& url) {
+    // Check if this is a Socket.IO connection to our daemon or Babbage messagebox
+    bool isLocalhost = url.find("localhost:3301") != std::string::npos;
+    bool isBabbageMessagebox = url.find("messagebox.babbage.systems/socket.io/") != std::string::npos;
+    bool isSocketIO = url.find("/socket.io/") != std::string::npos;
+
+    LOG_DEBUG_HTTP("🌐 Checking Socket.IO connection: " + url + " - localhost: " + (isLocalhost ? "true" : "false") + ", babbage: " + (isBabbageMessagebox ? "true" : "false") + ", socket.io: " + (isSocketIO ? "true" : "false"));
+
+    return (isLocalhost && isSocketIO) || isBabbageMessagebox;
+}
+
+std::string HttpRequestInterceptor::extractDomain(CefRefPtr<CefBrowser> browser, CefRefPtr<CefRequest> request) {
     std::string domain;
 
     // Use main frame URL as the primary source (most reliable)
@@ -892,56 +1161,6 @@ CefRefPtr<CefResourceHandler> HttpRequestInterceptor::GetResourceHandler(
         }
     }
 
-    // Final fallback: extract from request URL (target domain)
-    if (domain.empty()) {
-        LOG_DEBUG_HTTP("🌐 Using request URL for domain extraction (final fallback): " + url);
-        size_t protocolPos = url.find("://");
-        if (protocolPos != std::string::npos) {
-            size_t domainStart = protocolPos + 3;
-            size_t domainEnd = url.find("/", domainStart);
-            if (domainEnd != std::string::npos) {
-                domain = url.substr(domainStart, domainEnd - domainStart);
-            } else {
-                domain = url.substr(domainStart);
-            }
-        }
-    }
-
-    LOG_DEBUG_HTTP("🌐 Final extracted source domain: " + domain);
-
-    if (!endpoint.empty()) {
-        LOG_DEBUG_HTTP("🌐 About to create AsyncWalletResourceHandler...");
-        // Create and return async handler
-        AsyncWalletResourceHandler* handler = new AsyncWalletResourceHandler(method, endpoint, body, domain, browser);
-        LOG_DEBUG_HTTP("🌐 AsyncWalletResourceHandler created successfully");
-        return handler;
-    }
-
-    LOG_DEBUG_HTTP("🌐 Could not extract endpoint from URL: " + url);
-    return nullptr;
-}
-
-void HttpRequestInterceptor::OnResourceRedirect(CefRefPtr<CefBrowser> browser,
-                                               CefRefPtr<CefFrame> frame,
-                                               CefRefPtr<CefRequest> request,
-                                               CefRefPtr<CefResponse> response,
-                                               CefString& new_url) {
-    CEF_REQUIRE_IO_THREAD();
-    LOG_DEBUG_HTTP("🌐 Resource redirect: " + new_url.ToString());
-}
-
-bool HttpRequestInterceptor::OnResourceResponse(CefRefPtr<CefBrowser> browser,
-                                              CefRefPtr<CefFrame> frame,
-                                              CefRefPtr<CefRequest> request,
-                                              CefRefPtr<CefResponse> response) {
-    CEF_REQUIRE_IO_THREAD();
-    return false;
-}
-
-
-bool HttpRequestInterceptor::isWalletEndpoint(const std::string& url) {
-    // Check if URL contains wallet endpoints
-    return (url.find("/brc100/") != std::string::npos ||
-            url.find("/wallet/") != std::string::npos ||
-            url.find("/transaction/") != std::string::npos);
+    LOG_DEBUG_HTTP("🌐 Extracted domain: " + domain);
+    return domain;
 }
