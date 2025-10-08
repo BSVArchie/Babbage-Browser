@@ -142,7 +142,7 @@ void SimpleApp::OnContextInitialized() {
         bool webview_result = CefBrowserHost::CreateBrowser(
         webview_window_info,
         webview_handler,
-        "https://www.coingeek.com",
+        "https://metanetapps.com/",
         webview_settings,
         nullptr,
         CefRequestContext::GetGlobalContext()

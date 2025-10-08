@@ -26,7 +26,7 @@ const MainBrowserView: React.FC = () => {
 
 
     // Settings panel state now managed in separate overlay process
-    const [address, setAddress] = useState('https://example.com');
+    const [address, setAddress] = useState('https://metanetapps.com/');
 
     const { navigate } = useBitcoinBrowser();
 
@@ -101,8 +101,8 @@ const MainBrowserView: React.FC = () => {
                     onClick={() => {
                         console.log("🔧 Settings button clicked");
                         console.log("🔧 bitcoinBrowser:", window.bitcoinBrowser);
-                        console.log("🔧 overlayPanel:", window.bitcoinBrowser?.overlayPanel);
-                        console.log("🔧 overlayPanel.toggleInput:", window.bitcoinBrowser?.overlayPanel?.toggleInput);
+                        // console.log("🔧 overlayPanel:", window.bitcoinBrowser?.overlayPanel);
+                        // console.log("🔧 overlayPanel.toggleInput:", window.bitcoinBrowser?.overlayPanel?.toggleInput);
                         window.cefMessage?.send('overlay_show_settings', []);
                         console.log("🔧 Settings overlay will open in separate process");
                         window.bitcoinBrowser.overlay.toggleInput(true);

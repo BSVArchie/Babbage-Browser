@@ -202,7 +202,7 @@ Each HWND hosts a separate CEF browser instance:
    - Runs in the header HWND
 
 2. **WebView Browser** (`SimpleHandler("webview")`)
-   - Loads web content (currently `https://www.coingeek.com`)
+   - Loads web content (currently `https://metanetapps.com/`)
    - Handles user browsing and navigation
    - Runs in the webview HWND
 
