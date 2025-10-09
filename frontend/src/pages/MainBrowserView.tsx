@@ -5,9 +5,7 @@ import {
   IconButton,
   InputBase,
   Paper,
-  Typography,
 } from '@mui/material';
-import DataObjectIcon from '@mui/icons-material/DataObject';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
@@ -42,9 +40,22 @@ const MainBrowserView: React.FC = () => {
     };
 
     return (
-        <Box>
+        <Box
+            sx={{
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden'
+            }}
+        >
             {/* Top Navigation Bar */}
-            <Toolbar sx={{ bgcolor: 'grey.100', borderBottom: '1px solid #ccc' }}>
+            <Toolbar sx={{
+                bgcolor: 'grey.100',
+                borderBottom: '1px solid #ccc',
+                minHeight: '64px !important',
+                flexShrink: 0
+            }}>
                 <IconButton>
                     <ArrowBackIcon />
                 </IconButton>

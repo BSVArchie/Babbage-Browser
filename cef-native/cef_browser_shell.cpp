@@ -285,8 +285,55 @@ void ShutdownApplication() {
 LRESULT CALLBACK ShellWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
         case WM_MOVE:
-        case WM_SIZE:
             break;
+
+        case WM_SIZE: {
+            // Handle window resizing - resize child windows and CEF browsers
+            RECT rect;
+            GetClientRect(hwnd, &rect);
+            int width = rect.right - rect.left;
+            int height = rect.bottom - rect.top;
+            int shellHeight = 80; // Header height
+            int webviewHeight = height - shellHeight;
+
+            LOG_DEBUG("🔄 Main window resized: " + std::to_string(width) + "x" + std::to_string(height));
+
+            // Resize header window
+            if (g_header_hwnd && IsWindow(g_header_hwnd)) {
+                SetWindowPos(g_header_hwnd, nullptr, 0, 0, width, shellHeight,
+                    SWP_NOZORDER | SWP_NOACTIVATE);
+
+                // Resize the CEF browser in the header window
+                CefRefPtr<CefBrowser> header_browser = SimpleHandler::GetHeaderBrowser();
+                if (header_browser) {
+                    HWND header_cef_hwnd = header_browser->GetHost()->GetWindowHandle();
+                    if (header_cef_hwnd && IsWindow(header_cef_hwnd)) {
+                        SetWindowPos(header_cef_hwnd, nullptr, 0, 0, width, shellHeight,
+                            SWP_NOZORDER | SWP_NOACTIVATE);
+                        header_browser->GetHost()->WasResized();
+                    }
+                }
+            }
+
+            // Resize webview window
+            if (g_webview_hwnd && IsWindow(g_webview_hwnd)) {
+                SetWindowPos(g_webview_hwnd, nullptr, 0, shellHeight, width, webviewHeight,
+                    SWP_NOZORDER | SWP_NOACTIVATE);
+
+                // Resize the CEF browser in the webview window
+                CefRefPtr<CefBrowser> webview_browser = SimpleHandler::GetWebviewBrowser();
+                if (webview_browser) {
+                    HWND webview_cef_hwnd = webview_browser->GetHost()->GetWindowHandle();
+                    if (webview_cef_hwnd && IsWindow(webview_cef_hwnd)) {
+                        SetWindowPos(webview_cef_hwnd, nullptr, 0, 0, width, webviewHeight,
+                            SWP_NOZORDER | SWP_NOACTIVATE);
+                        webview_browser->GetHost()->WasResized();
+                    }
+                }
+            }
+
+            return 0;
+        }
 
         case WM_CLOSE:
             LOG_INFO("🛑 Main shell window received WM_CLOSE - starting graceful shutdown...");
