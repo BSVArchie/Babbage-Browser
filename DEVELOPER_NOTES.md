@@ -2,38 +2,57 @@
 
 ## 🚨 **CURRENT SESSION STATUS - READ THIS FIRST**
 
-### **✅ COMPLETED: React + CEF Window Layout Fixes (2025-10-09)**
+### **✅ COMPLETED: React + CEF Window Layout + Overlay Tracking (2025-10-09)**
 
 **SESSION ACHIEVEMENTS:**
-- ✅ **Fixed React Layout**: React components now properly fill CEF browser windows
-- ✅ **Window Resize Handler**: Implemented WM_SIZE handler for proper window resizing
-- ✅ **CSS Overhaul**: Updated all CSS to use full-window layouts compatible with CEF
-- ✅ **Documentation**: Created comprehensive CEF + React integration guide
+1. ✅ **Fixed React Layout**: React components now properly fill CEF browser windows
+2. ✅ **Window Resize Handler**: Implemented WM_SIZE handler for proper window resizing
+3. ✅ **CSS Overhaul**: Updated all CSS to use full-window layouts compatible with CEF
+4. ✅ **Overlay Window Tracking**: Overlays now move and resize with main window
+5. ✅ **Multi-Monitor Support**: Overlays follow main window across monitors
+6. ✅ **CRITICAL BUG FIX**: Fixed UpdateLayeredWindow position bug causing overlays at (0,0)
+7. ✅ **Startup Rendering Fix**: Fixed header/webview not rendering on initial startup
+8. ✅ **Documentation**: Created comprehensive CEF + React integration guides
 
 **WHAT WAS FIXED:**
+
+**Part 1: React Layout Issues**
 1. **React Components Not Fitting**: Removed flexbox centering CSS that was preventing full-window layout
 2. **Window Resize Broken**: Added WM_SIZE handler in ShellWindowProc to resize child windows and CEF browsers
 3. **Component Sizing**: Added explicit width/height styling to React components
 4. **CSS Compatibility**: Updated index.css and App.css for CEF browser compatibility
 
+**Part 2: Overlay Window Tracking**
+1. **Overlay Movement**: Overlays now move with main window (WM_MOVE handler)
+2. **Overlay Resize**: Overlays now resize with main window (enhanced WM_SIZE handler)
+3. **Multi-Monitor**: Overlays follow main window across different screens
+4. **Maximize/Restore**: Overlays correctly handle window state changes
+
 **FILES MODIFIED:**
 - `frontend/src/index.css` - Full-window layout CSS (html, body, #root all 100% width/height)
 - `frontend/src/App.css` - App container styling
 - `frontend/src/pages/MainBrowserView.tsx` - Component sizing with flexbox layout
-- `cef-native/cef_browser_shell.cpp` - WM_SIZE handler implementation
+- `cef-native/cef_browser_shell.cpp` - WM_MOVE handler + enhanced WM_SIZE handler
+- `cef-native/src/handlers/my_overlay_render_handler.cpp` - Fixed UpdateLayeredWindow position bug
+- `cef-native/src/handlers/simple_handler.cpp` - Added WasResized() calls for startup rendering
+- `cef-native/src/handlers/simple_app.cpp` - Enhanced debug logging for overlay creation
 
 **NEW DOCUMENTATION:**
 - `CEF_REACT_INTEGRATION_GUIDE.md` - Comprehensive guide for CEF + React integration
-- `SESSION_SUMMARY_REACT_CEF_FIXES.md` - Detailed session summary with all changes
+- `SESSION_SUMMARY_REACT_CEF_FIXES.md` - Detailed session summary with React layout fixes
+- `OVERLAY_WINDOW_TRACKING_FIX.md` - Detailed overlay tracking implementation guide
+- `CRITICAL_OVERLAY_POSITION_BUG_FIX.md` - Critical UpdateLayeredWindow bug fix documentation
+- `SESSION_SUMMARY_OVERLAY_TRACKING.md` - Overlay movement implementation summary
 
 **TESTING REQUIRED:**
 - [ ] Test window resize (drag corners)
 - [ ] Test maximize/restore
-- [ ] Test on different screen resolutions
-- [ ] Verify no scrollbars appear
-- [ ] Check multi-monitor support
+- [ ] Test multi-monitor movement
+- [ ] Test overlay movement with main window
+- [ ] Verify overlays resize properly
+- [ ] Check multi-monitor overlay tracking
 
-See `SESSION_SUMMARY_REACT_CEF_FIXES.md` for complete details.
+See `SESSION_SUMMARY_REACT_CEF_FIXES.md` and `OVERLAY_WINDOW_TRACKING_FIX.md` for complete details.
 
 ---
 

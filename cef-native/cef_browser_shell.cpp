@@ -284,8 +284,50 @@ void ShutdownApplication() {
 
 LRESULT CALLBACK ShellWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
-        case WM_MOVE:
-            break;
+        case WM_MOVE: {
+            // Handle window movement - move overlay windows with main window
+            RECT mainRect;
+            GetWindowRect(hwnd, &mainRect);
+            int width = mainRect.right - mainRect.left;
+            int height = mainRect.bottom - mainRect.top;
+
+            LOG_DEBUG("🔄 Main window moved to: " + std::to_string(mainRect.left) + ", " + std::to_string(mainRect.top));
+
+            // Move settings overlay if it exists and is visible
+            if (g_settings_overlay_hwnd && IsWindow(g_settings_overlay_hwnd) && IsWindowVisible(g_settings_overlay_hwnd)) {
+                SetWindowPos(g_settings_overlay_hwnd, HWND_TOPMOST,
+                    mainRect.left, mainRect.top, width, height,
+                    SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                LOG_DEBUG("🔄 Moved settings overlay to match main window");
+            }
+
+            // Move wallet overlay if it exists and is visible
+            if (g_wallet_overlay_hwnd && IsWindow(g_wallet_overlay_hwnd) && IsWindowVisible(g_wallet_overlay_hwnd)) {
+                SetWindowPos(g_wallet_overlay_hwnd, HWND_TOPMOST,
+                    mainRect.left, mainRect.top, width, height,
+                    SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                LOG_DEBUG("🔄 Moved wallet overlay to match main window");
+            }
+
+            // Move backup overlay if it exists and is visible
+            if (g_backup_overlay_hwnd && IsWindow(g_backup_overlay_hwnd) && IsWindowVisible(g_backup_overlay_hwnd)) {
+                SetWindowPos(g_backup_overlay_hwnd, HWND_TOPMOST,
+                    mainRect.left, mainRect.top, width, height,
+                    SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                LOG_DEBUG("🔄 Moved backup overlay to match main window");
+            }
+
+            // Move BRC-100 auth overlay if it exists and is visible
+            if (g_brc100_auth_overlay_hwnd && IsWindow(g_brc100_auth_overlay_hwnd) && IsWindowVisible(g_brc100_auth_overlay_hwnd)) {
+                SetWindowPos(g_brc100_auth_overlay_hwnd, HWND_TOPMOST,
+                    mainRect.left, mainRect.top, width, height,
+                    SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                LOG_DEBUG("🔄 Moved BRC-100 auth overlay to match main window");
+            }
+
+            // IMPORTANT: Call DefWindowProc to ensure Windows updates internal state
+            break;  // Let DefWindowProc handle WM_MOVE
+        }
 
         case WM_SIZE: {
             // Handle window resizing - resize child windows and CEF browsers
@@ -330,6 +372,67 @@ LRESULT CALLBACK ShellWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                         webview_browser->GetHost()->WasResized();
                     }
                 }
+            }
+
+            // Resize overlay windows if they exist and are visible
+            // Get the new main window screen position for overlays
+            RECT mainRect;
+            GetWindowRect(hwnd, &mainRect);
+
+            // Resize settings overlay
+            if (g_settings_overlay_hwnd && IsWindow(g_settings_overlay_hwnd) && IsWindowVisible(g_settings_overlay_hwnd)) {
+                SetWindowPos(g_settings_overlay_hwnd, HWND_TOPMOST,
+                    mainRect.left, mainRect.top, width, height,
+                    SWP_NOACTIVATE | SWP_SHOWWINDOW);
+
+                // Notify CEF browser of resize
+                CefRefPtr<CefBrowser> settings_browser = SimpleHandler::GetSettingsBrowser();
+                if (settings_browser) {
+                    settings_browser->GetHost()->WasResized();
+                }
+                LOG_DEBUG("🔄 Resized settings overlay to match main window");
+            }
+
+            // Resize wallet overlay
+            if (g_wallet_overlay_hwnd && IsWindow(g_wallet_overlay_hwnd) && IsWindowVisible(g_wallet_overlay_hwnd)) {
+                SetWindowPos(g_wallet_overlay_hwnd, HWND_TOPMOST,
+                    mainRect.left, mainRect.top, width, height,
+                    SWP_NOACTIVATE | SWP_SHOWWINDOW);
+
+                // Notify CEF browser of resize
+                CefRefPtr<CefBrowser> wallet_browser = SimpleHandler::GetWalletBrowser();
+                if (wallet_browser) {
+                    wallet_browser->GetHost()->WasResized();
+                }
+                LOG_DEBUG("🔄 Resized wallet overlay to match main window");
+            }
+
+            // Resize backup overlay
+            if (g_backup_overlay_hwnd && IsWindow(g_backup_overlay_hwnd) && IsWindowVisible(g_backup_overlay_hwnd)) {
+                SetWindowPos(g_backup_overlay_hwnd, HWND_TOPMOST,
+                    mainRect.left, mainRect.top, width, height,
+                    SWP_NOACTIVATE | SWP_SHOWWINDOW);
+
+                // Notify CEF browser of resize
+                CefRefPtr<CefBrowser> backup_browser = SimpleHandler::GetBackupBrowser();
+                if (backup_browser) {
+                    backup_browser->GetHost()->WasResized();
+                }
+                LOG_DEBUG("🔄 Resized backup overlay to match main window");
+            }
+
+            // Resize BRC-100 auth overlay
+            if (g_brc100_auth_overlay_hwnd && IsWindow(g_brc100_auth_overlay_hwnd) && IsWindowVisible(g_brc100_auth_overlay_hwnd)) {
+                SetWindowPos(g_brc100_auth_overlay_hwnd, HWND_TOPMOST,
+                    mainRect.left, mainRect.top, width, height,
+                    SWP_NOACTIVATE | SWP_SHOWWINDOW);
+
+                // Notify CEF browser of resize
+                CefRefPtr<CefBrowser> auth_browser = SimpleHandler::GetBRC100AuthBrowser();
+                if (auth_browser) {
+                    auth_browser->GetHost()->WasResized();
+                }
+                LOG_DEBUG("🔄 Resized BRC-100 auth overlay to match main window");
             }
 
             return 0;

@@ -47,9 +47,10 @@ MyOverlayRenderHandler::MyOverlayRenderHandler(HWND hwnd, int width, int height)
     }
 
     // Prime layered HWND with dummy pixel for early hit-test
+    // CRITICAL: Use nullptr for position so it respects SetWindowPos
     UpdateLayeredWindow(hwnd_, hdc_mem_, nullptr, nullptr, hdc_mem_, nullptr, 0, nullptr, ULW_ALPHA);
     DWORD err = GetLastError();
-    std::cout << "🧪 Dummy layered update error: " << err << std::endl;
+    std::cout << "🧪 Dummy layered update error: " << err << " (0 = success)" << std::endl;
 
     // Log bitmap info
     BITMAP bmp = {};
@@ -95,7 +96,9 @@ void MyOverlayRenderHandler::OnPaint(CefRefPtr<CefBrowser> browser,
     std::cout << "→ HWND real size: " << (hwndRect.right - hwndRect.left)
               << " x " << (hwndRect.bottom - hwndRect.top) << std::endl;
 
-    POINT ptWinPos = {0, 0};
+    // CRITICAL FIX: Use nullptr for ptWinPos to respect HWND position set by SetWindowPos
+    // If we pass {0,0}, it will ALWAYS render at screen position (0,0)!
+    POINT* ptWinPos = nullptr;  // nullptr = use HWND's current position
     SIZE sizeWin = {width_, height_};
     POINT ptSrc = {0, 0};
 
@@ -110,7 +113,7 @@ void MyOverlayRenderHandler::OnPaint(CefRefPtr<CefBrowser> browser,
 
     HDC screenDC = GetDC(NULL);
 
-    BOOL result = UpdateLayeredWindow(hwnd_, screenDC, &ptWinPos, &sizeWin,
+    BOOL result = UpdateLayeredWindow(hwnd_, screenDC, ptWinPos, &sizeWin,
         hdc_mem_, &ptSrc, 0, &blend, ULW_ALPHA);
 
     if (result) {

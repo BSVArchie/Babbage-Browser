@@ -246,10 +246,18 @@ void SimpleHandler::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
         webview_browser_ = browser;
         LOG_DEBUG_BROWSER("📡 WebView browser reference stored.");
         LOG_DEBUG_BROWSER("📡 WebView browser reference stored. ID: " + std::to_string(browser->GetIdentifier()));
+
+        // Trigger initial resize to ensure content renders on startup
+        browser->GetHost()->WasResized();
+        LOG_DEBUG_BROWSER("🔄 Initial WasResized() called for webview browser");
     } else if (role_ == "header") {
         header_browser_ = browser;
         LOG_DEBUG_BROWSER("🧭 header browser initialized.");
         LOG_DEBUG_BROWSER("🧭 header browser initialized. ID: " + std::to_string(browser->GetIdentifier()));
+
+        // Trigger initial resize to ensure content renders on startup
+        browser->GetHost()->WasResized();
+        LOG_DEBUG_BROWSER("🔄 Initial WasResized() called for header browser");
     } else if (role_ == "overlay") {
         overlay_browser_ = browser;
         LOG_DEBUG_BROWSER("🪟 Overlay browser initialized.");

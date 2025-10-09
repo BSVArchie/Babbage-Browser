@@ -292,24 +292,98 @@ void CreateSettingsOverlayWithSeparateProcess(HINSTANCE hInstance) {
     int width = mainRect.right - mainRect.left;
     int height = mainRect.bottom - mainRect.top;
 
+    // DEBUG: Log the position we're using
+    std::ofstream posLog("debug_output.log", std::ios::app);
+    posLog << "🪟 [DEBUG] Main window g_hwnd position: (" << mainRect.left << ", " << mainRect.top
+           << ") size: " << width << "x" << height << std::endl;
+    posLog << "🪟 [DEBUG] Creating settings overlay at these coordinates" << std::endl;
+    posLog.close();
+
+    // Check if overlay already exists
+    if (g_settings_overlay_hwnd && IsWindow(g_settings_overlay_hwnd)) {
+        std::ofstream warnLog("debug_output.log", std::ios::app);
+        warnLog << "🪟 [WARNING] Settings overlay already exists! Destroying old one first." << std::endl;
+        warnLog.close();
+        DestroyWindow(g_settings_overlay_hwnd);
+        g_settings_overlay_hwnd = nullptr;
+    }
+
     // Create new HWND for settings overlay
+    std::ofstream createLog("debug_output.log", std::ios::app);
+    createLog << "🪟 [DEBUG] About to CreateWindowEx at position: (" << mainRect.left << ", " << mainRect.top << ")" << std::endl;
+    createLog.close();
+
+    // NOTE: CreateWindowEx may ignore position due to Windows caching
+    // We'll force position with SetWindowPos after creation
     HWND settings_hwnd = CreateWindowEx(
         WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
         L"CEFSettingsOverlayWindow",
         L"Settings Overlay",
-        WS_POPUP | WS_VISIBLE,
+        WS_POPUP,  // Don't use WS_VISIBLE yet
         mainRect.left, mainRect.top, width, height,
         g_hwnd, nullptr, hInstance, nullptr);
 
     if (!settings_hwnd) {
         std::cout << "❌ Failed to create settings overlay HWND. Error: " << GetLastError() << std::endl;
-        std::ofstream debugLog2("debug_output.log", std::ios::app);
-        debugLog2 << "❌ Failed to create settings overlay HWND. Error: " << GetLastError() << std::endl;
-        debugLog2.close();
+        LOG_ERROR_APP("❌ Failed to create settings overlay HWND. Error: " + std::to_string(GetLastError()));
         return;
     }
 
-    std::cout << "✅ Settings overlay HWND created: " << settings_hwnd << std::endl;
+    // Verify the created window position (may be cached by Windows)
+    RECT createdRect;
+    GetWindowRect(settings_hwnd, &createdRect);
+    std::ofstream verifyLog("debug_output.log", std::ios::app);
+    verifyLog << "✅ Settings overlay HWND created at Windows' position: (" << createdRect.left << ", " << createdRect.top
+              << ") size: " << (createdRect.right - createdRect.left) << "x" << (createdRect.bottom - createdRect.top) << std::endl;
+    verifyLog.close();
+
+    // ALWAYS force position to bypass Windows position caching
+    std::ofstream forceLog("debug_output.log", std::ios::app);
+    forceLog << "🔧 Forcing overlay to correct position: (" << mainRect.left << ", " << mainRect.top << ")" << std::endl;
+    if (createdRect.left != mainRect.left || createdRect.top != mainRect.top) {
+        forceLog << "🔧 Position WAS cached by Windows! Expected: (" << mainRect.left << ", " << mainRect.top
+                 << ") but got: (" << createdRect.left << ", " << createdRect.top << ")" << std::endl;
+    }
+    forceLog.close();
+
+    // Force to correct position and make visible
+    BOOL setResult = SetWindowPos(settings_hwnd, HWND_TOPMOST,
+        mainRect.left, mainRect.top, width, height,
+        SWP_NOACTIVATE | SWP_SHOWWINDOW);
+
+    std::ofstream setPosLog("debug_output.log", std::ios::app);
+    setPosLog << "🔧 SetWindowPos returned: " << (setResult ? "SUCCESS" : "FAILED") << std::endl;
+    if (!setResult) {
+        setPosLog << "🔧 SetWindowPos ERROR: " << GetLastError() << std::endl;
+    }
+    setPosLog.close();
+
+    // Force a repaint to ensure it's visible
+    InvalidateRect(settings_hwnd, nullptr, TRUE);
+    UpdateWindow(settings_hwnd);
+
+    // Verify final position AFTER SetWindowPos
+    GetWindowRect(settings_hwnd, &createdRect);
+    std::ofstream finalLog("debug_output.log", std::ios::app);
+    finalLog << "🔧 Final overlay position after SetWindowPos: (" << createdRect.left << ", " << createdRect.top << ")" << std::endl;
+
+    // CRITICAL: Check if SetWindowPos actually worked
+    if (createdRect.left != mainRect.left || createdRect.top != mainRect.top) {
+        finalLog << "❌ CRITICAL: SetWindowPos FAILED! Window is still at wrong position!" << std::endl;
+        finalLog << "❌ We asked for: (" << mainRect.left << ", " << mainRect.top << ")" << std::endl;
+        finalLog << "❌ Window is actually at: (" << createdRect.left << ", " << createdRect.top << ")" << std::endl;
+
+        // Try one more time with different flags
+        SetWindowPos(settings_hwnd, nullptr,
+            mainRect.left, mainRect.top, width, height,
+            SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+
+        GetWindowRect(settings_hwnd, &createdRect);
+        finalLog << "🔧 After second attempt: (" << createdRect.left << ", " << createdRect.top << ")" << std::endl;
+    } else {
+        finalLog << "✅ SetWindowPos SUCCESS! Window is at correct position." << std::endl;
+    }
+    finalLog.close();
 
     // Store HWND for shutdown cleanup
     g_settings_overlay_hwnd = settings_hwnd;
@@ -380,7 +454,22 @@ void CreateWalletOverlayWithSeparateProcess(HINSTANCE hInstance) {
     int width = mainRect.right - mainRect.left;
     int height = mainRect.bottom - mainRect.top;
 
+    // DEBUG: Log the position we're using
+    LOG_INFO_APP("💰 Main window position: (" + std::to_string(mainRect.left) + ", " +
+        std::to_string(mainRect.top) + ") size: " + std::to_string(width) + "x" + std::to_string(height));
+    LOG_INFO_APP("💰 Creating overlay at these coordinates");
+
+    // Check if overlay already exists
+    if (g_wallet_overlay_hwnd && IsWindow(g_wallet_overlay_hwnd)) {
+        LOG_WARNING_APP("💰 Wallet overlay already exists! Destroying old one first.");
+        DestroyWindow(g_wallet_overlay_hwnd);
+        g_wallet_overlay_hwnd = nullptr;
+    }
+
     // Create new HWND for wallet overlay
+    LOG_INFO_APP("💰 Creating wallet overlay HWND at position: (" +
+        std::to_string(mainRect.left) + ", " + std::to_string(mainRect.top) + ")");
+
     HWND wallet_hwnd = CreateWindowEx(
         WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
         L"CEFWalletOverlayWindow",
@@ -391,13 +480,33 @@ void CreateWalletOverlayWithSeparateProcess(HINSTANCE hInstance) {
 
     if (!wallet_hwnd) {
         std::cout << "❌ Failed to create wallet overlay HWND. Error: " << GetLastError() << std::endl;
-        std::ofstream debugLog2("debug_output.log", std::ios::app);
-        debugLog2 << "❌ Failed to create wallet overlay HWND. Error: " << GetLastError() << std::endl;
-        debugLog2.close();
+        LOG_ERROR_APP("❌ Failed to create wallet overlay HWND. Error: " + std::to_string(GetLastError()));
         return;
     }
 
-    std::cout << "✅ Wallet overlay HWND created: " << wallet_hwnd << std::endl;
+    // Verify the created window position
+    RECT createdRect;
+    GetWindowRect(wallet_hwnd, &createdRect);
+    LOG_INFO_APP("✅ Wallet overlay HWND created at actual position: (" +
+        std::to_string(createdRect.left) + ", " + std::to_string(createdRect.top) +
+        ") size: " + std::to_string(createdRect.right - createdRect.left) + "x" +
+        std::to_string(createdRect.bottom - createdRect.top));
+
+    // WORKAROUND: Force position in case Windows cached the old position
+    if (createdRect.left != mainRect.left || createdRect.top != mainRect.top) {
+        LOG_WARNING_APP("🔧 Window position mismatch! Forcing correct position...");
+        LOG_WARNING_APP("🔧 Expected: (" + std::to_string(mainRect.left) + ", " + std::to_string(mainRect.top) + ")");
+        LOG_WARNING_APP("🔧 Actual: (" + std::to_string(createdRect.left) + ", " + std::to_string(createdRect.top) + ")");
+
+        SetWindowPos(wallet_hwnd, HWND_TOPMOST,
+            mainRect.left, mainRect.top, width, height,
+            SWP_NOACTIVATE | SWP_SHOWWINDOW);
+
+        // Verify again
+        GetWindowRect(wallet_hwnd, &createdRect);
+        LOG_INFO_APP("🔧 After forcing position: (" +
+            std::to_string(createdRect.left) + ", " + std::to_string(createdRect.top) + ")");
+    }
 
     // Store HWND for shutdown cleanup
     g_wallet_overlay_hwnd = wallet_hwnd;
