@@ -77,10 +77,28 @@ export function useBitcoinBrowser() {
     }
   }, []);
 
+  const goBack = useCallback((): void => {
+    console.log('🔙 Going back in browser history');
+    window.cefMessage?.send('navigate_back', []);
+  }, []);
+
+  const goForward = useCallback((): void => {
+    console.log('🔜 Going forward in browser history');
+    window.cefMessage?.send('navigate_forward', []);
+  }, []);
+
+  const reload = useCallback((): void => {
+    console.log('🔄 Reloading current page');
+    window.cefMessage?.send('navigate_reload', []);
+  }, []);
+
   return {
     getIdentity,
     markBackedUp,
     generateAddress,
     navigate,
+    goBack,
+    goForward,
+    reload,
   };
 }

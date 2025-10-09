@@ -8,6 +8,7 @@ import {
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 // Settings panel now rendered in separate overlay process
@@ -26,7 +27,7 @@ const MainBrowserView: React.FC = () => {
     // Settings panel state now managed in separate overlay process
     const [address, setAddress] = useState('https://metanetapps.com/');
 
-    const { navigate } = useBitcoinBrowser();
+    const { navigate, goBack, goForward, reload } = useBitcoinBrowser();
 
     const handleNavigate = () => {
         console.log('🧭 Navigating to:', address);
@@ -56,11 +57,19 @@ const MainBrowserView: React.FC = () => {
                 minHeight: '64px !important',
                 flexShrink: 0
             }}>
-                <IconButton>
+                {/* Back Button */}
+                <IconButton onClick={goBack}>
                     <ArrowBackIcon />
                 </IconButton>
-                <IconButton>
+
+                {/* Forward Button */}
+                <IconButton onClick={goForward}>
                     <ArrowForwardIcon />
+                </IconButton>
+
+                {/* Refresh Button */}
+                <IconButton onClick={reload}>
+                    <RefreshIcon />
                 </IconButton>
 
                 {/* Address Bar */}

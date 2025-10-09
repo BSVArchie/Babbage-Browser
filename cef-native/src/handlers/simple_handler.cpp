@@ -318,6 +318,45 @@ bool SimpleHandler::OnProcessMessageReceived(
         return true;
     }
 
+    if (message_name == "navigate_back") {
+        LOG_DEBUG_BROWSER("🔙 navigate_back message received from role: " + role_);
+
+        CefRefPtr<CefBrowser> webview = SimpleHandler::GetWebviewBrowser();
+        if (webview) {
+            webview->GoBack();
+            LOG_DEBUG_BROWSER("🔙 GoBack() called on webview browser");
+        } else {
+            LOG_WARNING_BROWSER("⚠️ No webview browser available for GoBack");
+        }
+        return true;
+    }
+
+    if (message_name == "navigate_forward") {
+        LOG_DEBUG_BROWSER("🔜 navigate_forward message received from role: " + role_);
+
+        CefRefPtr<CefBrowser> webview = SimpleHandler::GetWebviewBrowser();
+        if (webview) {
+            webview->GoForward();
+            LOG_DEBUG_BROWSER("🔜 GoForward() called on webview browser");
+        } else {
+            LOG_WARNING_BROWSER("⚠️ No webview browser available for GoForward");
+        }
+        return true;
+    }
+
+    if (message_name == "navigate_reload") {
+        LOG_DEBUG_BROWSER("🔄 navigate_reload message received from role: " + role_);
+
+        CefRefPtr<CefBrowser> webview = SimpleHandler::GetWebviewBrowser();
+        if (webview) {
+            webview->Reload();
+            LOG_DEBUG_BROWSER("🔄 Reload() called on webview browser");
+        } else {
+            LOG_WARNING_BROWSER("⚠️ No webview browser available for Reload");
+        }
+        return true;
+    }
+
     // Duplicate address_generate handler removed - keeping the one at line 489
 
 
