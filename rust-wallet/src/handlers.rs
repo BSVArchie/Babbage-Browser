@@ -1211,16 +1211,680 @@ pub async fn create_signature(
     })
 }
 
-pub async fn create_action() -> HttpResponse {
-    HttpResponse::Ok().json(serde_json::json!({"message": "Not implemented"}))
+// ============================================================================
+// Transaction Action Endpoints (BRC-1)
+// ============================================================================
+
+use crate::transaction::{Transaction, TxInput, TxOutput, OutPoint};
+use crate::utxo_fetcher::{fetch_all_utxos, UTXO};
+use std::collections::HashMap;
+use std::sync::Mutex as StdMutex;
+use once_cell::sync::Lazy;
+
+// Pending transaction with metadata
+#[derive(Debug, Clone)]
+struct PendingTransaction {
+    tx: Transaction,
+    input_utxos: Vec<UTXO>, // UTXOs being spent (for signing)
 }
 
-pub async fn sign_action() -> HttpResponse {
-    HttpResponse::Ok().json(serde_json::json!({"message": "Not implemented"}))
+// In-memory storage for pending transactions
+static PENDING_TRANSACTIONS: Lazy<StdMutex<HashMap<String, PendingTransaction>>> =
+    Lazy::new(|| StdMutex::new(HashMap::new()));
+
+// Request structure for /createAction
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateActionRequest {
+    #[serde(rename = "outputs")]
+    pub outputs: Vec<CreateActionOutput>,
+
+    #[serde(rename = "description")]
+    pub description: Option<String>,
+
+    #[serde(rename = "options")]
+    pub options: Option<CreateActionOptions>,
 }
 
-pub async fn process_action() -> HttpResponse {
-    HttpResponse::Ok().json(serde_json::json!({"message": "Not implemented"}))
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateActionOutput {
+    #[serde(rename = "satoshis")]
+    pub satoshis: Option<i64>,
+
+    #[serde(rename = "script")]
+    pub script: String, // Hex-encoded locking script
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateActionOptions {
+    #[serde(rename = "returnTXIDOnly")]
+    pub return_txid_only: Option<bool>,
+}
+
+// Response structure for /createAction
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateActionResponse {
+    pub txid: Option<String>,
+    pub reference: String,
+    #[serde(rename = "rawTx")]
+    pub raw_tx: Option<String>,
+}
+
+// /createAction - Build unsigned transaction
+pub async fn create_action(
+    state: web::Data<AppState>,
+    body: web::Bytes,
+) -> HttpResponse {
+    log::info!("📋 /createAction called");
+
+    // Parse request
+    let req: CreateActionRequest = match serde_json::from_slice(&body) {
+        Ok(r) => r,
+        Err(e) => {
+            log::error!("   JSON parse error: {}", e);
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "error": format!("Invalid JSON: {}", e)
+            }));
+        }
+    };
+
+    log::info!("   Description: {:?}", req.description);
+    log::info!("   Outputs: {}", req.outputs.len());
+
+    // Calculate total output amount
+    let mut total_output: i64 = 0;
+    for (i, output) in req.outputs.iter().enumerate() {
+        if let Some(sats) = output.satoshis {
+            total_output += sats;
+            log::info!("   Output {}: {} satoshis", i, sats);
+        }
+    }
+
+    log::info!("   Total output amount: {} satoshis", total_output);
+
+    // Estimate fee (rough calculation: ~200 bytes per input + output + overhead)
+    let estimated_fee = 5000; // Increased fee: 5000 sats (~22 sat/byte for 225 byte tx)
+    let total_needed = total_output + estimated_fee;
+
+    log::info!("   Estimated fee: {} satoshis", estimated_fee);
+    log::info!("   Total needed: {} satoshis", total_needed);
+
+    // Fetch UTXOs from WhatsOnChain
+    let storage = state.storage.lock().unwrap();
+    let addresses = match storage.get_all_addresses() {
+        Ok(addrs) => addrs.to_vec(),
+        Err(e) => {
+            drop(storage);
+            log::error!("   Failed to get addresses: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to get addresses"
+            }));
+        }
+    };
+    drop(storage);
+
+    log::info!("   Checking {} addresses for UTXOs...", addresses.len());
+
+    let all_utxos = match fetch_all_utxos(&addresses).await {
+        Ok(utxos) => utxos,
+        Err(e) => {
+            log::error!("   Failed to fetch UTXOs: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": format!("Failed to fetch UTXOs: {}", e)
+            }));
+        }
+    };
+
+    if all_utxos.is_empty() {
+        log::error!("   No UTXOs available");
+        return HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Insufficient funds: no UTXOs available"
+        }));
+    }
+
+    // Select UTXOs to cover the amount
+    let selected_utxos = select_utxos(&all_utxos, total_needed);
+
+    if selected_utxos.is_empty() {
+        log::error!("   Insufficient funds");
+        return HttpResponse::BadRequest().json(serde_json::json!({
+            "error": format!("Insufficient funds: need {} sats, have {} sats",
+                total_needed,
+                all_utxos.iter().map(|u| u.satoshis).sum::<i64>()
+            )
+        }));
+    }
+
+    let total_input: i64 = selected_utxos.iter().map(|u| u.satoshis).sum();
+    log::info!("   Selected {} UTXOs ({} satoshis)", selected_utxos.len(), total_input);
+
+    // Build transaction
+    let mut tx = Transaction::new();
+
+    // Add inputs (unsigned)
+    for utxo in &selected_utxos {
+        let outpoint = OutPoint::new(utxo.txid.clone(), utxo.vout);
+        tx.add_input(TxInput::new(outpoint));
+    }
+
+    // Add requested outputs
+    for output in &req.outputs {
+        let script_bytes = match hex::decode(&output.script) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                return HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": format!("Invalid output script hex: {}", e)
+                }));
+            }
+        };
+
+        let satoshis = output.satoshis.unwrap_or(0);
+        tx.add_output(TxOutput::new(satoshis, script_bytes));
+    }
+
+    // Calculate change
+    let change = total_input - total_output - estimated_fee;
+    log::info!("   Change: {} satoshis", change);
+
+    if change > 546 { // Dust limit
+        // Get first address for change
+        let storage = state.storage.lock().unwrap();
+        let change_addr = match storage.get_current_address() {
+            Ok(addr) => addr.clone(),
+            Err(e) => {
+                drop(storage);
+                return HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": format!("Failed to get change address: {}", e)
+                }));
+            }
+        };
+        drop(storage);
+
+        // Build P2PKH script for change
+        use crate::transaction::Script;
+        use sha2::{Sha256, Digest};
+        use ripemd::{Ripemd160, Digest as RipemdDigest};
+
+        // Decode public key and hash it
+        let pubkey_bytes = match hex::decode(&change_addr.public_key) {
+            Ok(bytes) => bytes,
+            Err(_) => {
+                return HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": "Invalid public key"
+                }));
+            }
+        };
+
+        // SHA256 then RIPEMD160
+        let sha_hash = Sha256::digest(&pubkey_bytes);
+        let pubkey_hash = Ripemd160::digest(&sha_hash);
+
+        let change_script = match Script::p2pkh_locking_script(&pubkey_hash) {
+            Ok(script) => script,
+            Err(e) => {
+                return HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": format!("Failed to create change script: {}", e)
+                }));
+            }
+        };
+
+        tx.add_output(TxOutput::new(change, change_script.bytes));
+        log::info!("   Added change output: {} satoshis", change);
+    } else if change > 0 {
+        log::info!("   Change below dust limit ({}), adding to fee", change);
+    }
+
+    // Calculate txid
+    let txid = match tx.txid() {
+        Ok(id) => id,
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": format!("Failed to calculate txid: {}", e)
+            }));
+        }
+    };
+
+    // Generate reference ID
+    let reference = format!("action-{}", uuid::Uuid::new_v4());
+
+    // Store transaction in memory with UTXO metadata for signing
+    {
+        let mut pending = PENDING_TRANSACTIONS.lock().unwrap();
+        pending.insert(reference.clone(), PendingTransaction {
+            tx,
+            input_utxos: selected_utxos,
+        });
+    }
+
+    log::info!("   ✅ Transaction created: {}", txid);
+    log::info!("   Reference: {}", reference);
+
+    HttpResponse::Ok().json(CreateActionResponse {
+        txid: Some(txid),
+        reference,
+        raw_tx: None,
+    })
+}
+
+// Select UTXOs to cover required amount (simple greedy algorithm)
+fn select_utxos(available: &[UTXO], amount_needed: i64) -> Vec<UTXO> {
+    let mut selected = Vec::new();
+    let mut total: i64 = 0;
+
+    // Sort by value (largest first) for efficiency
+    let mut sorted_utxos = available.to_vec();
+    sorted_utxos.sort_by(|a, b| b.satoshis.cmp(&a.satoshis));
+
+    for utxo in sorted_utxos {
+        selected.push(utxo.clone());
+        total += utxo.satoshis;
+
+        if total >= amount_needed {
+            break;
+        }
+    }
+
+    if total < amount_needed {
+        // Not enough funds
+        return Vec::new();
+    }
+
+    selected
+}
+
+// Request structure for /signAction
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SignActionRequest {
+    #[serde(rename = "reference")]
+    pub reference: String,
+
+    #[serde(rename = "spends")]
+    pub spends: Option<serde_json::Value>, // Not used in simple implementation
+}
+
+// Response structure for /signAction
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SignActionResponse {
+    pub txid: String,
+    #[serde(rename = "rawTx")]
+    pub raw_tx: String,
+}
+
+// /signAction - Sign transaction inputs
+pub async fn sign_action(
+    state: web::Data<AppState>,
+    body: web::Bytes,
+) -> HttpResponse {
+    log::info!("📋 /signAction called");
+
+    // Parse request
+    let req: SignActionRequest = match serde_json::from_slice(&body) {
+        Ok(r) => r,
+        Err(e) => {
+            log::error!("   JSON parse error: {}", e);
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "error": format!("Invalid JSON: {}", e)
+            }));
+        }
+    };
+
+    log::info!("   Reference: {}", req.reference);
+
+    // Retrieve pending transaction
+    let pending_tx = {
+        let pending = PENDING_TRANSACTIONS.lock().unwrap();
+        match pending.get(&req.reference) {
+            Some(ptx) => ptx.clone(),
+            None => {
+                log::error!("   Transaction not found: {}", req.reference);
+                return HttpResponse::NotFound().json(serde_json::json!({
+                    "error": "Transaction reference not found"
+                }));
+            }
+        }
+    };
+
+    let mut tx = pending_tx.tx;
+    let input_utxos = pending_tx.input_utxos;
+
+    log::info!("   Signing {} inputs...", tx.inputs.len());
+
+    // Sign each input
+    for (i, input_utxo) in input_utxos.iter().enumerate() {
+        log::info!("   Signing input {}: {}:{} (address index {})",
+            i, input_utxo.txid, input_utxo.vout, input_utxo.address_index);
+
+        // Get the private key for THIS specific address (not always index 0!)
+        let storage = state.storage.lock().unwrap();
+        let private_key_bytes = match storage.derive_private_key(input_utxo.address_index) {
+            Ok(key) => key,
+            Err(e) => {
+                drop(storage);
+                log::error!("   Failed to derive private key for address index {}: {}", input_utxo.address_index, e);
+                return HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": format!("Failed to derive private key for address {}", input_utxo.address_index)
+                }));
+            }
+        };
+        drop(storage);
+
+        // Decode prev script
+        let prev_script = match hex::decode(&input_utxo.script) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                log::error!("   Invalid script hex: {}", e);
+                return HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": format!("Invalid script hex for input {}: {}", i, e)
+                }));
+            }
+        };
+
+        // Calculate SIGHASH
+        use crate::transaction::{calculate_sighash, SIGHASH_ALL_FORKID, Script};
+
+        let sighash: Vec<u8> = match calculate_sighash(&tx, i, &prev_script, input_utxo.satoshis, SIGHASH_ALL_FORKID) {
+            Ok(hash) => hash,
+            Err(e) => {
+                log::error!("   Failed to calculate sighash: {}", e);
+                return HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": format!("Failed to calculate sighash for input {}: {}", i, e)
+                }));
+            }
+        };
+
+        log::info!("   SIGHASH: {}", hex::encode(&sighash));
+
+        // Sign with ECDSA
+        use secp256k1::{Secp256k1, Message, SecretKey};
+
+        let secp = Secp256k1::new();
+        let secret = match SecretKey::from_slice(&private_key_bytes) {
+            Ok(key) => key,
+            Err(e) => {
+                log::error!("   Invalid private key: {}", e);
+                return HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": "Invalid private key"
+                }));
+            }
+        };
+
+        let message = match Message::from_slice(&sighash) {
+            Ok(msg) => msg,
+            Err(e) => {
+                log::error!("   Invalid sighash: {}", e);
+                return HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": "Invalid sighash"
+                }));
+            }
+        };
+
+        let signature = secp.sign_ecdsa(&message, &secret);
+
+        // Serialize signature as DER + sighash byte
+        let mut sig_der = signature.serialize_der().to_vec();
+        sig_der.push(SIGHASH_ALL_FORKID as u8); // Append sighash type byte
+
+        log::info!("   Signature ({} bytes): {}", sig_der.len(), hex::encode(&sig_der));
+
+        // Get public key
+        use secp256k1::PublicKey;
+        let pubkey = PublicKey::from_secret_key(&secp, &secret);
+        let pubkey_bytes = pubkey.serialize();
+
+        log::info!("   Public key length: {} bytes", pubkey_bytes.len());
+        log::info!("   Public key: {}", hex::encode(&pubkey_bytes));
+        log::info!("   Private key (first 8 bytes): {}...", hex::encode(&private_key_bytes[..8]));
+
+        // Build unlocking script: <signature> <pubkey>
+        let unlocking_script = Script::p2pkh_unlocking_script(&sig_der, &pubkey_bytes);
+
+        // Update input with unlocking script
+        tx.inputs[i].set_script(unlocking_script.bytes);
+
+        log::info!("   ✅ Input {} signed", i);
+    }
+
+    // Serialize signed transaction
+    let raw_tx = match tx.to_hex() {
+        Ok(hex) => hex,
+        Err(e) => {
+            log::error!("   Failed to serialize transaction: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": format!("Failed to serialize transaction: {}", e)
+            }));
+        }
+    };
+
+    // Calculate final txid
+    let txid = match tx.txid() {
+        Ok(id) => id,
+        Err(e) => {
+            log::error!("   Failed to calculate txid: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": format!("Failed to calculate txid: {}", e)
+            }));
+        }
+    };
+
+    log::info!("   ✅ Transaction signed: {}", txid);
+    log::info!("   Raw TX length: {} bytes", raw_tx.len() / 2);
+
+    HttpResponse::Ok().json(SignActionResponse {
+        txid,
+        raw_tx,
+    })
+}
+
+// Request structure for /processAction
+#[derive(Debug, Deserialize)]
+pub struct ProcessActionRequest {
+    #[serde(rename = "outputs")]
+    pub outputs: Vec<CreateActionOutput>,
+
+    #[serde(rename = "description")]
+    pub description: Option<String>,
+
+    #[serde(rename = "broadcast")]
+    pub broadcast: Option<bool>,
+}
+
+// Response structure for /processAction
+#[derive(Debug, Serialize)]
+pub struct ProcessActionResponse {
+    pub txid: String,
+    pub status: String,
+    #[serde(rename = "rawTx")]
+    pub raw_tx: Option<String>,
+}
+
+// /processAction - Complete transaction flow (create + sign + broadcast)
+pub async fn process_action(
+    state: web::Data<AppState>,
+    body: web::Bytes,
+) -> HttpResponse {
+    log::info!("📋 /processAction called");
+
+    // Parse request
+    let req: ProcessActionRequest = match serde_json::from_slice(&body) {
+        Ok(r) => r,
+        Err(e) => {
+            log::error!("   JSON parse error: {}", e);
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "error": format!("Invalid JSON: {}", e)
+            }));
+        }
+    };
+
+    let should_broadcast = req.broadcast.unwrap_or(true);
+    log::info!("   Broadcast: {}", should_broadcast);
+
+    // Step 1: Create action (build unsigned transaction)
+    let create_req = CreateActionRequest {
+        outputs: req.outputs,
+        description: req.description,
+        options: Some(CreateActionOptions {
+            return_txid_only: Some(false),
+        }),
+    };
+
+    let create_body = serde_json::to_vec(&create_req).unwrap();
+    let create_response = create_action(state.clone(), web::Bytes::from(create_body)).await;
+
+    // Extract reference from create response
+    let create_json: CreateActionResponse = match create_response.status().is_success() {
+        true => {
+            let body_bytes = actix_web::body::to_bytes(create_response.into_body()).await.unwrap();
+            serde_json::from_slice(&body_bytes).unwrap()
+        }
+        false => {
+            log::error!("   createAction failed");
+            return create_response;
+        }
+    };
+
+    let reference = create_json.reference;
+    log::info!("   Created transaction: {}", reference);
+
+    // Step 2: Sign action
+    let sign_req = SignActionRequest {
+        reference: reference.clone(),
+        spends: None,
+    };
+
+    let sign_body = serde_json::to_vec(&sign_req).unwrap();
+    let sign_response = sign_action(state.clone(), web::Bytes::from(sign_body)).await;
+
+    // Extract txid and rawTx from sign response
+    let sign_json: SignActionResponse = match sign_response.status().is_success() {
+        true => {
+            let body_bytes = actix_web::body::to_bytes(sign_response.into_body()).await.unwrap();
+            serde_json::from_slice(&body_bytes).unwrap()
+        }
+        false => {
+            log::error!("   signAction failed");
+            return sign_response;
+        }
+    };
+
+    let txid = sign_json.txid.clone();
+    let raw_tx = sign_json.raw_tx.clone();
+
+    log::info!("   Signed transaction: {}", txid);
+
+    // Step 3: Broadcast (if requested)
+    let status = if should_broadcast {
+        log::info!("   Broadcasting to network...");
+
+        match broadcast_transaction(&raw_tx).await {
+            Ok(_) => {
+                log::info!("   ✅ Transaction broadcast successful!");
+                "completed"
+            }
+            Err(e) => {
+                log::error!("   ❌ Broadcast failed: {}", e);
+                "failed"
+            }
+        }
+    } else {
+        log::info!("   Skipping broadcast (noSend option)");
+        "nosend"
+    };
+
+    HttpResponse::Ok().json(ProcessActionResponse {
+        txid,
+        status: status.to_string(),
+        raw_tx: Some(raw_tx),
+    })
+}
+
+// Broadcast transaction to BSV network (multiple broadcasters for redundancy)
+async fn broadcast_transaction(raw_tx_hex: &str) -> Result<String, String> {
+    let client = reqwest::Client::new();
+    let mut success_count = 0;
+    let mut last_error = String::new();
+
+    // Broadcaster 1: GorillaPool
+    log::info!("   📡 Broadcasting to GorillaPool...");
+    match broadcast_to_gorillapool(&client, raw_tx_hex).await {
+        Ok(response) => {
+            log::info!("   ✅ GorillaPool accepted: {}", response);
+            success_count += 1;
+        }
+        Err(e) => {
+            log::warn!("   ⚠️ GorillaPool failed: {}", e);
+            last_error = e;
+        }
+    }
+
+    // Broadcaster 2: WhatsOnChain
+    log::info!("   📡 Broadcasting to WhatsOnChain...");
+    match broadcast_to_whatsonchain(&client, raw_tx_hex).await {
+        Ok(response) => {
+            log::info!("   ✅ WhatsOnChain accepted: {}", response);
+            success_count += 1;
+        }
+        Err(e) => {
+            log::warn!("   ⚠️ WhatsOnChain failed: {}", e);
+            last_error = e;
+        }
+    }
+
+    if success_count > 0 {
+        log::info!("   🎉 Broadcast successful to {} service(s)", success_count);
+        Ok(format!("Broadcast to {} service(s)", success_count))
+    } else {
+        log::error!("   ❌ All broadcasters failed!");
+        Err(format!("All broadcasters failed. Last error: {}", last_error))
+    }
+}
+
+// Broadcast to GorillaPool
+async fn broadcast_to_gorillapool(client: &reqwest::Client, raw_tx_hex: &str) -> Result<String, String> {
+    let url = "https://mapi.gorillapool.io/mapi/tx";
+
+    let body = serde_json::json!({
+        "rawtx": raw_tx_hex
+    });
+
+    let response = client.post(url)
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("HTTP error: {}", e))?;
+
+    let status = response.status();
+    let text = response.text().await.unwrap_or_default();
+
+    if status.is_success() {
+        Ok(text)
+    } else {
+        Err(format!("{} - {}", status, text))
+    }
+}
+
+// Broadcast to WhatsOnChain
+async fn broadcast_to_whatsonchain(client: &reqwest::Client, raw_tx_hex: &str) -> Result<String, String> {
+    let url = "https://api.whatsonchain.com/v1/bsv/main/tx/raw";
+
+    let body = serde_json::json!({
+        "txhex": raw_tx_hex
+    });
+
+    let response = client.post(url)
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("HTTP error: {}", e))?;
+
+    let status = response.status();
+    let text = response.text().await.unwrap_or_default();
+
+    if status.is_success() {
+        Ok(text)
+    } else {
+        Err(format!("{} - {}", status, text))
+    }
 }
 
 pub async fn generate_address() -> HttpResponse {

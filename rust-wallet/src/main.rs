@@ -6,6 +6,8 @@ use std::sync::Mutex;
 mod json_storage;
 mod handlers;
 mod crypto;
+mod transaction;
+mod utxo_fetcher;
 
 use json_storage::JsonStorage;
 

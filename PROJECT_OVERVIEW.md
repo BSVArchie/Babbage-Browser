@@ -105,35 +105,49 @@ Traditional browser wallets face significant security challenges because they op
 │              • C++ / Chromium Engine                       │
 │              • CEF Event Handlers                          │
 │              • Process Isolation                           │
+│              • HTTP Request Interception                   │
 │              🟡 Future: Consider full Chromium build       │
 └─────────────────────┬───────────────────────────────────────┘
                       │
+         ┌────────────┴────────────┐
+         │                         │
+         ▼                         ▼
+┌──────────────────────┐  ┌──────────────────────┐
+│   Go Wallet          │  │   Rust Wallet        │
+│   (Port 3301)        │  │   (Port 3301)        │
+│                      │  │                      │
+│ • BSV Go SDK         │  │ • Actix-web Server   │
+│ • HD Wallet (BIP44)  │  │ • BRC-103/104 Auth   │
+│ • BSV SDK Signing    │  │ • BSV ForkID SIGHASH │
+│ • Transaction Ops    │  │ • Custom Crypto      │
+│ • UTXO Management    │  │ • Mainnet Confirmed  │
+│                      │  │                      │
+│ ✅ PRODUCTION READY  │  │ ✅ WORKING           │
+└──────────────────────┘  └──────────────────────┘
+         │                         │
+         │  (Only ONE at a time)   │
+         └────────────┬────────────┘
+                      │
                       ▼
-┌─────────────────────────────────────────────────────────────┐
-│              Go Wallet Backend                             │
-│              • bitcoin-sv/go-sdk Integration               │
-│              • BEEF Transaction Support                    │
-│              • SPV Verification                            │
-│              • Secure Key Management                       │
-│              🟡 Future: May migrate to Rust for max perf   │
-└─────────────────────┬───────────────────────────────────────┘
+         Shared wallet.json Storage
+      (%APPDATA%/BabbageBrowser/wallet/)
                       │
                       ▼
 ┌─────────────────────────────────────────────────────────────┐
 │            Identity & Authentication Layer                 │
 │              • BRC-100 Auth Framework                     │
-│              • BRC-52/103 Certificates                    │
-│              • Type-42 Key Derivation                     │
-│              • SPV Identity Validation                     │
+│              • BRC-42 Key Derivation                      │
+│              • BRC-103/104 Mutual Auth                    │
+│              • HMAC-based Nonce Verification              │
 └─────────────────────┬───────────────────────────────────────┘
                       │
                       ▼
 ┌─────────────────────────────────────────────────────────────┐
 │              Bitcoin SV Blockchain                        │
-│              • TAAL, GorillaPool Miners                   │
-│              • Terranode, ARC Formats                     │
-│              • Multi-platform Support                     │
-│              🟡 Windows, Mac, Mobile builds planned        │
+│              • WhatsOnChain API (Primary)                 │
+│              • GorillaPool mAPI (Secondary)               │
+│              • On-chain Transaction Confirmation          │
+│              ✅ Real mainnet transactions confirmed        │
 └─────────────────────────────────────────────────────────────┘
 ```
 

@@ -2,9 +2,38 @@
 
 A custom Web3 browser built on the Chromium Embedded Framework (CEF) with native BitcoinSV wallet for secure authentication, micropayments, and Electronic Data Interchange (EDI- smart contracts).
 
+## ⚡ Current Status - Two Wallet Implementations (Oct 16, 2025)
+
+**🎉 BREAKTHROUGH:** Successfully implemented working transaction signing in Rust wallet!
+
+### Two Implementations (Both Port 3301 - Only One Runs At A Time):
+
+1. **Go Wallet** - ✅ Production Ready
+   - BSV Go SDK (`v1.2.9`)
+   - HD wallet (BIP44)
+   - CEF browser integration
+   - Location: `go-wallet/`
+
+2. **Rust Wallet** - ✅ Transactions Working
+   - Custom BSV ForkID SIGHASH
+   - BRC-103/104 authentication
+   - **Confirmed mainnet transactions!**
+   - Location: `rust-wallet/`
+
+**Why Two Implementations?**
+- Testing different languages (Go vs Rust)
+- Comparing BSV SDK vs custom implementation
+- Will choose one for production
+
+**Shared Storage:** Both use `%APPDATA%/BabbageBrowser/wallet/wallet.json`
+
+**See:** `RUST_WALLET_SESSION_SUMMARY.md` for implementation details
+
+---
+
 ## 🔧 Project Structure
 
-> Note: `cef-binaries/` is excluded from Git using `.gitignore`.
+> Note: `cef-binaries/` and `**/target/` are excluded from Git using `.gitignore`.
 
 ## 🚀 Goals
 
@@ -25,25 +54,74 @@ A custom Web3 browser built on the Chromium Embedded Framework (CEF) with native
 |-------|------------|-------|
 | Browser Shell | C++ / Chromium Embedded Framework | ✅ Process-per-overlay architecture implemented |
 | UI | React + Vite (TypeScript) | ✅ Multiple overlay routes (/settings, /wallet, /backup) |
-| Native Wallet | **Go** (bitcoin-sv/go-sdk) | ✅ **Production-ready executable with BRC-100** |
+| **Wallet Backend** | **Go + Rust** | ✅ **Two implementations (testing both)** |
+| **Go Wallet** | **Go** (bitcoin-sv/go-sdk) | ✅ **Port 3301 - BSV SDK** |
+| **Rust Wallet** | **Rust** (Actix-web) | ✅ **Port 3301 - Custom crypto** |
 | Overlay System | **Process-Per-Overlay** | ✅ Each overlay runs in isolated CEF subprocess |
 | Identity Management | **Complete System** | ✅ File-based identity with backup modal workflow |
-| **BRC-100 Authentication** | **Complete Implementation** | ✅ **Identity certificates, SPV verification, BEEF transactions** |
-| **BEEF/SPV Integration** | **Real Blockchain** | ✅ **WhatsOnChain, GorillaPool, TAAL APIs** |
+| **BRC-100 Authentication** | **Complete Implementation** | ✅ **Rust: Full BRC-103/104 handshake working** |
+| **Transaction System** | **Complete Implementation** | ✅ **Rust: BSV ForkID SIGHASH signing working** |
+| **Broadcasting** | **Multi-Miner** | ✅ **WhatsOnChain + GorillaPool** |
 | Key Derivation | **HD Wallet (BIP44)** | ✅ **Production-ready HD wallet** |
 | Identity / Auth | BRC-100 (Authrite Protocol (Babbage)) | ✅ **Complete BRC-100 protocol implementation** |
 | Smart Contracts | sCrypt (BSV) | |
-| Blockchain Integration | Bitcoin SV (WhatsOnChain, GorillaPool, TAAL) | ✅ **Real blockchain integration** |
+| Blockchain Integration | Bitcoin SV (WhatsOnChain, GorillaPool) | ✅ **Real blockchain integration** |
 
-## 🛠️ Setup (Coming Soon)
+## 🛠️ Setup
 
-Instructions need be added for:
+**⚠️ NOTE:** Both wallets listen on port 3301. Only run ONE at a time.
 
-- Building the native CEF shell
-- Setting up Go wallet backend (bitcoin-sv/go-sdk)
-- Running the React frontend in development
-- Integrating `window.bitcoinBrowser` bridge for UI ↔ native communication
-- CEF binaries download and wrapper compilation
+### Option 1: Rust Wallet (Custom Implementation)
+
+```bash
+cd rust-wallet
+cargo build
+cargo run
+# Server starts on http://127.0.0.1:3301
+```
+
+**Features:**
+- Custom BSV ForkID SIGHASH implementation
+- BRC-103/104 authentication
+- Transaction signing working
+- Confirmed mainnet transactions
+
+### Option 2: Go Wallet (BSV SDK)
+
+```bash
+cd go-wallet
+go build -o bitcoin-wallet.exe
+./bitcoin-wallet.exe
+
+# Or use the batch file
+./start-wallet.bat
+# Server starts on http://127.0.0.1:3301
+```
+
+**Features:**
+- Official BSV Go SDK
+- Full BRC-100 support
+- CEF browser integration
+- Production-ready
+
+### Frontend Development
+
+```bash
+cd frontend
+npm install
+npm run dev
+# Frontend will be available at http://127.0.0.1:5137
+```
+
+### CEF Native Shell
+
+```bash
+cd cef-native/build
+cmake --build . --config Release
+./bin/Release/BitcoinBrowserShell.exe
+```
+
+See `BUILD_INSTRUCTIONS.md` for detailed build steps.
 
 ## 📁 Repository Notes
 
@@ -69,6 +147,29 @@ Instructions need be added for:
     │   │   └── handlers/           → CEF app/client/render lifecycle implementations
     │   └── tests/                  → Native shell test harness and main entrypoint
     │
+    ├── go-wallet/                  → Go wallet backend (Port 8080) ✅ PRODUCTION READY
+    │   ├── main.go                 → HTTP server and endpoint handlers
+    │   ├── hd_wallet.go            → HD wallet with BIP44 derivation
+    │   ├── transaction_builder.go  → Transaction creation using BSV Go SDK
+    │   ├── transaction_broadcaster.go → Multi-miner broadcasting
+    │   ├── utxo_manager.go         → UTXO fetching and management
+    │   ├── brc100_api.go           → BRC-100 authentication endpoints
+    │   └── go.mod                  → Go dependencies (BSV SDK v1.2.9)
+    │
+    ├── rust-wallet/                → Rust wallet backend (Port 3301) ✅ WORKING
+    │   ├── src/
+    │   │   ├── main.rs             → Actix-web HTTP server
+    │   │   ├── handlers.rs         → BRC-100 endpoint handlers (1900+ lines)
+    │   │   ├── json_storage.rs     → Wallet.json management
+    │   │   ├── crypto/             → BRC-42/43 crypto implementations
+    │   │   ├── transaction/        → Transaction types and SIGHASH
+    │   │   │   ├── mod.rs          → Module exports
+    │   │   │   ├── types.rs        → Transaction structures
+    │   │   │   └── sighash.rs      → BSV ForkID SIGHASH implementation
+    │   │   └── utxo_fetcher.rs     → WhatsOnChain UTXO fetching
+    │   ├── Cargo.toml              → Rust dependencies
+    │   └── target/                 → Build artifacts (gitignored)
+    │
     ├── frontend/                   → React + Vite UI
     │   ├── public/                 → Static assets served by Vite
     │   ├── src/
@@ -81,10 +182,13 @@ Instructions need be added for:
     │
     ├── .gitignore
     ├── README.md
-    ├── vite.config.ts             → Vite config (frontend build + dev server)
-    ├── tsconfig*.json             → TypeScript configurations
-    ├── package.json               → Frontend dependencies and scripts
-    └── eslint.config.js           → Linting setup
+    ├── BUILD_INSTRUCTIONS.md       → Build instructions for all components
+    ├── DEVELOPER_NOTES.md          → Session notes and implementation details
+    ├── ARCHITECTURE.md             → System architecture documentation
+    ├── API_REFERENCES.md           → API endpoint documentation
+    ├── RUST_TRANSACTION_IMPLEMENTATION_PLAN.md → Rust transaction implementation details
+    ├── RUST_WALLET_SESSION_SUMMARY.md → Latest session summary (Oct 16, 2025)
+    └── vite.config.ts             → Vite config (frontend build + dev server)
 
 ## 💡 Project Philosophy
 

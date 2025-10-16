@@ -25,15 +25,28 @@
 +----------------------------+
             ↓
 +----------------------------+
-|   Go Wallet Backend        |
-|  - bitcoin-sv/go-sdk       |
-|  - HD Wallet (BIP44)       |
-|  - Transaction Creation    |
-|  - Transaction Signing     |
-|  - Transaction Broadcasting|
-|  - UTXO Management         |
-|  - Real Blockchain APIs    |
+|   Wallet Backend Layer     |
+|  DUAL IMPLEMENTATION:      |
 +----------------------------+
+            |
+   +--------+--------+
+   |                 |
+   v                 v
++----------------------------+  +----------------------------+
+|   Go Wallet (Port 3301)    |  | Rust Wallet (Port 3301)    |
+|  - bitcoin-sv/go-sdk       |  | - Actix-web HTTP server    |
+|  - HD Wallet (BIP44)       |  | - BRC-103/104 auth         |
+|  - BSV SDK tx signing      |  | - BSV ForkID SIGHASH       |
+|  - Transaction handling    |  | - Custom crypto impl       |
+|  - UTXO Management         |  | - Confirmed mainnet txs    |
++----------------------------+  +----------------------------+
+            |                            |
+            | (Only ONE runs at a time)  |
+            +------------+---------------+
+                         |
+                         v
+              Shared wallet.json
+           (%APPDATA%/BabbageBrowser/wallet/)
             ↓
 +----------------------------+
 | Bitcoin SV Blockchain      |

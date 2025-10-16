@@ -45,76 +45,103 @@ cmake --build . --config Release
 
 **Note**: The wrapper CMakeLists.txt needs to be copied from the local repository. The exact CEF version and paths are currently unknown and need to be determined.
 
-### Step 2: Go Wallet Backend Setup
+### Step 2: Wallet Backend Setup
 
-#### Install Go Dependencies
+**⚠️ TWO WALLET IMPLEMENTATIONS:** Choose ONE to run (both use port 3301):
+
+#### Option A: Go Wallet (BSV SDK Implementation)
+
 ```bash
-# Navigate to wallet directory
+# Navigate to Go wallet directory
 cd go-wallet
 
-# Initialize Go module (if not already done)
-go mod init browser-wallet
+# Dependencies already configured in go.mod
+go mod download
 
-# Install Bitcoin SV Go SDK with BEEF/SPV support
-go get github.com/bsv-blockchain/go-sdk
+# Build the wallet executable
+go build -o bitcoin-wallet.exe
 
-# Install additional dependencies
-go get github.com/gorilla/websocket
-go get github.com/sirupsen/logrus
-
-# Resolve all dependencies
-go mod tidy
+# Run the wallet
+./bitcoin-wallet.exe
+# Or use the batch file: ./start-wallet.bat
+# Server starts on http://127.0.0.1:3301
 ```
 
-#### Build Wallet Executable
+**Features:**
+- Official BSV Go SDK (`v1.2.9`)
+- HD wallet with BIP44 derivation
+- Transaction creation, signing, broadcasting
+- Full BRC-100 authentication support
+- CEF browser integration tested
+
+#### Option B: Rust Wallet (Custom Implementation)
+
 ```bash
-# Build the production wallet executable
-go build -o babbage-wallet.exe main.go hd_wallet.go transaction_builder.go transaction_broadcaster.go utxo_manager.go brc100_api.go
+# Navigate to Rust wallet directory
+cd rust-wallet
 
-# Or use the batch file for easy startup
-./start-wallet.bat
+# Build the wallet executable
+cargo build --release
+
+# Run the wallet server
+cargo run --release
+# Or: ./target/release/bitcoin-browser-wallet.exe
+# Server starts on http://127.0.0.1:3301
 ```
 
-#### Alternative: Run from Source
-```bash
-# Run directly from source (for development)
-go run main.go hd_wallet.go transaction_builder.go transaction_broadcaster.go utxo_manager.go brc100_api.go
-```
+**Features:**
+- Custom Actix-web HTTP server
+- BRC-103/104 mutual authentication
+- Custom BSV ForkID SIGHASH implementation
+- Transaction creation, signing, broadcasting
+- Confirmed mainnet transactions
 
-#### Test the API
-The wallet daemon provides these endpoints:
+**🔧 IMPORTANT NOTES:**
+- **Both use port 3301** - Only run ONE at a time!
+- **Shared wallet.json** - Located at `%APPDATA%/BabbageBrowser/wallet/wallet.json`
+- **Choose your implementation** - Testing both for production decision
+- **Stop one before starting the other** - Port conflict if both run simultaneously
 
-**Core Wallet APIs:**
-- `GET http://localhost:8080/health` - Health check
-- `GET http://localhost:8080/wallet/info` - Get wallet information
-- `GET http://localhost:8080/wallet/balance` - Get total balance
-- `POST http://localhost:8080/transaction/send` - Send transaction
+#### Test the APIs
 
-**BRC-100 APIs:**
-- `GET http://localhost:8080/brc100/status` - BRC-100 service status
-- `POST http://localhost:8080/brc100/identity/generate` - Generate identity certificate
-- `POST http://localhost:8080/brc100/auth/challenge` - Generate authentication challenge
-- `POST http://localhost:8080/brc100/beef/create` - Create BEEF transaction
+**Both wallets use Port 3301:**
 
-**Test with PowerShell** (in a separate terminal while server is running):
+**Go Wallet Endpoints:**
+- `GET http://localhost:3301/health` - Health check
+- `GET http://localhost:3301/wallet/info` - Get wallet information
+- `GET http://localhost:3301/wallet/balance` - Get total balance
+- `POST http://localhost:3301/transaction/send` - Send transaction
+- `GET http://localhost:3301/brc100/status` - BRC-100 service status
+
+**Rust Wallet Endpoints:**
+- `GET http://localhost:3301/wallet/status` - Wallet status
+- `POST http://localhost:3301/getVersion` - Get wallet version
+- `POST http://localhost:3301/getPublicKey` - Get public key
+- `POST http://localhost:3301/createHmac` - Create HMAC for authentication
+- `POST http://localhost:3301/verifyHmac` - Verify HMAC
+- `POST http://localhost:3301/createSignature` - Create message signature
+- `POST http://localhost:3301/verifySignature` - Verify message signature
+- `POST http://localhost:3301/.well-known/auth` - BRC-104 authentication
+- `POST http://localhost:3301/createAction` - Create transaction
+- `POST http://localhost:3301/signAction` - Sign transaction
+- `POST http://localhost:3301/processAction` - Process and broadcast transaction
+
+**Test with PowerShell:**
 ```powershell
-# Health check
-Invoke-RestMethod -Uri "http://localhost:8080/health" -Method GET
+# Test Go wallet (make sure Go wallet is running)
+Invoke-RestMethod -Uri "http://localhost:3301/health" -Method GET
 
-# Get wallet info
-Invoke-RestMethod -Uri "http://localhost:8080/wallet/info" -Method GET
-
-# Get BRC-100 status
-Invoke-RestMethod -Uri "http://localhost:8080/brc100/status" -Method GET
+# Test Rust wallet (make sure Rust wallet is running, stop Go wallet first)
+Invoke-RestMethod -Uri "http://localhost:3301/wallet/status" -Method GET
 ```
 
 #### Important Notes
-- The wallet daemon must be running for any wallet functionality
-- Wallet files are stored in `%APPDATA%/BabbageBrowser/wallet/wallet.json`
-- The daemon runs on port 8080 by default
-- **Production-ready**: Includes complete BRC-100 authentication system
-- **Real blockchain integration**: Works with actual Bitcoin SV network
-- **BEEF/SPV support**: Full BEEF transaction and SPV verification support
+- **Single port**: Both wallets use port 3301 - only ONE can run at a time
+- **Shared storage**: Both use `%APPDATA%/BabbageBrowser/wallet/wallet.json`
+- **Choose implementation**: Run either Go OR Rust wallet, not both
+- **Production blockchain**: Both wallets work with real BSV network
+- **Confirmed transactions**: Rust wallet has multiple successful mainnet broadcasts
+- **Development/testing**: Comparing both implementations for production decision
 
 ### Step 3: React Frontend Setup
 

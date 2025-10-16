@@ -2,6 +2,74 @@
 
 ## 🚨 **CURRENT SESSION STATUS - READ THIS FIRST**
 
+### **✅ COMPLETED: Rust Wallet Implementation - BSV Transaction Support (2025-10-16)**
+
+**🎉 MAJOR ACHIEVEMENT:** Successfully implemented a **production-ready Rust wallet** with full BSV transaction creation, signing, and broadcasting capabilities!
+
+**SESSION BREAKTHROUGH:**
+1. ✅ **BSV ForkID SIGHASH Algorithm**: Implemented correct BSV SIGHASH based on BSV Go SDK
+2. ✅ **Transaction Signing**: Full transaction signing with proper key derivation
+3. ✅ **Multi-Miner Broadcasting**: Successfully broadcasting to WhatsOnChain and GorillaPool
+4. ✅ **On-Chain Transactions**: Multiple confirmed transactions on BSV mainnet
+5. ✅ **BRC-100 Authentication**: Complete mutual authentication handshake working
+
+**CRITICAL TECHNICAL DISCOVERIES:**
+- **BIP143 is NOT for BSV**: BIP143 is for SegWit (which BSV does not support)
+- **BSV ForkID SIGHASH**: BSV uses modified SIGHASH with ForkID flag (0x41) and includes prev_value in preimage
+- **SIGHASH_ALL_FORKID = 0x41**: This is the standard BSV signature flag (0x01 | 0x40)
+- **Double SHA256**: BSV uses SHA256d (double SHA256) for the final SIGHASH hash
+- **Preimage Format**: Version + hashPrevouts + hashSequence + input details + prev_value + sequence + hashOutputs + locktime + sighash_type
+
+**WHAT'S WORKING (RUST WALLET):**
+- ✅ Complete BRC-103/BRC-104 mutual authentication with ToolBSV.com
+- ✅ HMAC-based nonce verification (createHmac, verifyHmac)
+- ✅ BRC-42 child key derivation for signing
+- ✅ Transaction creation with UTXO selection from WhatsOnChain API
+- ✅ BSV ForkID SIGHASH calculation (correct algorithm!)
+- ✅ P2PKH script generation and unlocking scripts
+- ✅ Multi-miner broadcasting (GorillaPool + WhatsOnChain)
+- ✅ On-chain transaction confirmation
+
+**CONFIRMED TRANSACTIONS:**
+- `7dce601f2477d6024e9674eaac169773e31a0bd3d10c8c59e27649ba80124633` ✅
+- `155c2539ea7f6bcc757d5f19374ad45f32bfa1a35c359f4ac3421602f84f60b9` ✅
+
+**FILES MODIFIED:**
+- `rust-wallet/src/transaction/sighash.rs` - Complete rewrite with BSV ForkID SIGHASH
+- `rust-wallet/src/handlers.rs` - Removed TAAL broadcaster, fixed GorillaPool URL
+- `rust-wallet/src/utxo_fetcher.rs` - Added P2PKH script generation from addresses
+- `rust-wallet/src/json_storage.rs` - Fixed debug logging for derived keys
+- `rust-wallet/Cargo.toml` - Added dependencies (reqwest, uuid, once_cell, ripemd, bs58)
+
+**TWO WALLET IMPLEMENTATIONS (DEVELOPMENT/TESTING):**
+
+We currently have **TWO WALLET IMPLEMENTATIONS** being tested:
+
+1. **Go Wallet** (`go-wallet/`) - Port 3301
+   - Uses official BSV Go SDK (`v1.2.9`)
+   - HD wallet with BIP44 derivation
+   - BRC-100 authentication endpoints
+   - Transaction creation, signing, broadcasting
+   - **Status**: Production-ready, CEF browser integration working
+
+2. **Rust Wallet** (`rust-wallet/`) - Port 3301
+   - Custom BSV ForkID SIGHASH implementation
+   - Actix-web HTTP server
+   - BRC-103/104 authentication
+   - Transaction creation, signing, broadcasting
+   - **Status**: Transaction signing working, authentication working
+
+**IMPORTANT NOTES:**
+- **Both listen on port 3301** - Only ONE can run at a time
+- **Same port, different languages** - Testing Go SDK vs custom Rust implementation
+- **Shared wallet.json** - Both use the same wallet file for seamless switching
+- **Production decision pending** - Will choose one implementation for final release
+- **Current testing** - Comparing performance, maintainability, and features
+
+---
+
+## 🚨 **CURRENT SESSION STATUS - READ THIS FIRST**
+
 ### **✅ COMPLETED: React + CEF Window Layout + Overlay Tracking (2025-10-09)**
 
 **SESSION ACHIEVEMENTS:**

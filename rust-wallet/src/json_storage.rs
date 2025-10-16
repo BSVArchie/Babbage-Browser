@@ -104,9 +104,7 @@ impl JsonStorage {
         let public_key = PublicKey::from_secret_key(&secp, &secret_key);
         let derived_pubkey_hex = hex::encode(public_key.serialize());
 
-        log::info!("   🔍 DEBUG: Derived pubkey from mnemonic: {}", derived_pubkey_hex);
-        log::info!("   🔍 DEBUG: Expected pubkey from wallet.json: {}",
-            wallet.addresses.first().map(|a| a.public_key.as_str()).unwrap_or("N/A"));
+        log::info!("   🔍 DEBUG: Derived pubkey from mnemonic (index {}): {}", index, derived_pubkey_hex);
 
         Ok(private_key_bytes.to_vec())
     }

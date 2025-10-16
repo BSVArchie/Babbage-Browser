@@ -622,19 +622,86 @@ GET /utxos/status
 Response: {"status": "active", "lastUpdate": "2025-09-27T12:43:16Z"}
 ```
 
+## 🔧 Two Wallet Implementations (2025-10-16)
+
+**⚠️ Both use Port 3301 - Only run ONE at a time!**
+
+### **Comparing Two Implementations:**
+
+#### 1. Go Wallet (BSV SDK Implementation)
+**Purpose:** Leverage official BSV Go SDK for production-ready wallet
+**Technology:** Go with `github.com/bsv-blockchain/go-sdk@v1.2.9`
+**Port:** 3301
+**Status:** ✅ Production-ready
+
+**Endpoints:**
+- `GET /health` - Health check
+- `GET /wallet/info` - Wallet information
+- `GET /wallet/balance` - Total balance across all addresses
+- `POST /transaction/send` - Create, sign, and broadcast transaction
+- `GET /brc100/status` - BRC-100 service status
+- Plus all BRC-100 authentication endpoints
+
+**Pros:**
+- Official BSV SDK (tested and maintained)
+- Comprehensive BEEF/SPV support
+- Well-documented API
+
+#### 2. Rust Wallet (Custom Implementation)
+**Purpose:** Custom BRC-100 implementation for learning and flexibility
+**Technology:** Rust with Actix-web, custom cryptography
+**Port:** 3301
+**Status:** ✅ Transaction signing working, authentication complete
+
+**Endpoints:**
+- `GET /wallet/status` - Wallet status
+- `POST /getVersion` - Wallet version and capabilities
+- `POST /getPublicKey` - Public key for identity
+- `POST /isAuthenticated` - Authentication status
+- `POST /createHmac` - Create HMAC for nonce verification
+- `POST /verifyHmac` - Verify HMAC
+- `POST /createSignature` - Sign arbitrary messages
+- `POST /verifySignature` - Verify signatures
+- `POST /.well-known/auth` - BRC-104 mutual authentication
+- `POST /createAction` - Build unsigned transaction
+- `POST /signAction` - Sign transaction with BSV ForkID SIGHASH
+- `POST /processAction` - Create + sign + broadcast transaction
+
+**Pros:**
+- Full control over implementation
+- Custom BSV ForkID SIGHASH (verified working)
+- Confirmed mainnet transactions
+- Memory safe (Rust)
+
+**Shared Storage:**
+Both wallets use the same `wallet.json` file:
+- Location: `%APPDATA%/BabbageBrowser/wallet/wallet.json`
+- Contains: Mnemonic, HD addresses, public keys, WIF private keys
+
+**Production Decision Pending:**
+- Testing both implementations
+- Will choose one for final release
+- Currently comparing performance, maintainability, and features
+
+---
+
 ## 🌐 Bitcoin SV Blockchain APIs
 
 ### Miner Integration ✅ PRODUCTION READY
 
 #### WhatsOnChain (Primary)
+**Used by:** Both Go and Rust wallets
 ```http
 POST https://api.whatsonchain.com/v1/bsv/main/tx/raw
 Content-Type: application/json
 
-"hex_encoded_transaction"
+{
+  "txhex": "hex_encoded_transaction"
+}
 ```
 
 #### GorillaPool mAPI (Secondary)
+**Used by:** Both Go and Rust wallets
 ```http
 POST https://mapi.gorillapool.io/mapi/tx
 Content-Type: application/json
@@ -644,13 +711,22 @@ Content-Type: application/json
 }
 ```
 
-#### Legacy Miners (Deprecated)
-```http
-# TAAL Miner (deprecated - endpoint changed)
-POST https://api.taal.com/arc/tx
+**Response Format:**
+```json
+{
+  "payload": "{\"txid\":\"155c2539...\",\"returnResult\":\"success\",...}",
+  "signature": "30450221...",
+  "publicKey": "03ad7801...",
+  "encoding": "UTF-8",
+  "mimetype": "application/json"
+}
+```
 
-# Terranode Miner (deprecated - endpoint changed)
-POST https://api.terranode.io/v1/transactions
+#### TAAL ARC (Not Used)
+**Status:** Requires authentication, not included in current implementation
+```http
+POST https://arc.taal.com/v1/tx
+Authorization: Bearer <API_KEY>
 ```
 
 ### Balance & UTXO Queries ✅ PRODUCTION READY
