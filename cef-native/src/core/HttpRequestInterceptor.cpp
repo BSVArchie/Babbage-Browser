@@ -1105,6 +1105,7 @@ bool HttpRequestInterceptor::isWalletEndpoint(const std::string& url) {
             url.find("/listOutputs") != std::string::npos ||
             url.find("/createHmac") != std::string::npos ||
             url.find("/verifyHmac") != std::string::npos ||
+            url.find("/verifySignature") != std::string::npos ||
             url.find("/getNetwork") != std::string::npos ||
             url.find("/socket.io/") != std::string::npos ||
             url.find("/.well-known/auth") != std::string::npos ||

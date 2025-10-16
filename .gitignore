@@ -32,5 +32,9 @@ dist-ssr
 python-wallet/identity.json
 **/identity.json
 
+# Rust build artifacts
+rust-wallet/target/
+**/target/
+
 # Reference libraries and external dependencies
 reference/

@@ -1,0 +1,137 @@
+use actix_web::{web, App, HttpServer, middleware};
+use actix_cors::Cors;
+use std::path::PathBuf;
+use std::sync::Mutex;
+
+mod json_storage;
+mod handlers;
+mod crypto;
+
+use json_storage::JsonStorage;
+
+// Global app state
+pub struct AppState {
+    pub storage: Mutex<JsonStorage>,
+}
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    // Initialize logging
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+
+    println!("🦀 Bitcoin Browser Wallet (Rust)");
+    println!("=================================");
+    println!();
+
+    // Get wallet path
+    let appdata = std::env::var("APPDATA")
+        .unwrap_or_else(|_| {
+            println!("⚠️  APPDATA not set, using current directory");
+            ".".to_string()
+        });
+
+    let wallet_path = PathBuf::from(appdata)
+        .join("BabbageBrowser")
+        .join("wallet")
+        .join("wallet.json");
+
+    println!("📁 Wallet path: {}", wallet_path.display());
+
+    // Load wallet
+    let storage = match JsonStorage::new(wallet_path.clone()) {
+        Ok(s) => {
+            let wallet = s.get_wallet().unwrap();
+            println!("✅ Wallet loaded successfully");
+            println!("   Addresses: {}", wallet.addresses.len());
+            println!("   Current index: {}", wallet.current_index);
+            println!("   Backed up: {}", wallet.backed_up);
+
+            if let Ok(addr) = s.get_current_address() {
+                println!("   Current address: {}", addr.address);
+                println!("   Current pubkey: {}", addr.public_key);
+            }
+            s
+        }
+        Err(e) => {
+            eprintln!("❌ Failed to load wallet: {}", e);
+            eprintln!("   Expected path: {}", wallet_path.display());
+            return Err(std::io::Error::new(std::io::ErrorKind::NotFound, e));
+        }
+    };
+
+    // Create app state
+    let app_state = web::Data::new(AppState {
+        storage: Mutex::new(storage),
+    });
+
+    println!();
+    println!("🌐 Starting HTTP server...");
+    println!("   Port: 3301");
+    println!("   URL: http://localhost:3301");
+    println!();
+    println!("📋 Available endpoints:");
+    println!("   GET  /health");
+    println!("   GET  /brc100/status");
+    println!("   POST /getVersion");
+    println!("   POST /getPublicKey");
+    println!("   POST /isAuthenticated");
+    println!("   POST /createHmac");
+    println!("   POST /verifyHmac");
+    println!("   POST /verifySignature");
+    println!("   POST /.well-known/auth");
+    println!("   GET  /wallet/status");
+    println!("   GET  /wallet/balance");
+    println!();
+    println!("✅ Server ready - CEF browser can now connect!");
+    println!();
+
+    // Start HTTP server
+    HttpServer::new(move || {
+        // Configure CORS (allow all for development)
+        let cors = Cors::default()
+            .allow_any_origin()
+            .allow_any_method()
+            .allow_any_header()
+            .max_age(3600);
+
+        App::new()
+            .app_data(app_state.clone())
+            .wrap(cors)
+            .wrap(middleware::Logger::new("%a \"%r\" %s %b \"%{Referer}i\" %T"))
+
+            // Health check
+            .route("/health", web::get().to(handlers::health))
+            .route("/brc100/status", web::get().to(handlers::brc100_status))
+
+            // BRC-100 standard endpoints
+            .route("/getVersion", web::post().to(handlers::get_version))
+            .route("/getVersion", web::get().to(handlers::get_version))
+            .route("/getPublicKey", web::post().to(handlers::get_public_key))
+            .route("/isAuthenticated", web::post().to(handlers::is_authenticated))
+            .route("/createHmac", web::post().to(handlers::create_hmac))
+            .route("/verifyHmac", web::post().to(handlers::verify_hmac))
+            .route("/verifySignature", web::post().to(handlers::verify_signature))
+            .route("/createSignature", web::post().to(handlers::create_signature))
+            .route("/createAction", web::post().to(handlers::create_action))
+            .route("/signAction", web::post().to(handlers::sign_action))
+            .route("/processAction", web::post().to(handlers::process_action))
+
+            // Authentication endpoints
+            .route("/.well-known/auth", web::post().to(handlers::well_known_auth))
+
+            // Custom wallet endpoints
+            .route("/wallet/status", web::get().to(handlers::wallet_status))
+            .route("/wallet/balance", web::get().to(handlers::wallet_balance))
+            .route("/wallet/address/generate", web::post().to(handlers::generate_address))
+
+            // Transaction endpoints
+            .route("/transaction/send", web::post().to(handlers::send_transaction))
+
+            // Domain whitelist endpoints
+            .route("/domain/whitelist/check", web::get().to(handlers::check_domain))
+            .route("/domain/whitelist/add", web::post().to(handlers::add_domain))
+    })
+    .bind(("127.0.0.1", 3301))?
+    .run()
+    .await
+}
