@@ -8,12 +8,22 @@ mod handlers;
 mod crypto;
 mod transaction;
 mod utxo_fetcher;
+mod domain_whitelist;
+mod message_relay;
+mod auth_session;
 
 use json_storage::JsonStorage;
+use domain_whitelist::DomainWhitelistManager;
+use message_relay::MessageStore;
+use auth_session::AuthSessionManager;
+use std::sync::Arc;
 
 // Global app state
 pub struct AppState {
     pub storage: Mutex<JsonStorage>,
+    pub whitelist: Arc<DomainWhitelistManager>,
+    pub message_store: MessageStore,
+    pub auth_sessions: Arc<AuthSessionManager>,
 }
 
 #[actix_web::main]
@@ -61,9 +71,24 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
+    // Initialize domain whitelist manager
+    let whitelist_manager = Arc::new(DomainWhitelistManager::new());
+    println!("✅ Domain whitelist manager initialized");
+
+    // Initialize BRC-33 message relay
+    let message_store = MessageStore::new();
+    println!("✅ BRC-33 message relay initialized");
+
+    // Initialize BRC-103/104 auth session manager
+    let auth_sessions = Arc::new(AuthSessionManager::new());
+    println!("✅ Auth session manager initialized");
+
     // Create app state
     let app_state = web::Data::new(AppState {
         storage: Mutex::new(storage),
+        whitelist: whitelist_manager,
+        message_store,
+        auth_sessions,
     });
 
     println!();
@@ -83,6 +108,11 @@ async fn main() -> std::io::Result<()> {
     println!("   POST /.well-known/auth");
     println!("   GET  /wallet/status");
     println!("   GET  /wallet/balance");
+    println!();
+    println!("📬 BRC-33 Message Relay endpoints:");
+    println!("   POST /sendMessage");
+    println!("   POST /listMessages");
+    println!("   POST /acknowledgeMessage");
     println!();
     println!("✅ Server ready - CEF browser can now connect!");
     println!();
@@ -132,6 +162,11 @@ async fn main() -> std::io::Result<()> {
             // Domain whitelist endpoints
             .route("/domain/whitelist/check", web::get().to(handlers::check_domain))
             .route("/domain/whitelist/add", web::post().to(handlers::add_domain))
+
+            // BRC-33 Message Relay endpoints
+            .route("/sendMessage", web::post().to(handlers::send_message))
+            .route("/listMessages", web::post().to(handlers::list_messages))
+            .route("/acknowledgeMessage", web::post().to(handlers::acknowledge_message))
     })
     .bind(("127.0.0.1", 3301))?
     .run()

@@ -215,10 +215,12 @@ public:
                               const std::string& endpoint,
                               const std::string& body,
                               const std::string& requestDomain,
-                              CefRefPtr<CefBrowser> browser)
+                              CefRefPtr<CefBrowser> browser,
+                              const CefRequest::HeaderMap& headers)
         : method_(method), endpoint_(endpoint), body_(body), requestDomain_(requestDomain),
-          responseOffset_(0), requestCompleted_(false), browser_(browser) {
+          responseOffset_(0), requestCompleted_(false), browser_(browser), originalHeaders_(headers) {
         LOG_DEBUG_HTTP("🌐 AsyncWalletResourceHandler constructor called for " + method + " " + endpoint + " from domain " + requestDomain);
+        LOG_DEBUG_HTTP("🌐 Forwarding " + std::to_string(headers.size()) + " original headers");
     }
 
     bool Open(CefRefPtr<CefRequest> request,
@@ -473,6 +475,7 @@ private:
     std::string endpoint_;
     std::string body_;
     std::string requestDomain_;
+    CefRequest::HeaderMap originalHeaders_;  // BRC-31 authentication headers
 
     // Response management
     std::string responseData_;
@@ -557,7 +560,7 @@ public:
         cefRequest->SetHeaderByName("Content-Type", "application/json", true);
 
         // Create JSON body
-        std::string jsonBody = "{\"domain\":\"" + domain_ + "\",\"permanent\":" + (permanent_ ? "true" : "false") + "}";
+        std::string jsonBody = "{\"domain\":\"" + domain_ + "\",\"isPermanent\":" + (permanent_ ? "true" : "false") + "}";
         LOG_DEBUG_HTTP("🔐 Domain whitelist JSON body: " + jsonBody);
 
         // Create post data
@@ -739,10 +742,28 @@ void AsyncWalletResourceHandler::startAsyncHTTPRequest() {
     httpRequest->SetMethod(method_);
 
     LOG_DEBUG_HTTP("🌐 Setting headers for request");
-    // Set headers
+    // Start with standard headers
     CefRequest::HeaderMap headers;
     headers.insert(std::make_pair("Content-Type", "application/json"));
     headers.insert(std::make_pair("Accept", "application/json"));
+
+    // Forward original headers (including BRC-31 Authrite headers)
+    LOG_DEBUG_HTTP("🌐 Forwarding " + std::to_string(originalHeaders_.size()) + " original headers");
+    for (const auto& header : originalHeaders_) {
+        std::string headerName = header.first.ToString();
+        std::string headerValue = header.second.ToString();
+
+        // Log BRC-31 authentication headers
+        if (headerName.find("x-authrite-") != std::string::npos ||
+            headerName.find("X-Authrite-") != std::string::npos ||
+            headerName.find("x-bsv-") != std::string::npos ||
+            headerName.find("X-BSV-") != std::string::npos) {
+            LOG_DEBUG_HTTP("🔐 Forwarding auth header: " + headerName + " = " + headerValue.substr(0, 50) + "...");
+        }
+
+        headers.insert(std::make_pair(headerName, headerValue));
+    }
+
     httpRequest->SetHeaderMap(headers);
 
     // Set POST body if needed
@@ -854,33 +875,70 @@ CefRefPtr<CefResourceHandler> HttpRequestInterceptor::GetResourceHandler(
 
     LOG_DEBUG_HTTP("🌐 About to check if wallet endpoint...");
 
-    // Generic BRC-104 authentication endpoint interception
-    // Intercept ALL /.well-known/auth requests regardless of domain and redirect to local wallet
+    // BRC-104 authentication endpoint interception
+    // ONLY redirect /.well-known/auth if it's meant for the LOCAL WALLET (localhost/127.0.0.1)
+    // DO NOT redirect auth requests to external app backends!
     if (url.find("/.well-known/auth") != std::string::npos) {
-        LOG_DEBUG_HTTP("🌐 BRC-104 /.well-known/auth request detected, redirecting to local wallet");
+        // Check if this is a request to localhost or 127.0.0.1 (wallet auth)
+        bool isLocalhost = (url.find("localhost") != std::string::npos || url.find("127.0.0.1") != std::string::npos);
 
-        // Extract the original domain for logging
-        std::string originalDomain = url;
-        size_t protocolEnd = originalDomain.find("://");
-        if (protocolEnd != std::string::npos) {
-            originalDomain = originalDomain.substr(protocolEnd + 3);
-            size_t pathStart = originalDomain.find("/");
-            if (pathStart != std::string::npos) {
-                originalDomain = originalDomain.substr(0, pathStart);
+        if (isLocalhost) {
+            LOG_DEBUG_HTTP("🌐 BRC-104 /.well-known/auth request to localhost detected, redirecting to local wallet");
+
+            // Extract the original domain for logging
+            std::string originalDomain = url;
+            size_t protocolEnd = originalDomain.find("://");
+            if (protocolEnd != std::string::npos) {
+                originalDomain = originalDomain.substr(protocolEnd + 3);
+                size_t pathStart = originalDomain.find("/");
+                if (pathStart != std::string::npos) {
+                    originalDomain = originalDomain.substr(0, pathStart);
+                }
             }
+
+            // Replace the domain with localhost:3301
+            std::regex domainPattern(R"(https?://[^/]+)");
+            url = std::regex_replace(url, domainPattern, "http://localhost:3301");
+
+            LOG_DEBUG_HTTP("🌐 BRC-104 auth redirection: " + originalUrl + " -> " + url);
+            request->SetURL(url);
+        } else {
+            LOG_DEBUG_HTTP("🌐 BRC-104 /.well-known/auth request to external backend detected: " + url);
+            LOG_DEBUG_HTTP("🌐 NOT intercepting - allowing CEF to handle normally");
+            return nullptr; // Let CEF handle external backend auth requests normally
         }
-
-        // Replace the domain with localhost:3301
-        std::regex domainPattern(R"(https?://[^/]+)");
-        url = std::regex_replace(url, domainPattern, "http://localhost:3301");
-
-        LOG_DEBUG_HTTP("🌐 BRC-104 auth redirection: " + originalUrl + " -> " + url);
-        request->SetURL(url);
     }
 
     // Check if this is a Babbage messagebox request that needs redirection
     if (url.find("messagebox.babbage.systems") != std::string::npos) {
-        LOG_DEBUG_HTTP("🌐 Babbage messagebox request detected, redirecting to local server");
+        LOG_DEBUG_HTTP("🌐 ===== MESSAGEBOX REQUEST DETECTED =====");
+        LOG_DEBUG_HTTP("🌐 Method: " + method);
+        LOG_DEBUG_HTTP("🌐 Full URL: " + url);
+
+        // Log all headers
+        CefRequest::HeaderMap messageboxHeaders;
+        request->GetHeaderMap(messageboxHeaders);
+        LOG_DEBUG_HTTP("🌐 Headers (" + std::to_string(messageboxHeaders.size()) + " total):");
+        for (const auto& header : messageboxHeaders) {
+            LOG_DEBUG_HTTP("🌐   " + header.first.ToString() + ": " + header.second.ToString());
+        }
+
+        // Log POST body if present
+        CefRefPtr<CefPostData> postData = request->GetPostData();
+        if (postData) {
+            CefPostData::ElementVector elements;
+            postData->GetElements(elements);
+            for (auto& element : elements) {
+                if (element->GetType() == PDE_TYPE_BYTES) {
+                    size_t size = element->GetBytesCount();
+                    std::vector<char> buffer(size);
+                    element->GetBytes(size, buffer.data());
+                    std::string bodyContent(buffer.data(), size);
+                    LOG_DEBUG_HTTP("🌐 POST Body: " + bodyContent);
+                }
+            }
+        }
+        LOG_DEBUG_HTTP("🌐 ========================================");
 
         // Check if this is a WebSocket upgrade request
         std::string connection = request->GetHeaderByName("Connection");
@@ -969,8 +1027,12 @@ CefRefPtr<CefResourceHandler> HttpRequestInterceptor::GetResourceHandler(
             }
         }
 
+        // Get headers for Socket.IO forwarding
+        CefRequest::HeaderMap socketHeaders;
+        request->GetHeaderMap(socketHeaders);
+
         // Create AsyncWalletResourceHandler for Socket.IO
-        return new AsyncWalletResourceHandler(method, endpoint, body, domain, browser);
+        return new AsyncWalletResourceHandler(method, endpoint, body, domain, browser, socketHeaders);
     }
 
     // Check if this is a wallet endpoint
@@ -1061,7 +1123,7 @@ CefRefPtr<CefResourceHandler> HttpRequestInterceptor::GetResourceHandler(
     if (!endpoint.empty()) {
         LOG_DEBUG_HTTP("🌐 About to create AsyncWalletResourceHandler...");
         // Create and return async handler
-        AsyncWalletResourceHandler* handler = new AsyncWalletResourceHandler(method, endpoint, body, domain, browser);
+        AsyncWalletResourceHandler* handler = new AsyncWalletResourceHandler(method, endpoint, body, domain, browser, headers);
         LOG_DEBUG_HTTP("🌐 AsyncWalletResourceHandler created successfully");
         return handler;
     }

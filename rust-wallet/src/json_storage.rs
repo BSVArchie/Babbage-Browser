@@ -67,6 +67,44 @@ impl JsonStorage {
         Ok(&wallet.addresses)
     }
 
+    /// Get the master private key (m) from mnemonic
+    /// This is the root key before any derivation
+    /// Used for BRC-42/BRC-84 key derivation
+    pub fn get_master_private_key(&self) -> Result<Vec<u8>, String> {
+        let wallet = self.get_wallet()?;
+
+        // Parse mnemonic
+        let mnemonic = Mnemonic::parse_in(Language::English, &wallet.mnemonic)
+            .map_err(|e| format!("Invalid mnemonic: {}", e))?;
+
+        // Generate seed from mnemonic (no password)
+        let seed = mnemonic.to_seed("");
+
+        // Create BIP32 master key from seed
+        let master_key = XPrv::new(&seed)
+            .map_err(|e| format!("Failed to create master key: {}", e))?;
+
+        // Extract 32-byte master private key
+        Ok(master_key.private_key().to_bytes().to_vec())
+    }
+
+    /// Get the master public key from the master private key
+    /// Returns the compressed 33-byte public key (with prefix byte)
+    pub fn get_master_public_key(&self) -> Result<Vec<u8>, String> {
+        use secp256k1::{Secp256k1, SecretKey, PublicKey};
+
+        let private_key_bytes = self.get_master_private_key()?;
+
+        let secp = Secp256k1::new();
+        let secret_key = SecretKey::from_slice(&private_key_bytes)
+            .map_err(|e| format!("Invalid private key: {}", e))?;
+
+        let public_key = PublicKey::from_secret_key(&secp, &secret_key);
+
+        // Return compressed format (33 bytes with prefix)
+        Ok(public_key.serialize().to_vec())
+    }
+
     /// Derive private key from mnemonic for a specific address index
     /// Uses BIP39 to convert mnemonic → seed
     /// Uses BIP32 for hierarchical key derivation (matches Go wallet implementation)

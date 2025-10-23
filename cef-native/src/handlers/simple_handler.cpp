@@ -949,7 +949,7 @@ bool SimpleHandler::OnProcessMessageReceived(
 
                         // Create HTTP request to generate authentication response
                         CefRefPtr<CefRequest> cefRequest = CefRequest::Create();
-                        cefRequest->SetURL("http://localhost:8080" + g_pendingAuthRequest.endpoint);
+                        cefRequest->SetURL("http://localhost:3301" + g_pendingAuthRequest.endpoint);
                         cefRequest->SetMethod(g_pendingAuthRequest.method);
                         cefRequest->SetHeaderByName("Content-Type", "application/json", true);
 
@@ -1008,7 +1008,7 @@ bool SimpleHandler::OnProcessMessageReceived(
                             nullptr
                         );
 
-                        LOG_DEBUG_BROWSER("🔐 Authentication request sent to Go daemon");
+                        LOG_DEBUG_BROWSER("🔐 Authentication request sent to wallet at localhost:3301");
 
                         // Don't clear the pending request here - it will be cleared in handleAuthResponse
                     } else {

@@ -18,6 +18,9 @@ tokio = { version = "1", features = ["full"] }
 # Date/time
 chrono = { version = "0.4", features = ["serde"] }
 
+# Directory helpers
+dirs = "5.0"
+
 # Random number generation
 rand = "0.8"
 base64 = "0.22"
@@ -43,3 +46,6 @@ bip32 = "0.5"
 
 # HTTP client for blockchain API calls
 reqwest = { version = "0.11", features = ["json"] }
+
+# Regex for JSON fixing
+regex = "1"

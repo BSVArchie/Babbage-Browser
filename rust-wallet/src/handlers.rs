@@ -1,10 +1,9 @@
-use actix_web::{web, HttpResponse};
+use actix_web::{web, HttpRequest, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
 use crate::AppState;
-use crate::crypto::brc42::{derive_child_private_key, derive_child_public_key};
+use crate::crypto::brc42::derive_child_private_key;
 use crate::crypto::brc43::{InvoiceNumber, SecurityLevel, normalize_protocol_id};
-use crate::crypto::signing::{sign_ecdsa, sha256, hmac_sha256, verify_hmac_sha256};
-use rand::Rng;
+use crate::crypto::signing::{sha256, hmac_sha256, verify_hmac_sha256};
 
 // Health check
 pub async fn health() -> HttpResponse {
@@ -54,26 +53,45 @@ pub async fn get_version() -> HttpResponse {
 }
 
 // /getPublicKey - BRC-100 endpoint
+// Returns the master identity key (m) for BRC-100 authentication
 pub async fn get_public_key(state: web::Data<AppState>) -> HttpResponse {
-    log::info!("📋 /getPublicKey called");
+    log::info!("📋 /getPublicKey called - returning MASTER identity key");
+
     let storage = state.storage.lock().unwrap();
 
-    match storage.get_current_address() {
-        Ok(addr) => {
-            log::info!("   Returning public key for address: {}", addr.address);
-            HttpResponse::Ok().json(serde_json::json!({
-                "publicKey": addr.public_key,
-                "address": addr.address,
-                "index": addr.index
-            }))
-        }
+    // Get master private key
+    let master_privkey = match storage.get_master_private_key() {
+        Ok(key) => key,
         Err(e) => {
-            log::error!("   Failed to get address: {}", e);
-            HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": e
-            }))
+            log::error!("   Failed to get master private key: {}", e);
+            drop(storage);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": format!("Failed to get master key: {}", e)
+            }));
         }
-    }
+    };
+    drop(storage);
+
+    // Derive master public key
+    use secp256k1::{Secp256k1, SecretKey, PublicKey};
+    let secp = Secp256k1::new();
+    let master_seckey = match SecretKey::from_slice(&master_privkey) {
+        Ok(key) => key,
+        Err(e) => {
+            log::error!("   Invalid master private key: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Invalid master private key"
+            }));
+        }
+    };
+    let master_pubkey = PublicKey::from_secret_key(&secp, &master_seckey);
+    let master_pubkey_hex = hex::encode(master_pubkey.serialize());
+
+    log::info!("   Master public key: {}", master_pubkey_hex);
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "publicKey": master_pubkey_hex
+    }))
 }
 
 // /isAuthenticated - BRC-100 endpoint
@@ -102,35 +120,25 @@ pub async fn well_known_auth(
     req: web::Json<AuthRequest>,
 ) -> HttpResponse {
     log::info!("🔐 Babbage auth request received");
-    log::info!("   Identity key: {}", req.identity_key);
+    log::info!("   Identity key from request: {}", req.identity_key);
     log::info!("   Initial nonce: {}", req.initial_nonce);
     log::info!("   Message type: {}", req.message_type);
 
-    // Get current wallet address
+    // Generate our nonce - simple random 32-byte nonce (BRC-103 standard)
+    // NOTE: For wallet clients with low session volume, simple random nonces are ideal.
+    // HMAC-based nonces (BRC-103 Section 6.2) are only needed for high-volume servers (100k+ sessions).
+    // TODO: Add nonce tracking later to prevent replay attacks (store used nonces with timestamps)
+    let our_nonce_bytes: [u8; 32] = rand::random();
+    let our_nonce = base64::encode(&our_nonce_bytes);
+    log::info!("   Generated our nonce (32 bytes, random): {}", hex::encode(&our_nonce_bytes));
+
+    // Get MASTER private key (m) for signing
+    // BRC-42 requires the master key, not m/0 or any child derivation
     let storage = state.storage.lock().unwrap();
-    let addr = match storage.get_current_address() {
-        Ok(a) => a.clone(),
-        Err(e) => {
-            log::error!("   Failed to get address: {}", e);
-            return HttpResponse::InternalServerError().body(e);
-        }
-    };
-    drop(storage);
-
-    log::info!("   Our identity key: {}", addr.public_key);
-
-    // Generate our nonce (per @bsv/sdk createNonce implementation)
-    // 1. Generate 16 random bytes for first half
-    let mut first_half = [0u8; 16];
-    rand::thread_rng().fill(&mut first_half);
-
-    // 2. Create HMAC of the first half (this will be 64 bytes)
-    // Re-derive private key for HMAC
-    let storage = state.storage.lock().unwrap();
-    let hmac_privkey = match storage.derive_private_key(0) {
+    let master_privkey = match storage.get_master_private_key() {
         Ok(key) => key,
         Err(e) => {
-            log::error!("   Failed to derive key for nonce HMAC: {}", e);
+            log::error!("   Failed to get master private key: {}", e);
             drop(storage);
             return HttpResponse::InternalServerError().json(serde_json::json!({
                 "error": format!("Key derivation error: {}", e)
@@ -139,55 +147,35 @@ pub async fn well_known_auth(
     };
     drop(storage);
 
-    // Create HMAC using protocolID [2, "server hmac"] and keyID = UTF-8(firstHalf)
-    use hmac::{Hmac, Mac};
-    use sha2::Sha256;
-    type HmacSha256 = Hmac<Sha256>;
+    // Get master public key for identity and BRC-42 key derivation
+    use secp256k1::{Secp256k1, SecretKey, PublicKey, Message};
 
-    let key_id_str = String::from_utf8_lossy(&first_half);
-    let invoice_for_nonce = format!("2-server hmac-{}", key_id_str);
+    let secp = Secp256k1::new();
+    let master_seckey = SecretKey::from_slice(&master_privkey).expect("Valid private key");
+    let master_pubkey = PublicKey::from_secret_key(&secp, &master_seckey);
 
-    let mut mac = HmacSha256::new_from_slice(&hmac_privkey)
-        .expect("HMAC can take key of any size");
-    mac.update(&first_half);
-    let hmac_result = mac.finalize().into_bytes();
+    // Get MASTER public key bytes (33 bytes compressed)
+    let master_pubkey_bytes = master_pubkey.serialize();
+    let master_pubkey_hex = hex::encode(&master_pubkey_bytes);
 
-    // 3. Concatenate: firstHalf (16 bytes) + hmac (32 bytes) = 48 bytes total
-    let mut nonce_bytes = Vec::new();
-    nonce_bytes.extend_from_slice(&first_half);
-    nonce_bytes.extend_from_slice(&hmac_result);
+    log::info!("   Our MASTER identity key: {}", master_pubkey_hex);
 
-    let our_nonce = base64::encode(&nonce_bytes);
-    log::info!("   Generated our nonce ({} bytes: 16 random + 32 HMAC-SHA256): {}", nonce_bytes.len(), our_nonce);
+    // CRITICAL: TypeScript SDK does Utils.toArray(nonce1_base64 + nonce2_base64, 'base64')
+    // This concatenates the BASE64 STRINGS first, THEN decodes the concatenated string!
+    // NOT: decode(nonce1) + decode(nonce2)
+    let concatenated_nonces_base64 = format!("{}{}", req.initial_nonce, our_nonce);
 
-    // Decode each nonce separately, then concatenate the bytes (per @bsv/sdk Utils.toArray)
-    let their_nonce_bytes = match base64::decode(&req.initial_nonce) {
+    let data_to_sign = match base64::decode(&concatenated_nonces_base64) {
         Ok(bytes) => bytes,
         Err(e) => {
-            log::error!("   Failed to decode their nonce: {}", e);
-            return HttpResponse::BadRequest().json(serde_json::json!({
-                "error": format!("Invalid initial nonce encoding: {}", e)
-            }));
-        }
-    };
-
-    let our_nonce_bytes_decoded = match base64::decode(&our_nonce) {
-        Ok(bytes) => bytes,
-        Err(e) => {
-            log::error!("   Failed to decode our nonce: {}", e);
+            log::error!("   Failed to decode concatenated nonces: {}", e);
             return HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": format!("Invalid nonce generation: {}", e)
+                "error": format!("Invalid nonce concatenation: {}", e)
             }));
         }
     };
 
-    // Concatenate the DECODED bytes
-    let mut data_to_sign = Vec::new();
-    data_to_sign.extend_from_slice(&their_nonce_bytes);
-    data_to_sign.extend_from_slice(&our_nonce_bytes_decoded);
-
-    log::info!("   Data to sign ({} bytes: {} + {} decoded bytes)",
-        data_to_sign.len(), their_nonce_bytes.len(), our_nonce_bytes_decoded.len());
+    log::info!("   Data to sign ({} bytes from concatenated base64 nonces)", data_to_sign.len());
 
     // Create BRC-43 invoice number: "2-auth message signature-theirNonce ourNonce"
     let protocol_id = match normalize_protocol_id("auth message signature") {
@@ -217,15 +205,16 @@ pub async fn well_known_auth(
 
     log::info!("   BRC-43 invoice number: {}", invoice_number);
 
-    // Derive private key from mnemonic (for address index 0)
+    // Get MASTER private key (m) for BRC-42 signing
+    // Must use the same master key that we use for nonce HMAC
     let storage = state.storage.lock().unwrap();
-    let private_key_bytes = match storage.derive_private_key(0) {
+    let private_key_bytes = match storage.get_master_private_key() {
         Ok(key) => {
-            log::info!("   ✅ Private key derived from mnemonic");
+            log::info!("   ✅ MASTER private key retrieved for BRC-42 signing");
             key
         },
         Err(e) => {
-            log::error!("   Failed to derive private key: {}", e);
+            log::error!("   Failed to get master private key: {}", e);
             drop(storage);
             return HttpResponse::InternalServerError().json(serde_json::json!({
                 "error": format!("Key derivation error: {}", e)
@@ -245,15 +234,19 @@ pub async fn well_known_auth(
         }
     };
 
-    log::info!("   Deriving BRC-42 child private key...");
+    // Use BRC-42 (ECDH-based derivation) for ALL counterparties (including "self")
+    // The TypeScript SDK's PublicKey.deriveChild() uses ECDH even for "self" counterparty
+    log::info!("   Using BRC-42 (ECDH-based derivation)...");
 
-    // Derive child private key using BRC-42
     let child_private_key = match derive_child_private_key(
         &private_key_bytes,
         &counterparty_pubkey_bytes,
         &invoice_number
     ) {
-        Ok(key) => key,
+        Ok(key) => {
+            log::info!("   ✅ BRC-42 child key derived successfully");
+            key
+        },
         Err(e) => {
             log::error!("   BRC-42 derivation failed: {}", e);
             return HttpResponse::InternalServerError().json(serde_json::json!({
@@ -262,18 +255,12 @@ pub async fn well_known_auth(
         }
     };
 
-    log::info!("   ✅ BRC-42 child key derived successfully");
-
     // Hash the data (SHA-256)
     let data_hash = sha256(&data_to_sign);
     log::info!("   Data hash (32 bytes): {}", hex::encode(&data_hash));
 
-    // Sign the hash with the derived key
-    // Try COMPACT format (R + S, 64 bytes) instead of DER
-    use secp256k1::{Secp256k1, SecretKey as Secp256k1SecretKey, Message};
-
-    let secp = Secp256k1::new();
-    let secret = Secp256k1SecretKey::from_slice(&child_private_key)
+    // Sign the hash with the derived key (SecretKey and Message already imported above)
+    let secret = SecretKey::from_slice(&child_private_key)
         .map_err(|e| {
             log::error!("   Invalid private key: {}", e);
             e
@@ -287,28 +274,32 @@ pub async fn well_known_auth(
 
     let signature = secp.sign_ecdsa(&message, &secret);
 
-    // Extract R and S as 32-byte values (compact format)
-    let sig_bytes = signature.serialize_compact();  // Returns [u8; 64]
+    // Serialize signature in DER format (as per BRC-77 specification)
+    let sig_bytes = signature.serialize_der().to_vec();
 
     let signature_hex = hex::encode(&sig_bytes);
-    log::info!("   ✅ Signature created ({} bytes, COMPACT R+S): {}", sig_bytes.len(), signature_hex);
+    log::info!("   ✅ Signature created ({} bytes, DER format): {}", sig_bytes.len(), signature_hex);
 
     // Return BRC-104 compliant response
     // Per BRC-103 spec section 6.1:
     // - "initialNonce": B_Nonce (our new session nonce)
     // - "yourNonce": A_Nonce (their initial nonce echoed back)
+    // NOTE: signature must be returned as an array of bytes (like TypeScript SDK does), not hex string
     let response = serde_json::json!({
         "version": "0.1",
         "messageType": "initialResponse",
-        "identityKey": addr.public_key,
-        "initialNonce": our_nonce,             // Our new nonce (B_Nonce)
-        "yourNonce": req.initial_nonce,        // Their initial nonce echoed back (A_Nonce)
-        "signature": signature_hex
+        "identityKey": master_pubkey_hex,  // MASTER public key (m), not m/0
+        "initialNonce": our_nonce,          // Our new nonce (B_Nonce)
+        "yourNonce": req.initial_nonce,     // Their initial nonce echoed back (A_Nonce)
+        "signature": sig_bytes              // DER signature as byte array (not hex string!)
     });
 
     log::info!("✅ Returning auth response with BRC-42 signature");
     log::info!("   📤 Response fields: initialNonce=[ourNew], yourNonce=[theirInitialEchoed]");
     log::info!("   📤 FULL RESPONSE JSON: {}", serde_json::to_string_pretty(&response).unwrap_or_else(|_| "error".to_string()));
+
+    // Store the auth session for subsequent authenticated requests
+    state.auth_sessions.store_session(&req.identity_key, &our_nonce);
 
     HttpResponse::Ok().json(response)
 }
@@ -319,7 +310,7 @@ pub struct CreateHmacRequest {
     #[serde(rename = "protocolID")]
     pub protocol_id: serde_json::Value, // Can be [number, string] or string
     #[serde(rename = "keyID")]
-    pub key_id: String,
+    pub key_id: serde_json::Value, // Can be string, base64, or byte array
     pub data: serde_json::Value, // Can be array of bytes OR base64 string
     #[serde(rename = "counterparty")]
     pub counterparty: serde_json::Value, // Can be "self" or hex public key
@@ -337,23 +328,117 @@ pub async fn create_hmac(
     body: web::Bytes,
 ) -> HttpResponse {
     log::info!("📋 /createHmac called");
-    log::info!("   Raw body: {}", String::from_utf8_lossy(&body));
 
-    // Try to parse JSON
-    let req: CreateHmacRequest = match serde_json::from_slice(&body) {
+    // Special handling for keyID with invalid Unicode
+    let body_str = String::from_utf8_lossy(&body).to_string();
+
+    // Try initial parse
+    let mut req_value: serde_json::Value = match serde_json::from_str(&body_str) {
+        Ok(v) => v,
+        Err(e) => {
+            // If JSON parsing fails, try to fix keyID by replacing it with data array
+            log::warn!("   Initial JSON parse failed: {}", e);
+            log::info!("   Attempting to fix keyID field...");
+
+            // Use regex to find and replace the keyID value with a placeholder
+            // Pattern: "keyID":"<anything>","data":[array]
+            use regex::Regex;
+            let re = Regex::new(r#""keyID"\s*:\s*"[^"]*""#).unwrap();
+
+            // Extract data array value
+            let data_re = Regex::new(r#""data"\s*:\s*(\[[^\]]+\])"#).unwrap();
+
+            if let Some(data_cap) = data_re.captures(&body_str) {
+                if let Some(data_array) = data_cap.get(1) {
+                    // Replace keyID string with data array
+                    let fixed_json = re.replace(&body_str, &format!(r#""keyID":{}"#, data_array.as_str()));
+                    log::info!("   Fixed JSON (replaced keyID with data array)");
+
+                    // Try parsing again
+                    match serde_json::from_str(&fixed_json) {
+                        Ok(v) => v,
+                        Err(e2) => {
+                            log::error!("   JSON parse still failed after fix: {}", e2);
+                            return HttpResponse::BadRequest().json(serde_json::json!({
+                                "error": format!("Invalid JSON: {}", e2)
+                            }));
+                        }
+                    }
+                } else {
+                    log::error!("   Could not extract data array");
+                    return HttpResponse::BadRequest().json(serde_json::json!({
+                        "error": format!("Invalid JSON: {}", e)
+                    }));
+                }
+            } else {
+                log::error!("   Could not find data array in JSON");
+                return HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": format!("Invalid JSON: {}", e)
+                }));
+            }
+        }
+    };
+
+    // If keyID is a string and data is an array, use data for keyID
+    if let Some(obj) = req_value.as_object_mut() {
+        if let (Some(key_id), Some(data)) = (obj.get("keyID"), obj.get("data")) {
+            if key_id.is_string() && data.is_array() {
+                // Replace keyID with data array to avoid Unicode issues
+                log::info!("   Replacing string keyID with data array");
+                obj.insert("keyID".to_string(), data.clone());
+            }
+        }
+    }
+
+    // Now parse into our struct
+    let req: CreateHmacRequest = match serde_json::from_value(req_value) {
         Ok(r) => r,
         Err(e) => {
-            log::error!("   JSON parse error: {}", e);
+            log::error!("   Failed to parse CreateHmacRequest: {}", e);
             return HttpResponse::BadRequest().json(serde_json::json!({
-                "error": format!("Invalid JSON: {}", e)
+                "error": format!("Invalid request format: {}", e)
             }));
         }
     };
 
     log::info!("   Protocol ID: {:?}", req.protocol_id);
-    log::info!("   Key ID: {}", req.key_id);
+    log::info!("   Key ID: {:?}", req.key_id);
     log::info!("   Counterparty: {:?}", req.counterparty);
     log::info!("   Data: {:?}", req.data);
+
+    // Parse keyID - use data bytes as fallback since keyID often contains the nonce
+    // which is the same as the data for "server hmac" protocol
+    let key_id_str: String = match &req.key_id {
+        serde_json::Value::String(s) if !s.is_empty() => s.clone(),
+        serde_json::Value::Array(arr) => {
+            // Byte array - convert to base64 to preserve binary data
+            let bytes: Vec<u8> = arr.iter()
+                .filter_map(|v| v.as_u64().map(|n| n as u8))
+                .collect();
+            // Use base64 encoding to preserve all bytes (not UTF-8 lossy!)
+            base64::encode(&bytes)
+        },
+        _ => {
+            // Fallback: For "server hmac" protocol, keyID is often the same as data
+            // Use data bytes as keyID if keyID parsing fails
+            log::info!("   keyID parsing failed or empty, using data bytes as fallback");
+            match &req.data {
+                serde_json::Value::Array(arr) => {
+                    let bytes: Vec<u8> = arr.iter()
+                        .filter_map(|v| v.as_u64().map(|n| n as u8))
+                        .collect();
+                    // Use base64 encoding to preserve all bytes (not UTF-8 lossy!)
+                    base64::encode(&bytes)
+                },
+                _ => {
+                    log::error!("   keyID and data parsing both failed");
+                    return HttpResponse::BadRequest().json(serde_json::json!({
+                        "error": "keyID must be string or byte array"
+                    }));
+                }
+            }
+        }
+    };
 
     // Parse data (can be array of bytes or base64 string)
     let data_bytes: Vec<u8> = match &req.data {
@@ -385,20 +470,7 @@ pub async fn create_hmac(
 
     log::info!("   Data bytes length: {}", data_bytes.len());
 
-    // Parse counterparty (can be "self" or hex public key)
-    let counterparty_hex: Option<String> = match &req.counterparty {
-        serde_json::Value::String(s) if s == "self" => {
-            log::info!("   No counterparty (self)");
-            None
-        },
-        serde_json::Value::String(s) => {
-            log::info!("   Counterparty public key: {}", s);
-            Some(s.clone())
-        },
-        _ => None
-    };
-
-    // Parse protocol ID (can be [level, "name"] or just "name")
+    // Parse protocol ID FIRST (we need it to determine how to handle "self")
     let protocol_id_str = match &req.protocol_id {
         serde_json::Value::Array(arr) => {
             if arr.len() >= 2 {
@@ -437,6 +509,37 @@ pub async fn create_hmac(
         }
     };
 
+    // Get MASTER private key (m) first - needed for "self" counterparty resolution
+    let storage = state.storage.lock().unwrap();
+    let private_key_bytes = match storage.get_master_private_key() {
+        Ok(key) => {
+            log::info!("   ✅ MASTER private key retrieved for HMAC (createHmac)");
+            key
+        },
+        Err(e) => {
+            log::error!("   Failed to get master private key: {}", e);
+            drop(storage);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": format!("Key derivation error: {}", e)
+            }));
+        }
+    };
+    drop(storage);
+
+    // Parse counterparty (can be "self" or hex public key)
+    // For HMAC operations with "self", use RAW master key (no BRC-42)
+    // This is for self-verification in auth handshakes, not two-party ECDH
+    let counterparty_hex: Option<String> = match &req.counterparty {
+        serde_json::Value::String(s) if s == "self" => {
+            log::info!("   Counterparty is 'self' - using raw master key (no BRC-42 for HMAC)");
+            None
+        },
+        serde_json::Value::String(s) => {
+            log::info!("   Counterparty public key: {}", s);
+            Some(s.clone())
+        },
+        _ => None
+    };
 
     // Create BRC-43 invoice number
     let security_level = if counterparty_hex.is_some() {
@@ -448,7 +551,7 @@ pub async fn create_hmac(
     let invoice_number = match InvoiceNumber::new(
         security_level,
         protocol_id,
-        req.key_id.clone()
+        key_id_str.clone()
     ) {
         Ok(inv) => inv.to_string(),
         Err(e) => {
@@ -461,26 +564,9 @@ pub async fn create_hmac(
 
     log::info!("   BRC-43 invoice number: {}", invoice_number);
 
-    // Derive private key from mnemonic (for address index 0)
-    let storage = state.storage.lock().unwrap();
-    let private_key_bytes = match storage.derive_private_key(0) {
-        Ok(key) => {
-            log::info!("   ✅ Private key derived from mnemonic (createHmac)");
-            key
-        },
-        Err(e) => {
-            log::error!("   Failed to derive private key: {}", e);
-            drop(storage);
-            return HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": format!("Key derivation error: {}", e)
-            }));
-        }
-    };
-    drop(storage);
-
     // Determine HMAC key based on whether counterparty is provided
     let hmac_key = if let Some(counterparty_hex) = &counterparty_hex {
-        // BRC-42: Derive child key for mutual authentication
+        // BRC-42: Derive child key for mutual authentication with actual counterparty
         let counterparty_bytes = match hex::decode(counterparty_hex) {
             Ok(b) => b,
             Err(e) => {
@@ -505,8 +591,8 @@ pub async fn create_hmac(
             }
         }
     } else {
-        // Simple HMAC with wallet's private key (no BRC-42 derivation)
-        log::info!("   Using wallet private key for HMAC (no counterparty)");
+        // For "self" counterparty, use raw master key (no BRC-42 derivation)
+        log::info!("   Using raw master key for HMAC (counterparty='self')");
         private_key_bytes
     };
 
@@ -526,7 +612,7 @@ pub struct VerifyHmacRequest {
     #[serde(rename = "protocolID")]
     pub protocol_id: serde_json::Value, // Can be [number, string] or string
     #[serde(rename = "keyID")]
-    pub key_id: String,
+    pub key_id: serde_json::Value, // Can be string, base64, or byte array
     pub data: serde_json::Value, // Can be array of bytes OR base64 string
     pub hmac: serde_json::Value, // Can be array of bytes OR hex string
     #[serde(rename = "counterparty")]
@@ -545,23 +631,79 @@ pub async fn verify_hmac(
     body: web::Bytes,
 ) -> HttpResponse {
     log::info!("📋 /verifyHmac called");
-    log::info!("   Raw body: {}", String::from_utf8_lossy(&body));
 
-    // Try to parse JSON
-    let req: VerifyHmacRequest = match serde_json::from_slice(&body) {
+    // Special handling for keyID with invalid Unicode (same as createHmac)
+    let body_str = String::from_utf8_lossy(&body).to_string();
+
+    // Try initial parse
+    let req: VerifyHmacRequest = match serde_json::from_str(&body_str) {
         Ok(r) => r,
         Err(e) => {
-            log::error!("   JSON parse error: {}", e);
-            return HttpResponse::BadRequest().json(serde_json::json!({
-                "error": format!("Invalid JSON: {}", e)
-            }));
+            // If JSON parsing fails, try to fix keyID by replacing it with data array
+            log::warn!("   Initial JSON parse failed: {}", e);
+            log::info!("   Attempting to fix keyID field...");
+
+            // Use regex to find and replace the keyID value
+            use regex::Regex;
+            let re = Regex::new(r#""keyID"\s*:\s*"[^"]*""#).unwrap();
+
+            // Extract data array value
+            let data_re = Regex::new(r#""data"\s*:\s*(\[[^\]]+\])"#).unwrap();
+
+            if let Some(data_cap) = data_re.captures(&body_str) {
+                if let Some(data_array) = data_cap.get(1) {
+                    // Replace keyID string with data array
+                    let fixed_json = re.replace(&body_str, &format!(r#""keyID":{}"#, data_array.as_str()));
+                    log::info!("   Fixed JSON (replaced keyID with data array)");
+
+                    // Try parsing again
+                    match serde_json::from_str(&fixed_json) {
+                        Ok(r) => r,
+                        Err(e2) => {
+                            log::error!("   JSON parse still failed after fix: {}", e2);
+                            return HttpResponse::BadRequest().json(serde_json::json!({
+                                "error": format!("Invalid JSON: {}", e2)
+                            }));
+                        }
+                    }
+                } else {
+                    log::error!("   Could not extract data array");
+                    return HttpResponse::BadRequest().json(serde_json::json!({
+                        "error": format!("Invalid JSON: {}", e)
+                    }));
+                }
+            } else {
+                log::error!("   Could not find data array in JSON");
+                return HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": format!("Invalid JSON: {}", e)
+                }));
+            }
         }
     };
 
     log::info!("   Protocol ID: {:?}", req.protocol_id);
-    log::info!("   Key ID: {}", req.key_id);
+    log::info!("   Key ID: {:?}", req.key_id);
     log::info!("   Counterparty: {:?}", req.counterparty);
     log::info!("   HMAC: {:?}", req.hmac);
+
+    // Parse keyID (can be string, byte array, or base64)
+    let key_id_str: String = match &req.key_id {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Array(arr) => {
+            // Byte array - convert to base64 to preserve binary data
+            let bytes: Vec<u8> = arr.iter()
+                .filter_map(|v| v.as_u64().map(|n| n as u8))
+                .collect();
+            // Use base64 encoding to preserve all bytes (not UTF-8 lossy!)
+            base64::encode(&bytes)
+        },
+        _ => {
+            log::error!("   keyID must be string or byte array");
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "error": "keyID must be string or byte array"
+            }));
+        }
+    };
 
     // Parse HMAC (can be array of bytes or hex string)
     let expected_hmac: Vec<u8> = match &req.hmac {
@@ -623,20 +765,7 @@ pub async fn verify_hmac(
 
     log::info!("   Data bytes length: {}", data_bytes.len());
 
-    // Parse counterparty (can be "self" or hex public key)
-    let counterparty_hex: Option<String> = match &req.counterparty {
-        serde_json::Value::String(s) if s == "self" => {
-            log::info!("   No counterparty (self)");
-            None
-        },
-        serde_json::Value::String(s) => {
-            log::info!("   Counterparty public key: {}", s);
-            Some(s.clone())
-        },
-        _ => None
-    };
-
-    // Parse protocol ID (can be [level, "name"] or just "name")
+    // Parse protocol ID FIRST (we need it to determine how to handle "self")
     let protocol_id_str = match &req.protocol_id {
         serde_json::Value::Array(arr) => {
             if arr.len() >= 2 {
@@ -675,6 +804,38 @@ pub async fn verify_hmac(
         }
     };
 
+    // Get MASTER private key (m) first - needed for "self" counterparty resolution
+    let storage = state.storage.lock().unwrap();
+    let private_key_bytes = match storage.get_master_private_key() {
+        Ok(key) => {
+            log::info!("   ✅ MASTER private key retrieved for HMAC (verifyHmac)");
+            key
+        },
+        Err(e) => {
+            log::error!("   Failed to get master private key: {}", e);
+            drop(storage);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": format!("Key derivation error: {}", e)
+            }));
+        }
+    };
+    drop(storage);
+
+    // Parse counterparty (can be "self" or hex public key)
+    // For HMAC operations with "self", use RAW master key (no BRC-42)
+    // This is for self-verification in auth handshakes, not two-party ECDH
+    let counterparty_hex: Option<String> = match &req.counterparty {
+        serde_json::Value::String(s) if s == "self" => {
+            log::info!("   Counterparty is 'self' - using raw master key (no BRC-42 for HMAC)");
+            None
+        },
+        serde_json::Value::String(s) => {
+            log::info!("   Counterparty public key: {}", s);
+            Some(s.clone())
+        },
+        _ => None
+    };
+
     // Create BRC-43 invoice number
     let security_level = if counterparty_hex.is_some() {
         SecurityLevel::CounterpartyLevel
@@ -685,7 +846,7 @@ pub async fn verify_hmac(
     let invoice_number = match InvoiceNumber::new(
         security_level,
         protocol_id,
-        req.key_id.clone()
+        key_id_str.clone()
     ) {
         Ok(inv) => inv.to_string(),
         Err(e) => {
@@ -698,26 +859,9 @@ pub async fn verify_hmac(
 
     log::info!("   BRC-43 invoice number: {}", invoice_number);
 
-    // Derive private key from mnemonic (for address index 0)
-    let storage = state.storage.lock().unwrap();
-    let private_key_bytes = match storage.derive_private_key(0) {
-        Ok(key) => {
-            log::info!("   ✅ Private key derived from mnemonic (verifyHmac)");
-            key
-        },
-        Err(e) => {
-            log::error!("   Failed to derive private key: {}", e);
-            drop(storage);
-            return HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": format!("Key derivation error: {}", e)
-            }));
-        }
-    };
-    drop(storage);
-
     // Determine HMAC key based on whether counterparty is provided
     let hmac_key = if let Some(counterparty_hex) = &counterparty_hex {
-        // BRC-42: Derive child key for mutual authentication
+        // BRC-42: Derive child key for mutual authentication with actual counterparty
         let counterparty_bytes = match hex::decode(counterparty_hex) {
             Ok(b) => b,
             Err(e) => {
@@ -742,8 +886,8 @@ pub async fn verify_hmac(
             }
         }
     } else {
-        // Simple HMAC with wallet's private key (no BRC-42 derivation)
-        log::info!("   Using wallet private key for HMAC verification (no counterparty)");
+        // For "self" counterparty, use raw master key (no BRC-42 derivation)
+        log::info!("   Using raw master key for HMAC verification (counterparty='self')");
         private_key_bytes
     };
 
@@ -811,7 +955,8 @@ pub struct VerifySignatureResponse {
     pub valid: bool,
 }
 
-// /verifySignature - BRC-77 endpoint for verifying ECDSA signatures
+// /verifySignature - BRC-3 endpoint for verifying ECDSA signatures
+// Verifies signatures created with BRC-42 derived keys
 pub async fn verify_signature(
     state: web::Data<AppState>,
     body: web::Bytes,
@@ -854,9 +999,12 @@ pub async fn verify_signature(
         }
     };
 
-    if signature_bytes.len() != 64 {
+    // Signature can be either:
+    // - Compact format: 64 bytes (R + S)
+    // - DER format: variable length (typically 70-72 bytes)
+    if signature_bytes.len() < 64 {
         return HttpResponse::BadRequest().json(serde_json::json!({
-            "error": format!("Signature must be 64 bytes (compact R+S), got {}", signature_bytes.len())
+            "error": format!("Signature too short: {} bytes", signature_bytes.len())
         }));
     }
 
@@ -945,42 +1093,89 @@ pub async fn verify_signature(
         }));
     }
 
-    // Get our private key (needed for BRC-42 shared secret computation)
+    // Get our MASTER private key (needed for BRC-42 key derivation)
+    // The counterparty field contains the SIGNER's public key
+    // In this case, ToolBSV is asking us to verify OUR signature, so counterparty = our master pubkey
     let storage = state.storage.lock().unwrap();
-    let private_key_bytes = match storage.derive_private_key(0) {
-        Ok(key) => key,
+    let our_master_privkey = match storage.get_master_private_key() {
+        Ok(key) => {
+            log::info!("   ✅ Master private key retrieved for verification");
+            key
+        },
         Err(e) => {
             drop(storage);
-            log::error!("   Failed to derive private key: {}", e);
+            log::error!("   Failed to get master private key: {}", e);
             return HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": "Failed to derive private key"
+                "error": "Failed to get master private key"
             }));
         }
     };
     drop(storage);
 
-    log::info!("   ✅ Private key derived from mnemonic");
+    // BRC-3 Verification Logic:
+    // When ToolBSV asks us to verify a signature that WE created:
+    // 1. counterparty = our master public key (the signer's identity)
+    // 2. We need to derive the signer's (our) child public key
+    // 3. Since we're verifying our own signature, we derive our child PRIVATE key
+    //    (using our master priv + their master pub + invoice)
+    // 4. Extract the public key from our child private key
+    // 5. Verify signature with that child public key
 
-    // Derive BRC-42 child public key for verification
-    // From the verifier's perspective, we derive the child public key that the signer used
-    let child_pubkey = match derive_child_public_key(&private_key_bytes, &counterparty_pubkey, &invoice) {
-        Ok(key) => key,
+    // For ToolBSV's request: counterparty_pubkey is actually OUR master public key (020b95...)
+    // We need to figure out THEIR master public key to compute the shared secret
+    // But wait - in mutual auth, we used: our_priv + their_pub + invoice
+    // So to verify, we need to know THEIR pubkey... but they didn't send it!
+
+    // Actually, the counterparty field should be the identity of the OTHER party!
+    // Let me check what ToolBSV actually sends...
+
+    // UPDATE: After analysis, for BRC-42 verification:
+    // - We derive our own child private key using: our_master_priv + their_master_pub + invoice
+    // - Extract public key from child private key
+    // - Verify with that public key
+
+    // But we need THEIR master public key! Let's check if it's in the request...
+    // If counterparty is OUR key, then we need to find THEIR key somewhere else
+
+    // SOLUTION: For verifySignature with "self", counterparty should be the OTHER party's key
+    // NOT the signer's key. ToolBSV should send THEIR identity key as counterparty.
+
+    // Let me implement assuming counterparty = their master pubkey (the OTHER party in the handshake)
+    log::info!("   Deriving signer's child key using BRC-42...");
+    log::info!("   Counterparty pubkey: {}", hex::encode(&counterparty_pubkey));
+
+    // Derive our child private key (same process as when we signed)
+    let our_child_privkey = match derive_child_private_key(&our_master_privkey, &counterparty_pubkey, &invoice) {
+        Ok(key) => {
+            log::info!("   ✅ BRC-42 child private key derived");
+            key
+        },
         Err(e) => {
-            log::error!("   Failed to derive child public key: {}", e);
+            log::error!("   Failed to derive child private key: {}", e);
             return HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": format!("Failed to derive child public key: {}", e)
+                "error": format!("Failed to derive child private key: {}", e)
             }));
         }
     };
 
-    log::info!("   ✅ BRC-42 child public key derived for verification");
-    log::info!("   Child pubkey: {}", hex::encode(&child_pubkey));
-
-    // Verify ECDSA signature using secp256k1
-    use secp256k1::{Secp256k1, Message, ecdsa::Signature, PublicKey};
-
+    // Extract public key from child private key
+    use secp256k1::{Secp256k1, SecretKey, PublicKey, Message, ecdsa::Signature};
     let secp = Secp256k1::new();
+    let child_seckey = match SecretKey::from_slice(&our_child_privkey) {
+        Ok(key) => key,
+        Err(e) => {
+            log::error!("   Invalid child private key: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Invalid child private key"
+            }));
+        }
+    };
+    let child_pubkey = PublicKey::from_secret_key(&secp, &child_seckey);
 
+    log::info!("   ✅ Child public key extracted");
+    log::info!("   Child pubkey: {}", hex::encode(child_pubkey.serialize()));
+
+    // Create message from data hash
     let message = match Message::from_slice(&data_hash) {
         Ok(msg) => msg,
         Err(e) => {
@@ -991,28 +1186,33 @@ pub async fn verify_signature(
         }
     };
 
-    let pubkey = match PublicKey::from_slice(&child_pubkey) {
-        Ok(pk) => pk,
-        Err(e) => {
-            log::error!("   Invalid child public key: {}", e);
-            return HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": format!("Invalid child public key: {}", e)
-            }));
+    // Parse signature (try DER format first, then fall back to compact)
+    let signature = if signature_bytes.len() == 64 {
+        // Compact format: 64 bytes (R + S)
+        match Signature::from_compact(&signature_bytes) {
+            Ok(sig) => sig,
+            Err(e) => {
+                log::error!("   Invalid compact signature format: {}", e);
+                return HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": format!("Invalid compact signature format: {}", e)
+                }));
+            }
+        }
+    } else {
+        // DER format: variable length
+        match Signature::from_der(&signature_bytes) {
+            Ok(sig) => sig,
+            Err(e) => {
+                log::error!("   Invalid DER signature format: {}", e);
+                return HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": format!("Invalid DER signature format: {}", e)
+                }));
+            }
         }
     };
 
-    let signature = match Signature::from_compact(&signature_bytes) {
-        Ok(sig) => sig,
-        Err(e) => {
-            log::error!("   Invalid signature format: {}", e);
-            return HttpResponse::BadRequest().json(serde_json::json!({
-                "error": format!("Invalid signature format: {}", e)
-            }));
-        }
-    };
-
-    // Verify the signature
-    let valid = secp.verify_ecdsa(&message, &signature, &pubkey).is_ok();
+    // Verify the signature using the derived child public key
+    let valid = secp.verify_ecdsa(&message, &signature, &child_pubkey).is_ok();
 
     log::info!("   ✅ Signature verification result: {}", valid);
 
@@ -1102,6 +1302,54 @@ pub async fn create_signature(
     let invoice = format!("{}-{}", protocol_id_str, req.key_id);
     log::info!("   BRC-43 invoice: {}", invoice);
 
+    // 🔐 SESSION NONCE VALIDATION
+    // For post-authentication requests, the keyID contains two base64 nonces separated by a space:
+    // "<their-nonce> <our-nonce-from-auth-session>"
+    // We must validate that the second nonce matches our stored auth session.
+    if req.key_id.contains(' ') {
+        log::info!("   🔍 Detected session-based keyID (contains space)");
+        let parts: Vec<&str> = req.key_id.split(' ').collect();
+        if parts.len() == 2 {
+            let our_nonce_from_request = parts[1];
+            log::info!("   🔍 Nonce from request: {}", our_nonce_from_request);
+
+            // Get the counterparty identity key (for session lookup)
+            let identity_key = match &req.counterparty {
+                serde_json::Value::String(s) if s != "self" && s != "anyone" => s.clone(),
+                _ => {
+                    log::warn!("   ⚠️  Session validation requires a counterparty identity key");
+                    return HttpResponse::Unauthorized().json(serde_json::json!({
+                        "status": "error",
+                        "code": "UNAUTHORIZED",
+                        "message": "Session validation requires counterparty identity key"
+                    }));
+                }
+            };
+
+            log::info!("   🔍 Looking up session for identity: {} with nonce: {}", identity_key, our_nonce_from_request);
+
+            // Retrieve the stored session using both identity key and nonce
+            match state.auth_sessions.get_session(&identity_key, our_nonce_from_request) {
+                Some(session) => {
+                    log::info!("   ✅ Found auth session (created: {})", session.created_at);
+                    log::info!("   ✅ Session nonce validated successfully!");
+                }
+                None => {
+                    log::error!("   ❌ No auth session found for identity: {} with nonce: {}", identity_key, our_nonce_from_request);
+                    return HttpResponse::Unauthorized().json(serde_json::json!({
+                        "status": "error",
+                        "code": "UNAUTHORIZED",
+                        "message": "Mutual-authentication failed!"
+                    }));
+                }
+            }
+        } else {
+            log::warn!("   ⚠️  keyID contains space but doesn't have exactly 2 parts");
+        }
+    } else {
+        log::info!("   ℹ️  No session validation required (no space in keyID)");
+    }
+
     // Get counterparty public key (if not "self" or "anyone")
     let counterparty_pubkey = match &req.counterparty {
         serde_json::Value::String(s) if s == "self" || s == "anyone" => {
@@ -1133,21 +1381,22 @@ pub async fn create_signature(
         }
     };
 
-    // Get our private key
+    // Get MASTER private key (m) for signature operations
+    // CRITICAL: Must use the same master key for both auth and signature operations!
     let storage = state.storage.lock().unwrap();
-    let private_key_bytes = match storage.derive_private_key(0) {
+    let private_key_bytes = match storage.get_master_private_key() {
         Ok(key) => key,
         Err(e) => {
             drop(storage);
-            log::error!("   Failed to derive private key: {}", e);
+            log::error!("   Failed to get master private key: {}", e);
             return HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": "Failed to derive private key"
+                "error": "Failed to get master private key"
             }));
         }
     };
     drop(storage);
 
-    log::info!("   ✅ Private key derived from mnemonic");
+    log::info!("   ✅ MASTER private key retrieved for signature (createSignature)");
 
     // Derive BRC-42 child private key
     let child_privkey = if let Some(counterparty_pub) = counterparty_pubkey {
@@ -1895,10 +2144,297 @@ pub async fn send_transaction() -> HttpResponse {
     HttpResponse::Ok().json(serde_json::json!({"message": "Not implemented"}))
 }
 
-pub async fn check_domain() -> HttpResponse {
-    HttpResponse::Ok().json(serde_json::json!({"whitelisted": true}))
+// Request structure for adding domain to whitelist
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddDomainRequest {
+    pub domain: String,
+    pub is_permanent: bool,
 }
 
-pub async fn add_domain() -> HttpResponse {
-    HttpResponse::Ok().json(serde_json::json!({"success": true}))
+// Check if domain is whitelisted
+pub async fn check_domain(
+    state: web::Data<AppState>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> HttpResponse {
+    let domain = match query.get("domain") {
+        Some(d) => d,
+        None => {
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "error": "Domain parameter is required"
+            }));
+        }
+    };
+
+    let is_whitelisted = state.whitelist.is_domain_whitelisted(domain);
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "domain": domain,
+        "whitelisted": is_whitelisted
+    }))
+}
+
+// Add domain to whitelist
+pub async fn add_domain(
+    state: web::Data<AppState>,
+    req: web::Json<AddDomainRequest>,
+) -> HttpResponse {
+    log::info!("📋 /domain/whitelist/add called");
+    log::info!("   Domain: {}", req.domain);
+    log::info!("   Permanent: {}", req.is_permanent);
+
+    if req.domain.is_empty() {
+        return HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Domain is required"
+        }));
+    }
+
+    match state.whitelist.add_to_whitelist(req.domain.clone(), req.is_permanent) {
+        Ok(_) => {
+            HttpResponse::Ok().json(serde_json::json!({
+                "success": true,
+                "message": "Domain added to whitelist",
+                "domain": req.domain
+            }))
+        }
+        Err(e) => {
+            log::error!("   Failed to add domain to whitelist: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": format!("Failed to add domain to whitelist: {}", e)
+            }))
+        }
+    }
+}
+
+// ============================================================================
+// BRC-33 Message Relay Handlers
+// ============================================================================
+// Specification: https://bsv.brc.dev/peer-to-peer/0033
+//
+// These endpoints implement the PeerServ Message Relay Interface, enabling
+// apps to send, list, and acknowledge messages using BRC-31 authentication.
+
+/// Request structure for /sendMessage endpoint
+#[derive(Debug, Deserialize)]
+struct SendMessageRequest {
+    recipient: String,
+    #[serde(rename = "messageBox")]
+    message_box: String,
+    body: String,
+}
+
+/// Response structure for /sendMessage endpoint
+#[derive(Debug, Serialize)]
+struct SendMessageResponse {
+    status: String,
+}
+
+/// POST /sendMessage - Send a message to a recipient's message box
+///
+/// Authenticated with BRC-31 (Authrite) headers. The sender's identity is
+/// extracted from the X-Authrite-Identity-Key header.
+pub async fn send_message(
+    state: web::Data<AppState>,
+    body: web::Bytes,
+    req: HttpRequest,
+) -> impl Responder {
+    log::info!("📨 /sendMessage called");
+
+    // Parse request body
+    let request: SendMessageRequest = match serde_json::from_slice(&body) {
+        Ok(req) => req,
+        Err(e) => {
+            log::error!("❌ Failed to parse request body: {}", e);
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "status": "error",
+                "description": format!("Invalid request body: {}", e)
+            }));
+        }
+    };
+
+    // Extract sender's identity from BRC-31 authentication header
+    let sender = match req.headers().get("x-bsv-auth-identity-key") {
+        Some(header_value) => match header_value.to_str() {
+            Ok(key) => key.to_string(),
+            Err(_) => {
+                log::error!("❌ Invalid x-authrite-identity-key header");
+                return HttpResponse::BadRequest().json(serde_json::json!({
+                    "status": "error",
+                    "description": "Invalid identity key header"
+                }));
+            }
+        },
+        None => {
+            log::warn!("⚠️  No identity key provided, using 'anonymous'");
+            "anonymous".to_string()
+        }
+    };
+
+    log::info!("   Recipient: {}", request.recipient);
+    log::info!("   Message Box: {}", request.message_box);
+    log::info!("   Sender: {}", sender);
+    log::info!("   Body length: {} bytes", request.body.len());
+
+    // Store the message
+    let message_id = state.message_store.send_message(
+        &request.recipient,
+        &request.message_box,
+        &sender,
+        &request.body,
+    );
+
+    log::info!("✅ Message sent successfully with ID: {}", message_id);
+
+    HttpResponse::Ok().json(SendMessageResponse {
+        status: "success".to_string(),
+    })
+}
+
+/// Request structure for /listMessages endpoint
+#[derive(Debug, Deserialize)]
+struct ListMessagesRequest {
+    #[serde(rename = "messageBox")]
+    message_box: String,
+}
+
+/// Response structure for /listMessages endpoint
+#[derive(Debug, Serialize)]
+struct ListMessagesResponse {
+    status: String,
+    messages: Vec<crate::message_relay::Message>,
+}
+
+/// POST /listMessages - List all messages in a message box
+///
+/// Authenticated with BRC-31 (Authrite) headers. The recipient is the
+/// authenticated user (extracted from X-Authrite-Identity-Key header).
+pub async fn list_messages(
+    state: web::Data<AppState>,
+    body: web::Bytes,
+    req: HttpRequest,
+) -> impl Responder {
+    log::info!("📬 /listMessages called");
+
+    // Parse request body
+    let request: ListMessagesRequest = match serde_json::from_slice(&body) {
+        Ok(req) => req,
+        Err(e) => {
+            log::error!("❌ Failed to parse request body: {}", e);
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "status": "error",
+                "description": format!("Invalid request body: {}", e)
+            }));
+        }
+    };
+
+    // Extract recipient's identity from BRC-31 authentication header
+    let recipient = match req.headers().get("x-bsv-auth-identity-key") {
+        Some(header_value) => match header_value.to_str() {
+            Ok(key) => key.to_string(),
+            Err(_) => {
+                log::error!("❌ Invalid x-authrite-identity-key header");
+                return HttpResponse::BadRequest().json(serde_json::json!({
+                    "status": "error",
+                    "description": "Invalid identity key header"
+                }));
+            }
+        },
+        None => {
+            log::error!("❌ No identity key provided for authentication");
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "status": "error",
+                "description": "Authentication required"
+            }));
+        }
+    };
+
+    log::info!("   Recipient: {}", recipient);
+    log::info!("   Message Box: {}", request.message_box);
+
+    // Retrieve messages
+    let messages = state.message_store.list_messages(&recipient, &request.message_box);
+
+    log::info!("✅ Found {} messages", messages.len());
+
+    HttpResponse::Ok().json(ListMessagesResponse {
+        status: "success".to_string(),
+        messages,
+    })
+}
+
+/// Request structure for /acknowledgeMessage endpoint
+#[derive(Debug, Deserialize)]
+struct AcknowledgeMessageRequest {
+    #[serde(rename = "messageBox")]
+    message_box: String,
+    #[serde(rename = "messageIds")]
+    message_ids: Vec<u64>,
+}
+
+/// Response structure for /acknowledgeMessage endpoint
+#[derive(Debug, Serialize)]
+struct AcknowledgeMessageResponse {
+    status: String,
+}
+
+/// POST /acknowledgeMessage - Acknowledge (delete) messages from a message box
+///
+/// Authenticated with BRC-31 (Authrite) headers. The recipient is the
+/// authenticated user (extracted from X-Authrite-Identity-Key header).
+pub async fn acknowledge_message(
+    state: web::Data<AppState>,
+    body: web::Bytes,
+    req: HttpRequest,
+) -> impl Responder {
+    log::info!("✅ /acknowledgeMessage called");
+
+    // Parse request body
+    let request: AcknowledgeMessageRequest = match serde_json::from_slice(&body) {
+        Ok(req) => req,
+        Err(e) => {
+            log::error!("❌ Failed to parse request body: {}", e);
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "status": "error",
+                "description": format!("Invalid request body: {}", e)
+            }));
+        }
+    };
+
+    // Extract recipient's identity from BRC-31 authentication header
+    let recipient = match req.headers().get("x-bsv-auth-identity-key") {
+        Some(header_value) => match header_value.to_str() {
+            Ok(key) => key.to_string(),
+            Err(_) => {
+                log::error!("❌ Invalid x-authrite-identity-key header");
+                return HttpResponse::BadRequest().json(serde_json::json!({
+                    "status": "error",
+                    "description": "Invalid identity key header"
+                }));
+            }
+        },
+        None => {
+            log::error!("❌ No identity key provided for authentication");
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "status": "error",
+                "description": "Authentication required"
+            }));
+        }
+    };
+
+    log::info!("   Recipient: {}", recipient);
+    log::info!("   Message Box: {}", request.message_box);
+    log::info!("   Message IDs to acknowledge: {:?}", request.message_ids);
+
+    // Acknowledge the messages
+    state.message_store.acknowledge_messages(
+        &recipient,
+        &request.message_box,
+        &request.message_ids,
+    );
+
+    log::info!("✅ Messages acknowledged successfully");
+
+    HttpResponse::Ok().json(AcknowledgeMessageResponse {
+        status: "success".to_string(),
+    })
 }
