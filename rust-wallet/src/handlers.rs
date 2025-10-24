@@ -1141,39 +1141,43 @@ pub async fn verify_signature(
     // NOT the signer's key. ToolBSV should send THEIR identity key as counterparty.
 
     // Let me implement assuming counterparty = their master pubkey (the OTHER party in the handshake)
-    log::info!("   Deriving signer's child key using BRC-42...");
-    log::info!("   Counterparty pubkey: {}", hex::encode(&counterparty_pubkey));
+    log::info!("   Deriving signer's child public key using BRC-42...");
+    log::info!("   Signer's master pubkey: {}", hex::encode(&counterparty_pubkey));
 
-    // Derive our child private key (same process as when we signed)
-    let our_child_privkey = match derive_child_private_key(&our_master_privkey, &counterparty_pubkey, &invoice) {
+    // **CRITICAL**: When verifying, we derive the SIGNER's child public key, not ours!
+    // The signer derived: child_private = signer_private + HMAC_scalar
+    // We derive: child_public = signer_public + G * HMAC_scalar
+    // This uses BRC-42's derive_child_public_key function
+    use crate::crypto::brc42::derive_child_public_key as derive_child_pub;
+
+    let signer_child_pubkey_bytes = match derive_child_pub(&our_master_privkey, &counterparty_pubkey, &invoice) {
         Ok(key) => {
-            log::info!("   ✅ BRC-42 child private key derived");
+            log::info!("   ✅ BRC-42 signer's child public key derived");
             key
         },
         Err(e) => {
-            log::error!("   Failed to derive child private key: {}", e);
+            log::error!("   Failed to derive signer's child public key: {}", e);
             return HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": format!("Failed to derive child private key: {}", e)
+                "error": format!("Failed to derive signer's child public key: {}", e)
             }));
         }
     };
 
-    // Extract public key from child private key
-    use secp256k1::{Secp256k1, SecretKey, PublicKey, Message, ecdsa::Signature};
+    // Parse the derived child public key
+    use secp256k1::{Secp256k1, PublicKey, Message, ecdsa::Signature};
     let secp = Secp256k1::new();
-    let child_seckey = match SecretKey::from_slice(&our_child_privkey) {
+    let signer_child_pubkey = match PublicKey::from_slice(&signer_child_pubkey_bytes) {
         Ok(key) => key,
         Err(e) => {
-            log::error!("   Invalid child private key: {}", e);
+            log::error!("   Invalid signer's child public key: {}", e);
             return HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": "Invalid child private key"
+                "error": "Invalid signer's child public key"
             }));
         }
     };
-    let child_pubkey = PublicKey::from_secret_key(&secp, &child_seckey);
 
-    log::info!("   ✅ Child public key extracted");
-    log::info!("   Child pubkey: {}", hex::encode(child_pubkey.serialize()));
+    log::info!("   ✅ Signer's child public key ready for verification");
+    log::info!("   Signer's child pubkey: {}", hex::encode(signer_child_pubkey.serialize()));
 
     // Create message from data hash
     let message = match Message::from_slice(&data_hash) {
@@ -1211,8 +1215,8 @@ pub async fn verify_signature(
         }
     };
 
-    // Verify the signature using the derived child public key
-    let valid = secp.verify_ecdsa(&message, &signature, &child_pubkey).is_ok();
+    // Verify the signature using the signer's derived child public key
+    let valid = secp.verify_ecdsa(&message, &signature, &signer_child_pubkey).is_ok();
 
     log::info!("   ✅ Signature verification result: {}", valid);
 
@@ -1306,8 +1310,31 @@ pub async fn create_signature(
     // For post-authentication requests, the keyID contains two base64 nonces separated by a space:
     // "<their-nonce> <our-nonce-from-auth-session>"
     // We must validate that the second nonce matches our stored auth session.
-    if req.key_id.contains(' ') {
-        log::info!("   🔍 Detected session-based keyID (contains space)");
+    //
+    // **IMPORTANT**: Session validation only applies to wallet-to-app authentication.
+    // For API requests to external backends (e.g., Thoth), the app handles authentication
+    // with the backend directly, and we just sign the requests. No session validation needed.
+
+    // Get our wallet's identity key for comparison
+    let our_identity_key = {
+        let storage = state.storage.lock().unwrap();
+        match storage.get_master_public_key() {
+            Ok(pubkey_bytes) => hex::encode(pubkey_bytes),
+            Err(_) => String::new(),
+        }
+    };
+
+    // Determine if this is a request to an external backend
+    let is_external_backend = match &req.counterparty {
+        serde_json::Value::String(s) if s != "self" && s != "anyone" && s != &our_identity_key => {
+            log::info!("   🌐 External backend detected: {}", s);
+            true
+        }
+        _ => false
+    };
+
+    if req.key_id.contains(' ') && !is_external_backend {
+        log::info!("   🔍 Detected session-based keyID (contains space) - validating session");
         let parts: Vec<&str> = req.key_id.split(' ').collect();
         if parts.len() == 2 {
             let our_nonce_from_request = parts[1];
@@ -1346,6 +1373,8 @@ pub async fn create_signature(
         } else {
             log::warn!("   ⚠️  keyID contains space but doesn't have exactly 2 parts");
         }
+    } else if is_external_backend {
+        log::info!("   ℹ️  External backend request - skipping session validation");
     } else {
         log::info!("   ℹ️  No session validation required (no space in keyID)");
     }

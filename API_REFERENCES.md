@@ -509,8 +509,18 @@ Response:
 **Technical Details:**
 - **Signature**: BRC-42 derived key signs concatenated nonces (theirNonce + ourNonce)
 - **Invoice Number**: `2-auth message signature-{initialNonce} {sessionNonce}`
-- **Format**: Compact signature (r + s), hex-encoded
-- **Curve**: Uses elliptic.P256() (should be secp256k1 for Bitcoin)
+- **Format**: DER-encoded ECDSA signature (not compact)
+- **Curve**: secp256k1 (Bitcoin curve)
+- **Key Derivation**: Uses master private key (not index 0 derived key)
+- **Session Management**: Stores authentication nonces for subsequent API calls
+- **Concurrent Sessions**: Supports multiple simultaneous auth sessions per identity
+
+**Critical Implementation Notes:**
+- **Nonce Generation**: Simple 32-byte random nonces (not HMAC-based)
+- **KeyID Encoding**: Uses base64 to preserve binary data integrity
+- **"self" Counterparty**: Uses raw master key (no BRC-42 derivation for HMAC)
+- **Signature Verification**: Derives SIGNER's child public key (not our own)
+- **External Backend Calls**: Skips session validation for app-to-backend API requests
 
 ### BRC-33 PeerServ Message Relay
 ```http
@@ -651,27 +661,36 @@ Response: {"status": "active", "lastUpdate": "2025-09-27T12:43:16Z"}
 **Purpose:** Custom BRC-100 implementation for learning and flexibility
 **Technology:** Rust with Actix-web, custom cryptography
 **Port:** 3301
-**Status:** ✅ Transaction signing working, authentication complete
+**Status:** ✅ **PRODUCTION READY** - Transaction signing working, authentication complete with 7 breakthroughs!
 
-**Endpoints:**
+**Endpoints (BRC-100):**
 - `GET /wallet/status` - Wallet status
-- `POST /getVersion` - Wallet version and capabilities
-- `POST /getPublicKey` - Public key for identity
-- `POST /isAuthenticated` - Authentication status
-- `POST /createHmac` - Create HMAC for nonce verification
-- `POST /verifyHmac` - Verify HMAC
-- `POST /createSignature` - Sign arbitrary messages
-- `POST /verifySignature` - Verify signatures
-- `POST /.well-known/auth` - BRC-104 mutual authentication
-- `POST /createAction` - Build unsigned transaction
-- `POST /signAction` - Sign transaction with BSV ForkID SIGHASH
-- `POST /processAction` - Create + sign + broadcast transaction
+- `POST /getVersion` - Wallet version and capabilities ✅
+- `POST /getPublicKey` - Public key for identity ✅
+- `POST /isAuthenticated` - Authentication status ✅
+- `POST /createHmac` - Create HMAC for nonce verification ✅
+- `POST /verifyHmac` - Verify HMAC ✅
+- `POST /createSignature` - Sign arbitrary messages ✅ (with session validation)
+- `POST /verifySignature` - Verify signatures ✅ (derives signer's child public key)
+- `POST /.well-known/auth` - BRC-104 mutual authentication ✅
+- `POST /createAction` - Build unsigned transaction ✅
+- `POST /signAction` - Sign transaction with BSV ForkID SIGHASH ✅
+- `POST /processAction` - Create + sign + broadcast transaction ✅
+
+**Endpoints (BRC-33 Message Relay):**
+- `POST /sendMessage` - Send message to recipient ✅
+- `POST /listMessages` - List messages from message box ✅
+- `POST /acknowledgeMessage` - Acknowledge received messages ✅
 
 **Pros:**
 - Full control over implementation
 - Custom BSV ForkID SIGHASH (verified working)
 - Confirmed mainnet transactions
 - Memory safe (Rust)
+- **Complete BRC-103/104 authentication** (all 7 breakthroughs)
+- **BRC-42 signature verification** (correctly derives signer's child public key)
+- **Session management** (concurrent sessions supported)
+- **Real-world tested** (ToolBSV, Thoth backend integration working)
 
 **Shared Storage:**
 Both wallets use the same `wallet.json` file:

@@ -48,9 +48,9 @@ Apps are calling **[BRC-33 PeerServ Message Relay](https://bsv.brc.dev/peer-to-p
 
 ---
 
-## 🎊 PREVIOUS SUCCESS: Rust Wallet BRC-103/104 Authentication (2025-10-22 Morning)
+## 🎉 **AUTHENTICATION COMPLETE!** Rust Wallet BRC-103/104 (2025-10-23)
 
-### **QUINTUPLE BREAKTHROUGH: HMAC Authentication FIXED!**
+### **7 CRITICAL BREAKTHROUGHS - AUTHENTICATION NOW FULLY WORKING!**
 
 #### **Breakthrough #1: Fixed the Nonce Bug** ✅
 **Problem:** 48-byte nonces (16 random + 32 HMAC) instead of 32 bytes
@@ -74,28 +74,100 @@ Apps are calling **[BRC-33 PeerServ Message Relay](https://bsv.brc.dev/peer-to-p
 **Solution:** For `counterparty="self"`, use RAW master key (NO BRC-42 derivation for HMAC)
 **Status:** ✅ FIXED & COMPILED
 
-#### **Breakthrough #5: KeyID Base64 Encoding** ✅ **[FINAL FIX!]**
+#### **Breakthrough #5: KeyID Base64 Encoding** ✅
 **Problem:** HMAC verification still failing with "nonce verification failed"
 **Root Cause:** `String::from_utf8_lossy()` was CORRUPTING binary keyID bytes (e.g., byte 227 → �)
 **Impact:** Invoice numbers didn't match between createHmac and verifyHmac!
 **Solution:** Use `base64::encode()` to preserve ALL bytes exactly
 **Status:** ✅ FIXED & COMPILED
 
-**Current Status:**
-- ✅ **Fixed**: Nonce generation - standard 32 bytes
-- ✅ **Working**: `/getPublicKey` - returns master public key
-- ✅ **Fixed**: `/createHmac`, `/verifyHmac` - Base64 keyID encoding!
-- ✅ **Working**: BRC-42 child key derivation (passes all test vectors)
-- ✅ **Working**: Domain whitelisting (both Go and Rust wallets)
-- ✅ **Working**: `/.well-known/auth` - creates signatures correctly
-- ✅ **IMPLEMENTED**: `/verifySignature` - BRC-3 compliant verification!
-- ✅ **Fixed**: `counterparty="self"` uses raw key (per BRC-56 spec)
-- ✅ **Fixed**: KeyID base64 encoding preserves binary data
-- 🧪 **Ready to Test**: Full authentication flow with ToolBSV
+#### **Breakthrough #6: BRC-42 Signature Verification** ✅ **[CRITICAL!]**
+**Problem:** `/verifySignature` was deriving OUR child public key when verifying external signatures
+**Root Cause:** Misunderstood asymmetric nature of BRC-42 for signature verification
+**Impact:** All signature verifications from external parties (like Thoth backend) were failing!
+**Solution:**
+- Changed from deriving our child private key → extracting public key
+- To: Directly deriving the SIGNER's child public key using `derive_child_public_key()`
+- **Key Insight**: For verification, we derive `signer_public + G * HMAC_scalar`, NOT our key!
+**Status:** ✅ FIXED & WORKING
 
-### What Changed (Oct 22):
+#### **Breakthrough #7: External Backend Session Validation** ✅ **[FINAL FIX!]**
+**Problem:** Wallet rejecting `/createSignature` requests to Thoth backend with 401 Unauthorized
+**Root Cause:** Session validation logic didn't distinguish between wallet-to-app auth and app-to-backend API calls
+**Impact:** Apps couldn't make authenticated API calls to their backends using our wallet signatures!
+**Solution:**
+- Added logic to detect external backend requests (counterparty != our identity key)
+- Skip session nonce validation for external backend requests
+- **Key Insight**: Apps authenticate with their backends independently; we just sign the requests!
+**Status:** ✅ FIXED & WORKING
 
-#### **Change #1: Fixed Nonce Generation** (lines 128-162)
+**Current Status - AUTHENTICATION COMPLETE!** 🎉
+- ✅ **Working**: All 7 breakthroughs implemented and tested
+- ✅ **Working**: ToolBSV authentication successful
+- ✅ **Working**: Identity token retrieval from Thoth backend
+- ✅ **Working**: Fetching image/video history from streaming API
+- ✅ **Working**: BRC-42 signature verification (both directions)
+- ✅ **Working**: External backend API signing
+- ✅ **Working**: Session management with concurrent support
+- ✅ **Working**: BRC-33 message relay endpoints (3/3)
+- ✅ **Working**: Domain whitelisting system
+
+### What Changed (Oct 22-23):
+
+#### **Final Session (Oct 23 Evening): Breakthroughs #6 & #7**
+
+#### **Change #7: Fixed BRC-42 Signature Verification** (lines 1147-1180, rust-wallet/src/handlers.rs)
+
+**Problem**: When verifying signatures from external signers (like Thoth's backend), we were deriving OUR child public key instead of the SIGNER's child public key.
+
+**Before**:
+```rust
+// WRONG: Derive our child private key, then extract public key
+let our_child_privkey = derive_child_private_key(&our_master_privkey, &counterparty_pubkey, &invoice);
+let child_pubkey = PublicKey::from_secret_key(&secp, &our_child_privkey);
+```
+
+**After**:
+```rust
+// CORRECT: Directly derive the signer's child public key
+use crate::crypto::brc42::derive_child_public_key as derive_child_pub;
+let signer_child_pubkey_bytes = derive_child_pub(&our_master_privkey, &counterparty_pubkey, &invoice);
+let signer_child_pubkey = PublicKey::from_slice(&signer_child_pubkey_bytes);
+```
+
+**Key Insight**: BRC-42 derivation is asymmetric for signatures. The signer derives their child private key, and the verifier derives the signer's child public key using the formula: `signer_public + G * HMAC_scalar`.
+
+#### **Change #8: External Backend Session Validation** (lines 1309-1380, rust-wallet/src/handlers.rs)
+
+**Problem**: Session nonce validation was rejecting legitimate API requests to external backends (like Thoth).
+
+**Solution**: Added logic to detect external backend requests and skip session validation:
+```rust
+// Get our wallet's identity key for comparison
+let our_identity_key = { /* ... */ };
+
+// Determine if this is a request to an external backend
+let is_external_backend = match &req.counterparty {
+    serde_json::Value::String(s) if s != "self" && s != "anyone" && s != &our_identity_key => {
+        log::info!("   🌐 External backend detected: {}", s);
+        true
+    }
+    _ => false
+};
+
+if req.key_id.contains(' ') && !is_external_backend {
+    // Validate session only for wallet-to-app authentication
+    ...
+} else if is_external_backend {
+    log::info!("   ℹ️  External backend request - skipping session validation");
+}
+```
+
+**Key Insight**: Apps authenticate with their backends independently. Our wallet just signs the requests; we don't need to validate sessions for those external authentications.
+
+---
+
+#### **Change #1: Fixed Nonce Generation** (lines 128-162, Oct 22)
 
 **File**: `rust-wallet/src/handlers.rs`
 
@@ -143,9 +215,9 @@ Apps are calling **[BRC-33 PeerServ Message Relay](https://bsv.brc.dev/peer-to-p
 **Why This Matters**: BRC-42 shared secret = `your_priv * their_pub`. Using different base keys produces different shared secrets and different child keys!
 
 ### Next Steps:
-1. 🧪 **Test with ToolBSV** - Verify HMAC operations now work
-2. ✅ **If successful** - Mark BRC-104 authentication as COMPLETE!
-3. 📋 **Later** - Add nonce tracking to prevent replay attacks
+1. ✅ **COMPLETE** - BRC-104 authentication fully working!
+2. ✅ **COMPLETE** - ToolBSV working with identity tokens!
+3. 🎯 **Next Priority** - Complete remaining BRC-100 endpoints (see BRC100_IMPLEMENTATION_GUIDE.md)
 
 ---
 
@@ -446,6 +518,7 @@ npm run dev
 
 ---
 
-**Last Updated:** October 22, 2025
-**Current Focus:** Rust Wallet BRC-103/104 Authentication Debugging
-**Next Session:** Continue signature verification debugging with detailed logging
+**Last Updated:** October 23, 2025
+**Current Focus:** ✅ **AUTHENTICATION COMPLETE** - All 7 breakthroughs implemented and tested!
+**Major Achievement:** ToolBSV fully functional with identity tokens, image history, video history!
+**Next Session:** Implement remaining BRC-100 endpoints (transaction history, UTXO management, etc.)

@@ -38,26 +38,30 @@ These are **separate from BRC-100** but required by many apps:
 
 ### Implementation Priority Groups:
 
-#### **Group A: Core Identity & Authentication (Priority 1)**
+#### **Group A: Core Identity & Authentication (Priority 1)** ✅ **COMPLETE!**
 These are foundational - apps need these to identify and authenticate with the wallet.
 
 | Call Code | Method | Status | Internal Test | Real-World Test | Notes |
 |-----------|--------|--------|---------------|-----------------|-------|
-| 0 | `getVersion` | 🔧 | ✅ | ✅ | Returns wallet version info |
-| 1 | `getPublicKey` | 🔧 | ✅ | ✅ | Returns master public key |
-| 10 | `isAuthenticated` | 🔧 | ❌ | ❌ | Check auth status |
-| 30 | `createHmac` | ✅ | ✅ | 🧪 | **FIXED** - Base64 keyID encoding! |
-| 31 | `verifyHmac` | ✅ | ✅ | 🧪 | **FIXED** - Base64 keyID encoding! |
-| 32 | `createSignature` | ✅ | ✅ | 🧪 | Uses master key + BRC-42 |
-| 33 | `verifySignature` | ✅ | ✅ | ✅ | BRC-3 compliant verification! |
-| - | `/.well-known/auth` | ✅ | ✅ | 🧪 | BRC-103/104 authentication |
+| 0 | `getVersion` | ✅ | ✅ | ✅ | Returns wallet version info |
+| 1 | `getPublicKey` | ✅ | ✅ | ✅ | Returns master public key |
+| 10 | `isAuthenticated` | ✅ | ✅ | ✅ | Check auth status |
+| 30 | `createHmac` | ✅ | ✅ | ✅ | Base64 keyID encoding + raw key for self |
+| 31 | `verifyHmac` | ✅ | ✅ | ✅ | Base64 keyID encoding + raw key for self |
+| 32 | `createSignature` | ✅ | ✅ | ✅ | Master key + BRC-42 + session validation |
+| 33 | `verifySignature` | ✅ | ✅ | ✅ | **Derives signer's child public key!** |
+| - | `/.well-known/auth` | ✅ | ✅ | ✅ | BRC-103/104 authentication |
 
-**Status**: 🎊 **AUTHENTICATION FIXED!** 5 Critical Breakthroughs:
+**Status**: 🎉 **AUTHENTICATION COMPLETE!** All 7 Critical Breakthroughs:
 1. ✅ 32-byte random nonces (was 48 bytes)
 2. ✅ `/verifySignature` implemented (was stubbed)
 3. ✅ Master key consistency (all operations use master key)
 4. ✅ BRC-42 "self" counterparty (uses raw key per BRC-56)
-5. ✅ **KeyID base64 encoding (was corrupting binary data!)**
+5. ✅ KeyID base64 encoding (was corrupting binary data!)
+6. ✅ **BRC-42 signature verification (derives signer's child public key!)**
+7. ✅ **External backend session bypass (allows app-to-backend API calls!)**
+
+**Real-World Testing**: ✅ ToolBSV fully functional with identity tokens, image/video history!
 
 #### **Group B: Transaction Operations (Priority 2)**
 Once authenticated, apps need these to create and sign transactions.
@@ -113,19 +117,20 @@ Advanced wallet features for specific use cases.
 
 ## 🎯 Implementation Strategy
 
-### Phase 1: Fix Authentication (Current - Week 1)
-**Goal**: Get `verifySignature` and BRC-104 authentication working with ToolBSV.
+### ~~Phase 1: Fix Authentication~~ ✅ **COMPLETE!** (Oct 22-23)
+**Goal**: ✅ Get `verifySignature` and BRC-104 authentication working with ToolBSV.
 
-**Priority Tasks**:
-1. **Debug `verifySignature`** - Implement BRC-84 signature verification
-2. **Fix BRC-104 Auth** - Resolve signature verification in `/.well-known/auth`
-3. **Test with ToolBSV** - Complete authentication handshake
-4. **Document Solution** - Create reference for future debugging
+**Completed Tasks**:
+1. ✅ **Implemented `/verifySignature`** - Full BRC-3 compliant verification
+2. ✅ **Fixed BRC-104 Auth** - All 7 breakthroughs implemented
+3. ✅ **Tested with ToolBSV** - Complete authentication handshake working
+4. ✅ **Documented Solution** - All breakthroughs documented in Developer_notes.md
 
-**Success Criteria**:
+**Success Criteria - ALL MET**:
 - ✅ ToolBSV frontend accepts our signatures
 - ✅ Complete BRC-104 mutual authentication
 - ✅ Internal signature verification tests passing
+- ✅ Real-world testing: identity tokens, image/video history working!
 
 ### Phase 2: Core Transaction Methods (Week 2)
 **Goal**: Complete transaction lifecycle support.
