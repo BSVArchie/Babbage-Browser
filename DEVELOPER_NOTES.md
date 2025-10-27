@@ -516,9 +516,131 @@ npm run dev
 - **Achieved**: Multiple confirmed on-chain transactions
 - **Status**: Rust wallet transaction system fully working
 
+### Current Session (2025-10-27):
+- **Completed**: BRC-100 Group B Transaction Management (Complete!)
+- **Achieved**: Action storage system, transaction history, BEEF Phase 2 parsing
+- **Status**: Ready for real-world testing with production apps
+
+#### **What We Built This Session:**
+
+**1. Action Storage System** ✅
+- Created `action_storage.rs` - Complete transaction history management
+- JSON file persistence with CRUD operations
+- Transaction status tracking (Created → Signed → Unconfirmed → Confirmed)
+- TXID update handling (transactions change ID after signing)
+- Thread-safe Mutex integration with AppState
+
+**2. BRC-100 Group B Endpoints** ✅
+- `abortAction` - Cancel pending/unconfirmed transactions
+- `listActions` - Transaction history with label filtering and pagination
+- `internalizeAction` Phase 2 - Full BEEF parsing with output ownership detection
+
+**3. Transaction Lifecycle Integration** ✅
+- `createAction` now stores actions with `Created` status
+- `signAction` updates TXID and status to `Signed`
+- `processAction` updates status to `Unconfirmed` or `Failed`
+- Labels support for categorizing transactions
+- Address parsing from P2PKH scripts
+
+**4. Confirmation Tracking** ✅
+- WhatsOnChain API integration for confirmation status
+- `update_confirmations()` function to query transaction status
+- Manual `/updateConfirmations` endpoint for triggering updates
+- Automatic status transitions: Unconfirmed → Confirmed
+
+**5. BEEF Phase 2 - Full Transaction Parsing** ✅
+- Created `beef.rs` module for BEEF and raw transaction parsing
+- `ParsedTransaction` with detailed input/output structures
+- Output ownership detection using wallet addresses
+- Received amount calculation for incoming transactions
+- Fallback to raw transaction if not BEEF format
+
+**6. Testing & Debugging** ✅
+- Created 5 PowerShell test scripts for integration testing
+- Fixed UTF-8 BOM issue in JSON file creation
+- Fixed TXID immutability issue (ID changes after signing)
+- Fixed PowerShell parsing errors and emoji encoding issues
+- Tested complete transaction flow end-to-end
+
+#### **Key Technical Achievements:**
+
+**TXID Immutability Handling:**
+```rust
+// Critical discovery: TXID changes after signing inputs
+// Solution: update_txid method to track reference number → new TXID
+pub fn update_txid(&mut self, reference_number: &str, new_txid: String, new_raw_tx: String)
+```
+
+**Output Ownership Detection:**
+```rust
+// Determines if transaction outputs belong to our wallet
+fn is_output_ours(script_bytes: &[u8], our_addresses: &[AddressInfo]) -> bool {
+    // Extract pubkey hash from P2PKH script
+    // Compare against all wallet addresses
+}
+```
+
+**BEEF Format Detection:**
+```rust
+// Try BEEF first, fall back to raw transaction
+match crate::beef::Beef::from_hex(&req.tx) {
+    Ok(beef) => /* Extract main transaction from BEEF */,
+    Err(_) => /* Parse as raw hex */,
+}
+```
+
+#### **Implementation Status:**
+
+**BRC-100 Group B (Transaction Operations) - COMPLETE!** ✅
+- ✅ `createAction` - Build unsigned transactions (with action storage)
+- ✅ `signAction` - Sign transactions (with TXID update)
+- ✅ `processAction` - Full flow: create + sign + broadcast
+- ✅ `abortAction` - Cancel pending transactions
+- ✅ `listActions` - Transaction history with filtering
+- ✅ `internalizeAction` - Accept incoming BEEF transactions (Phase 2)
+
+**Additional Features:**
+- ✅ Transaction status tracking (7 states)
+- ✅ Labels for transaction categorization
+- ✅ Address extraction from scripts
+- ✅ Confirmation tracking via WhatsOnChain
+- ✅ BEEF format parsing with ancestry
+- ✅ Output ownership detection
+- ✅ Received amount calculation
+
+#### **Files Created/Modified:**
+
+**New Files:**
+- `rust-wallet/src/action_storage.rs` - Transaction storage system (416 lines)
+- `rust-wallet/src/beef.rs` - BEEF and transaction parser (359 lines)
+- `rust-wallet/test_actions.ps1` - Action storage tests
+- `rust-wallet/test_transaction_flow.ps1` - End-to-end transaction tests
+- `rust-wallet/test_internalize.ps1` - Incoming transaction tests
+- `rust-wallet/test_labels.ps1` - Label filtering tests
+- `rust-wallet/test_beef_phase2.ps1` - BEEF Phase 2 tests
+- `rust-wallet/BEEF_IMPLEMENTATION.md` - BEEF Phase 2 documentation
+
+**Modified Files:**
+- `rust-wallet/src/main.rs` - Integrated action_storage into AppState
+- `rust-wallet/src/handlers.rs` - Implemented all Group B endpoints (3103 lines)
+- `rust-wallet/Cargo.toml` - Added dependencies (uuid, chrono, bs58)
+
+#### **Testing Results:**
+
+All integration tests passing! ✅
+- ✓ Action storage CRUD operations
+- ✓ Transaction creation with labels
+- ✓ Transaction signing with TXID update
+- ✓ Transaction abortion
+- ✓ History listing with filters
+- ✓ Confirmation status updates
+- ✓ BEEF parsing with raw fallback
+- ✓ Output ownership detection
+- ✓ Received amount calculation
+
 ---
 
-**Last Updated:** October 23, 2025
-**Current Focus:** ✅ **AUTHENTICATION COMPLETE** - All 7 breakthroughs implemented and tested!
-**Major Achievement:** ToolBSV fully functional with identity tokens, image history, video history!
-**Next Session:** Implement remaining BRC-100 endpoints (transaction history, UTXO management, etc.)
+**Last Updated:** October 27, 2025
+**Current Focus:** ✅ **GROUP B TRANSACTIONS COMPLETE** - Action storage, history, and BEEF support implemented!
+**Major Achievement:** Complete transaction lifecycle with history tracking, BEEF parsing, and confirmation updates!
+**Next Session:** Real-world testing with ToolBSV and Thryll.online to validate implementation

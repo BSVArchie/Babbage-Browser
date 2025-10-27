@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 mod json_storage;
+mod action_storage;  // NEW: Action storage module
 mod handlers;
 mod crypto;
 mod transaction;
@@ -11,8 +12,10 @@ mod utxo_fetcher;
 mod domain_whitelist;
 mod message_relay;
 mod auth_session;
+mod beef;  // NEW: BEEF parser module
 
 use json_storage::JsonStorage;
+use action_storage::ActionStorage;  // NEW: Import ActionStorage
 use domain_whitelist::DomainWhitelistManager;
 use message_relay::MessageStore;
 use auth_session::AuthSessionManager;
@@ -21,6 +24,7 @@ use std::sync::Arc;
 // Global app state
 pub struct AppState {
     pub storage: Mutex<JsonStorage>,
+    pub action_storage: Mutex<ActionStorage>,  // NEW: Transaction action storage
     pub whitelist: Arc<DomainWhitelistManager>,
     pub message_store: MessageStore,
     pub auth_sessions: Arc<AuthSessionManager>,
@@ -71,6 +75,21 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
+    // Initialize action storage (transaction history)
+    let actions_path = wallet_path.parent().unwrap().join("actions.json");
+    let action_storage = match ActionStorage::new(actions_path.clone()) {
+        Ok(s) => {
+            println!("✅ Action storage initialized");
+            println!("   Actions path: {}", actions_path.display());
+            println!("   Total actions: {}", s.count());
+            s
+        }
+        Err(e) => {
+            eprintln!("❌ Failed to initialize action storage: {}", e);
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, e));
+        }
+    };
+
     // Initialize domain whitelist manager
     let whitelist_manager = Arc::new(DomainWhitelistManager::new());
     println!("✅ Domain whitelist manager initialized");
@@ -86,6 +105,7 @@ async fn main() -> std::io::Result<()> {
     // Create app state
     let app_state = web::Data::new(AppState {
         storage: Mutex::new(storage),
+        action_storage: Mutex::new(action_storage),  // NEW: Add action storage
         whitelist: whitelist_manager,
         message_store,
         auth_sessions,
@@ -147,6 +167,10 @@ async fn main() -> std::io::Result<()> {
             .route("/createAction", web::post().to(handlers::create_action))
             .route("/signAction", web::post().to(handlers::sign_action))
             .route("/processAction", web::post().to(handlers::process_action))
+            .route("/abortAction", web::post().to(handlers::abort_action))
+            .route("/listActions", web::post().to(handlers::list_actions))
+            .route("/internalizeAction", web::post().to(handlers::internalize_action))
+            .route("/updateConfirmations", web::post().to(handlers::update_confirmations_endpoint))  // NEW
 
             // Authentication endpoints
             .route("/.well-known/auth", web::post().to(handlers::well_known_auth))

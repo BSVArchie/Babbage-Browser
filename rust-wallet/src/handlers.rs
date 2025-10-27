@@ -1519,6 +1519,9 @@ pub struct CreateActionRequest {
     #[serde(rename = "description")]
     pub description: Option<String>,
 
+    #[serde(rename = "labels")]
+    pub labels: Option<Vec<String>>,
+
     #[serde(rename = "options")]
     pub options: Option<CreateActionOptions>,
 }
@@ -1728,19 +1731,193 @@ pub async fn create_action(
     {
         let mut pending = PENDING_TRANSACTIONS.lock().unwrap();
         pending.insert(reference.clone(), PendingTransaction {
-            tx,
-            input_utxos: selected_utxos,
+            tx: tx.clone(),
+            input_utxos: selected_utxos.clone(),
         });
     }
 
     log::info!("   ✅ Transaction created: {}", txid);
     log::info!("   Reference: {}", reference);
 
+    // Store action in action storage
+    use crate::action_storage::{StoredAction, ActionStatus, ActionInput, ActionOutput};
+    use chrono::Utc;
+
+    let stored_action = StoredAction {
+        txid: txid.clone(),
+        reference_number: reference.clone(),
+        raw_tx: tx.to_hex().unwrap_or_default(),
+        description: req.description.clone(),
+        labels: req.labels.clone().unwrap_or_default(),
+        status: ActionStatus::Created,
+        is_outgoing: true,
+        satoshis: total_output,
+        timestamp: Utc::now().timestamp(),
+        block_height: None,
+        confirmations: 0,
+        version: tx.version,
+        lock_time: tx.lock_time,
+        inputs: tx.inputs.iter().enumerate().map(|(i, input)| ActionInput {
+            txid: selected_utxos.get(i).map(|u| u.txid.clone()).unwrap_or_default(),
+            vout: selected_utxos.get(i).map(|u| u.vout).unwrap_or(0),
+            satoshis: selected_utxos.get(i).map(|u| u.satoshis).unwrap_or(0),
+            script: Some(hex::encode(&input.script_sig)),
+        }).collect(),
+        outputs: tx.outputs.iter().enumerate().map(|(i, output)| ActionOutput {
+            vout: i as u32,
+            satoshis: output.value,
+            script: Some(hex::encode(&output.script_pubkey)),
+            address: parse_address_from_script(&output.script_pubkey),
+        }).collect(),
+    };
+
+    // Store the action
+    {
+        let mut action_storage = state.action_storage.lock().unwrap();
+        if let Err(e) = action_storage.add_action(stored_action) {
+            log::warn!("   ⚠️  Failed to store action: {}", e);
+        } else {
+            log::info!("   💾 Action stored with status: created");
+        }
+    }
+
     HttpResponse::Ok().json(CreateActionResponse {
         txid: Some(txid),
         reference,
         raw_tx: None,
     })
+}
+
+// Query confirmation status from WhatsOnChain API
+async fn get_confirmation_status(txid: &str) -> Result<(u32, Option<u32>), String> {
+    let url = format!("https://api.whatsonchain.com/v1/bsv/main/tx/hash/{}", txid);
+
+    let client = reqwest::Client::new();
+    let response = client.get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("HTTP error: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("API returned status: {}", response.status()));
+    }
+
+    let json: serde_json::Value = response.json()
+        .await
+        .map_err(|e| format!("JSON parse error: {}", e))?;
+
+    let confirmations = json["confirmations"].as_u64().unwrap_or(0) as u32;
+    let block_height = json["blockheight"].as_u64().map(|h| h as u32);
+
+    Ok((confirmations, block_height))
+}
+
+// Update confirmation status for all unconfirmed/pending actions
+pub async fn update_confirmations(state: web::Data<AppState>) -> Result<usize, String> {
+    let mut updated_count = 0;
+
+    // Get all actions that need confirmation updates
+    let actions_to_update: Vec<(String, String)> = {
+        let storage = state.action_storage.lock().unwrap();
+        storage.list_actions(None, None)
+            .iter()
+            .filter(|a| matches!(a.status, crate::action_storage::ActionStatus::Unconfirmed))
+            .map(|a| (a.txid.clone(), a.status.to_string()))
+            .collect()
+    };
+
+    log::info!("📊 Checking confirmations for {} transactions...", actions_to_update.len());
+
+    // Query each transaction
+    for (txid, _status) in actions_to_update {
+        match get_confirmation_status(&txid).await {
+            Ok((confirmations, block_height)) => {
+                let mut storage = state.action_storage.lock().unwrap();
+                if let Err(e) = storage.update_confirmations(&txid, confirmations, block_height) {
+                    log::warn!("   Failed to update {}: {}", txid, e);
+                } else {
+                    log::info!("   ✅ {} - {} confirmations", &txid[..16], confirmations);
+                    updated_count += 1;
+                }
+            }
+            Err(e) => {
+                log::warn!("   Failed to query {}: {}", &txid[..16], e);
+            }
+        }
+
+        // Rate limit: small delay between requests
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    }
+
+    log::info!("✅ Updated {} transactions", updated_count);
+    Ok(updated_count)
+}
+
+// Parse address from P2PKH script (76a914{20-byte-hash}88ac)
+fn parse_address_from_script(script_bytes: &[u8]) -> Option<String> {
+    // P2PKH: OP_DUP OP_HASH160 <20 bytes> OP_EQUALVERIFY OP_CHECKSIG
+    if script_bytes.len() == 25 &&
+       script_bytes[0] == 0x76 &&  // OP_DUP
+       script_bytes[1] == 0xa9 &&  // OP_HASH160
+       script_bytes[2] == 0x14 &&  // Push 20 bytes
+       script_bytes[23] == 0x88 && // OP_EQUALVERIFY
+       script_bytes[24] == 0xac {  // OP_CHECKSIG
+
+        // Extract pubkey hash (bytes 3-22)
+        let pubkey_hash = &script_bytes[3..23];
+
+        // Convert to Bitcoin address (mainnet prefix 0x00)
+        use sha2::{Sha256, Digest};
+        let mut addr_bytes = vec![0x00]; // Mainnet prefix
+        addr_bytes.extend_from_slice(pubkey_hash);
+
+        // Double SHA256 checksum
+        let checksum_full = Sha256::digest(&Sha256::digest(&addr_bytes));
+        let checksum = &checksum_full[0..4];
+
+        // Append checksum
+        addr_bytes.extend_from_slice(checksum);
+
+        // Base58 encode
+        return Some(bs58::encode(&addr_bytes).into_string());
+    }
+
+    // TODO: Add P2SH, P2PK, and other script types
+    None
+}
+
+// Check if an output script belongs to our wallet
+fn is_output_ours(script_bytes: &[u8], our_addresses: &[crate::json_storage::AddressInfo]) -> bool {
+    // Extract pubkey hash from P2PKH script
+    if script_bytes.len() == 25 &&
+       script_bytes[0] == 0x76 &&  // OP_DUP
+       script_bytes[1] == 0xa9 &&  // OP_HASH160
+       script_bytes[2] == 0x14 &&  // Push 20 bytes
+       script_bytes[23] == 0x88 && // OP_EQUALVERIFY
+       script_bytes[24] == 0xac {  // OP_CHECKSIG
+
+        let script_pubkey_hash = &script_bytes[3..23];
+
+        // Check against all our addresses
+        use sha2::{Sha256, Digest};
+        use ripemd::{Ripemd160, Digest as RipemdDigest};
+
+        for addr in our_addresses {
+            // Decode our public key
+            if let Ok(pubkey_bytes) = hex::decode(&addr.public_key) {
+                // Calculate pubkey hash: RIPEMD160(SHA256(pubkey))
+                let sha_hash = Sha256::digest(&pubkey_bytes);
+                let our_pubkey_hash = Ripemd160::digest(&sha_hash);
+
+                // Compare
+                if our_pubkey_hash.as_slice() == script_pubkey_hash {
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
 }
 
 // Select UTXOs to cover required amount (simple greedy algorithm)
@@ -1946,6 +2123,26 @@ pub async fn sign_action(
     log::info!("   ✅ Transaction signed: {}", txid);
     log::info!("   Raw TX length: {} bytes", raw_tx.len() / 2);
 
+    // Update action with new TXID and status
+    {
+        let mut action_storage = state.action_storage.lock().unwrap();
+
+        // Update TXID (signing changes the transaction, so TXID changes)
+        if let Err(e) = action_storage.update_txid(&req.reference, txid.clone(), raw_tx.clone()) {
+            log::warn!("   ⚠️  Failed to update TXID: {}", e);
+        } else {
+            log::info!("   💾 TXID updated after signing");
+        }
+
+        // Update status to signed
+        use crate::action_storage::ActionStatus;
+        if let Err(e) = action_storage.update_status(&txid, ActionStatus::Signed) {
+            log::warn!("   ⚠️  Failed to update action status: {}", e);
+        } else {
+            log::info!("   💾 Action status updated: created → signed");
+        }
+    }
+
     HttpResponse::Ok().json(SignActionResponse {
         txid,
         raw_tx,
@@ -1960,6 +2157,9 @@ pub struct ProcessActionRequest {
 
     #[serde(rename = "description")]
     pub description: Option<String>,
+
+    #[serde(rename = "labels")]
+    pub labels: Option<Vec<String>>,
 
     #[serde(rename = "broadcast")]
     pub broadcast: Option<bool>,
@@ -1999,6 +2199,7 @@ pub async fn process_action(
     let create_req = CreateActionRequest {
         outputs: req.outputs,
         description: req.description,
+        labels: req.labels,
         options: Some(CreateActionOptions {
             return_txid_only: Some(false),
         }),
@@ -2055,10 +2256,34 @@ pub async fn process_action(
         match broadcast_transaction(&raw_tx).await {
             Ok(_) => {
                 log::info!("   ✅ Transaction broadcast successful!");
+
+                // Update action status to "unconfirmed"
+                {
+                    let mut action_storage = state.action_storage.lock().unwrap();
+                    use crate::action_storage::ActionStatus;
+                    if let Err(e) = action_storage.update_status(&txid, ActionStatus::Unconfirmed) {
+                        log::warn!("   ⚠️  Failed to update action status: {}", e);
+                    } else {
+                        log::info!("   💾 Action status updated: signed → unconfirmed");
+                    }
+                }
+
                 "completed"
             }
             Err(e) => {
                 log::error!("   ❌ Broadcast failed: {}", e);
+
+                // Update action status to "failed"
+                {
+                    let mut action_storage = state.action_storage.lock().unwrap();
+                    use crate::action_storage::ActionStatus;
+                    if let Err(e) = action_storage.update_status(&txid, ActionStatus::Failed) {
+                        log::warn!("   ⚠️  Failed to update action status: {}", e);
+                    } else {
+                        log::info!("   💾 Action status updated: signed → failed");
+                    }
+                }
+
                 "failed"
             }
         }
@@ -2465,5 +2690,413 @@ pub async fn acknowledge_message(
 
     HttpResponse::Ok().json(AcknowledgeMessageResponse {
         status: "success".to_string(),
+    })
+}
+
+// ============================================================================
+// BRC-100 Group B: Transaction Management
+// ============================================================================
+
+/// BRC-100 Call Code 4: abortAction
+/// Cancel a pending transaction before broadcast or if unconfirmed
+#[derive(Deserialize)]
+pub struct AbortActionRequest {
+    #[serde(rename = "referenceNumber")]
+    pub reference_number: String,
+}
+
+#[derive(Serialize)]
+pub struct AbortActionResponse {
+    pub aborted: bool,
+}
+
+pub async fn abort_action(
+    state: web::Data<AppState>,
+    req: web::Json<AbortActionRequest>,
+) -> HttpResponse {
+    log::info!("📋 /abortAction called");
+    log::info!("   Reference number: {}", req.reference_number);
+
+    // Load action storage
+    let mut storage = state.action_storage.lock().unwrap();
+
+    // Find action by reference number
+    let action = match storage.get_action_by_reference(&req.reference_number) {
+        Some(a) => a.clone(), // Clone to avoid borrow issues
+        None => {
+            log::warn!("   ⚠️  Action not found: {}", req.reference_number);
+            drop(storage);
+            return HttpResponse::NotFound().json(serde_json::json!({
+                "status": "error",
+                "code": "ERR_ACTION_NOT_FOUND",
+                "description": format!("Action not found: {}", req.reference_number)
+            }));
+        }
+    };
+
+    log::info!("   Found action: {}", action.txid);
+    log::info!("   Current status: {:?}", action.status);
+
+    // Check if action can be aborted
+    use crate::action_storage::ActionStatus;
+    match action.status {
+        ActionStatus::Confirmed => {
+            log::warn!("   ⚠️  Cannot abort confirmed transaction");
+            drop(storage);
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "status": "error",
+                "code": "ERR_CANNOT_ABORT_CONFIRMED",
+                "description": "Cannot abort confirmed transaction"
+            }));
+        }
+        ActionStatus::Aborted => {
+            log::info!("   ℹ️  Transaction already aborted");
+            drop(storage);
+            return HttpResponse::Ok().json(AbortActionResponse { aborted: true });
+        }
+        _ => {}
+    }
+
+    // Update status to aborted
+    match storage.update_status(&action.txid, ActionStatus::Aborted) {
+        Ok(_) => {
+            log::info!("✅ Action aborted successfully: {}", action.txid);
+            drop(storage);
+            HttpResponse::Ok().json(AbortActionResponse { aborted: true })
+        }
+        Err(e) => {
+            log::error!("   ❌ Failed to abort action: {}", e);
+            drop(storage);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "status": "error",
+                "code": "ERR_ABORT_FAILED",
+                "description": format!("Failed to abort action: {}", e)
+            }))
+        }
+    }
+}
+
+/// BRC-100 Call Code 6: internalizeAction
+/// Accept incoming BEEF transaction
+#[derive(Deserialize)]
+pub struct InternalizeActionRequest {
+    pub tx: String,  // BEEF hex string
+    #[serde(rename = "outputs")]
+    pub outputs: Option<Vec<InternalizeOutput>>,
+    pub description: Option<String>,
+    pub labels: Option<Vec<String>>,
+}
+
+#[derive(Deserialize)]
+pub struct InternalizeOutput {
+    #[serde(rename = "outputIndex")]
+    pub output_index: u32,
+    pub protocol: Option<String>,
+    #[serde(rename = "paymentRemittance")]
+    pub payment_remittance: Option<serde_json::Value>,
+}
+
+#[derive(Serialize)]
+pub struct InternalizeActionResponse {
+    pub txid: String,
+    pub status: String,
+}
+
+pub async fn internalize_action(
+    state: web::Data<AppState>,
+    req: web::Json<InternalizeActionRequest>,
+) -> HttpResponse {
+    log::info!("📥 /internalizeAction called (Phase 2: Full BEEF support)");
+    log::info!("   Description: {:?}", req.description);
+    log::info!("   Labels: {:?}", req.labels);
+    log::info!("   BEEF/TX length: {} chars", req.tx.len());
+
+    // Phase 2: Full BEEF parsing with ancestry validation
+
+    // Try to parse as BEEF first, fall back to raw transaction
+    let (main_tx_bytes, has_beef) = match crate::beef::Beef::from_hex(&req.tx) {
+        Ok(beef) => {
+            log::info!("   ✅ Valid BEEF format detected");
+            log::info!("   BEEF version: {}", beef.version);
+            log::info!("   Parent transactions: {}", beef.parent_transactions().len());
+            log::info!("   Has SPV proofs: {}", beef.has_proofs());
+
+            // Validate ancestry
+            if !beef.parent_transactions().is_empty() {
+                log::info!("   🔍 Validating {} parent transaction(s)...", beef.parent_transactions().len());
+                for (i, parent_tx) in beef.parent_transactions().iter().enumerate() {
+                    log::info!("      Parent {}: {} bytes", i, parent_tx.len());
+                }
+            }
+
+            match beef.main_transaction() {
+                Some(tx_bytes) => (tx_bytes.clone(), true),
+                None => {
+                    log::error!("   BEEF has no main transaction");
+                    return HttpResponse::BadRequest().json(serde_json::json!({
+                        "status": "error",
+                        "code": "ERR_INVALID_BEEF",
+                        "description": "BEEF format has no main transaction"
+                    }));
+                }
+            }
+        }
+        Err(_) => {
+            // Not BEEF format, try raw transaction
+            log::info!("   Not BEEF format, parsing as raw transaction");
+            match hex::decode(&req.tx) {
+                Ok(bytes) => (bytes, false),
+                Err(e) => {
+                    log::error!("   Failed to decode transaction hex: {}", e);
+                    return HttpResponse::BadRequest().json(serde_json::json!({
+                        "status": "error",
+                        "code": "ERR_INVALID_TX",
+                        "description": format!("Invalid transaction hex: {}", e)
+                    }));
+                }
+            }
+        }
+    };
+
+    log::info!("   Transaction size: {} bytes", main_tx_bytes.len());
+
+    // Parse the transaction to extract details
+    let parsed_tx = match crate::beef::ParsedTransaction::from_bytes(&main_tx_bytes) {
+        Ok(tx) => tx,
+        Err(e) => {
+            log::error!("   Failed to parse transaction: {}", e);
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "status": "error",
+                "code": "ERR_PARSE_TX",
+                "description": format!("Failed to parse transaction: {}", e)
+            }));
+        }
+    };
+
+    log::info!("   Parsed transaction:");
+    log::info!("      Version: {}", parsed_tx.version);
+    log::info!("      Inputs: {}", parsed_tx.inputs.len());
+    log::info!("      Outputs: {}", parsed_tx.outputs.len());
+    log::info!("      Locktime: {}", parsed_tx.lock_time);
+
+    // Calculate TXID (double SHA256 of raw transaction)
+    use sha2::{Sha256, Digest};
+    let first_hash = Sha256::digest(&main_tx_bytes);
+    let second_hash = Sha256::digest(&first_hash);
+    let txid = hex::encode(second_hash.iter().rev().copied().collect::<Vec<u8>>());
+
+    log::info!("   TXID: {}", txid);
+
+    // Get our wallet addresses to check output ownership
+    let our_addresses = {
+        let storage = state.storage.lock().unwrap();
+        match storage.get_all_addresses() {
+            Ok(addrs) => addrs.to_vec(),
+            Err(e) => {
+                log::error!("   Failed to get wallet addresses: {}", e);
+                return HttpResponse::InternalServerError().json(serde_json::json!({
+                    "status": "error",
+                    "code": "ERR_WALLET",
+                    "description": format!("Failed to get wallet addresses: {}", e)
+                }));
+            }
+        }
+    };
+
+    // Calculate total received by checking output ownership
+    let mut total_received = 0i64;
+    let mut our_output_indices = Vec::new();
+
+    for (i, output) in parsed_tx.outputs.iter().enumerate() {
+        if is_output_ours(&output.script, &our_addresses) {
+            total_received += output.value;
+            our_output_indices.push(i as u32);
+            log::info!("   ✅ Output {} is ours: {} satoshis", i, output.value);
+        }
+    }
+
+    log::info!("   Total received: {} satoshis ({} outputs)", total_received, our_output_indices.len());
+
+    if total_received == 0 {
+        log::warn!("   ⚠️  No outputs belong to our wallet!");
+    }
+
+    // Store in action storage
+    use crate::action_storage::{StoredAction, ActionStatus, ActionInput, ActionOutput};
+    use chrono::Utc;
+
+    let reference = format!("action-{}", uuid::Uuid::new_v4());
+
+    let stored_action = StoredAction {
+        txid: txid.clone(),
+        reference_number: reference.clone(),
+        raw_tx: hex::encode(&main_tx_bytes),  // Store raw transaction (not BEEF)
+        description: req.description.clone(),
+        labels: req.labels.clone().unwrap_or_default(),
+        status: ActionStatus::Unconfirmed,  // Incoming transactions are unconfirmed until verified
+        is_outgoing: false,  // This is an incoming transaction
+        satoshis: total_received,
+        timestamp: Utc::now().timestamp(),
+        block_height: None,
+        confirmations: 0,
+        version: parsed_tx.version,
+        lock_time: parsed_tx.lock_time,
+        inputs: parsed_tx.inputs.iter().map(|input| ActionInput {
+            txid: input.prev_txid.clone(),
+            vout: input.prev_vout,
+            satoshis: 0,  // We don't know input amounts without parent TX lookup
+            script: Some(hex::encode(&input.script)),
+        }).collect(),
+        outputs: parsed_tx.outputs.iter().enumerate().map(|(i, output)| ActionOutput {
+            vout: i as u32,
+            satoshis: output.value,
+            script: Some(hex::encode(&output.script)),
+            address: parse_address_from_script(&output.script),
+        }).collect(),
+    };
+
+    // Store the action
+    {
+        let mut action_storage = state.action_storage.lock().unwrap();
+        if let Err(e) = action_storage.add_action(stored_action) {
+            log::error!("   Failed to store action: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "status": "error",
+                "code": "ERR_STORAGE",
+                "description": format!("Failed to store action: {}", e)
+            }));
+        }
+        log::info!("   💾 Action stored with status: unconfirmed");
+    }
+
+    log::info!("✅ Incoming transaction internalized: {}", txid);
+    if has_beef {
+        log::info!("   📦 Full BEEF ancestry preserved");
+    }
+
+    HttpResponse::Ok().json(InternalizeActionResponse {
+        txid,
+        status: "unconfirmed".to_string(),
+    })
+}
+
+/// BRC-100 Call Code 5: listActions
+/// List transaction history with filtering
+#[derive(Deserialize)]
+pub struct ListActionsRequest {
+    pub labels: Option<Vec<String>>,
+    #[serde(rename = "labelQueryMode")]
+    pub label_query_mode: Option<String>,
+    #[serde(rename = "includeLabels")]
+    pub include_labels: Option<bool>,
+    #[serde(rename = "includeInputs")]
+    pub include_inputs: Option<bool>,
+    #[serde(rename = "includeOutputs")]
+    pub include_outputs: Option<bool>,
+    pub limit: Option<usize>,
+    pub offset: Option<usize>,
+}
+
+#[derive(Serialize)]
+pub struct ListActionsResponse {
+    #[serde(rename = "totalActions")]
+    pub total_actions: usize,
+    pub actions: Vec<serde_json::Value>,
+}
+
+/// Manual endpoint to update confirmation status for all transactions
+pub async fn update_confirmations_endpoint(state: web::Data<AppState>) -> HttpResponse {
+    log::info!("🔄 /updateConfirmations called");
+
+    match update_confirmations(state).await {
+        Ok(count) => {
+            HttpResponse::Ok().json(serde_json::json!({
+                "success": true,
+                "updated": count
+            }))
+        }
+        Err(e) => {
+            log::error!("   Failed to update confirmations: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "success": false,
+                "error": e
+            }))
+        }
+    }
+}
+
+pub async fn list_actions(
+    state: web::Data<AppState>,
+    req: web::Json<ListActionsRequest>,
+) -> HttpResponse {
+    log::info!("📋 /listActions called");
+
+    // Load action storage
+    let storage = state.action_storage.lock().unwrap();
+
+    // Get label filter mode
+    let label_mode = req.label_query_mode.as_deref();
+
+    // List actions with optional label filter
+    let actions = storage.list_actions(req.labels.as_ref(), label_mode);
+
+    let total = actions.len();
+    log::info!("   Found {} actions (before pagination)", total);
+
+    // Apply pagination
+    let offset = req.offset.unwrap_or(0);
+    let limit = req.limit.unwrap_or(25);
+    let actions: Vec<_> = actions.into_iter()
+        .skip(offset)
+        .take(limit)
+        .collect();
+
+    log::info!("   Returning {} actions (after pagination)", actions.len());
+
+    // Convert to JSON with requested fields
+    let include_labels = req.include_labels.unwrap_or(true);
+    let include_inputs = req.include_inputs.unwrap_or(true);
+    let include_outputs = req.include_outputs.unwrap_or(true);
+
+    let actions_json: Vec<serde_json::Value> = actions.iter()
+        .map(|action| {
+            let mut obj = serde_json::json!({
+                "txid": action.txid,
+                "referenceNumber": action.reference_number,
+                "status": action.status.to_string(),
+                "isOutgoing": action.is_outgoing,
+                "satoshis": action.satoshis,
+                "timestamp": action.timestamp,
+                "confirmations": action.confirmations,
+                "description": action.description,
+                "version": action.version,
+                "lockTime": action.lock_time,
+            });
+
+            if let Some(block_height) = action.block_height {
+                obj["blockHeight"] = serde_json::json!(block_height);
+            }
+
+            if include_labels {
+                obj["labels"] = serde_json::json!(&action.labels);
+            }
+
+            if include_inputs {
+                obj["inputs"] = serde_json::json!(&action.inputs);
+            }
+
+            if include_outputs {
+                obj["outputs"] = serde_json::json!(&action.outputs);
+            }
+
+            obj
+        })
+        .collect();
+
+    drop(storage);
+
+    HttpResponse::Ok().json(ListActionsResponse {
+        total_actions: total,
+        actions: actions_json,
     })
 }
