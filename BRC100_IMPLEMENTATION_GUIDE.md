@@ -63,18 +63,19 @@ These are foundational - apps need these to identify and authenticate with the w
 
 **Real-World Testing**: ✅ ToolBSV fully functional with identity tokens, image/video history!
 
-#### **Group B: Transaction Operations (Priority 2)**
+#### **Group B: Transaction Operations (Priority 2)** ✅ **COMPLETE!**
 Once authenticated, apps need these to create and sign transactions.
 
 | Call Code | Method | Status | Internal Test | Real-World Test | Notes |
 |-----------|--------|--------|---------------|-----------------|-------|
 | 2 | `createAction` | ✅ | ✅ | ✅ | Transaction creation working! |
 | 3 | `signAction` | ✅ | ✅ | ✅ | BSV ForkID SIGHASH working! |
-| 4 | `abortAction` | ❌ | ❌ | ❌ | Cancel pending transactions |
-| 5 | `listActions` | ❌ | ❌ | ❌ | List transaction history |
-| 17 | `processAction` | 🔧 | ✅ | ✅ | Full transaction flow (create+sign+broadcast) |
+| 4 | `abortAction` | ✅ | ✅ | ⏳ | Cancel pending/unconfirmed transactions |
+| 5 | `listActions` | ✅ | ✅ | ⏳ | List transaction history with filters |
+| 17 | `processAction` | ✅ | ✅ | ✅ | Full transaction flow (create+sign+broadcast) |
+| 18 | `internalizeAction` | ✅ | ✅ | ⏳ | Accept incoming BEEF (moved from Group C) |
 
-**Status**: Core transaction signing breakthrough complete! Need transaction history tracking.
+**Status**: ✅ **GROUP B COMPLETE!** All endpoints implemented. Ready for real-world testing!
 
 #### **Group C: Output/Basket Management (Priority 3)**
 For managing UTXOs and tracking digital assets.
@@ -91,7 +92,6 @@ For managing UTXOs and tracking digital assets.
 | 14 | `listCertificates` | ❌ | ❌ | ❌ | List identity certificates |
 | 15 | `proveCertificate` | ❌ | ❌ | ❌ | Prove certificate ownership |
 | 16 | `relinquishCertificate` | ❌ | ❌ | ❌ | Release certificate |
-| 18 | `internalizeAction` | ❌ | ❌ | ❌ | Accept incoming transaction |
 
 #### **Group D: Encryption & Advanced Crypto (Priority 4)**
 Privacy features and advanced cryptography.

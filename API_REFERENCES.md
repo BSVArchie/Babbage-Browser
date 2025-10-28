@@ -676,6 +676,10 @@ Response: {"status": "active", "lastUpdate": "2025-09-27T12:43:16Z"}
 - `POST /createAction` - Build unsigned transaction ✅
 - `POST /signAction` - Sign transaction with BSV ForkID SIGHASH ✅
 - `POST /processAction` - Create + sign + broadcast transaction ✅
+- `POST /abortAction` - Cancel pending transactions ✅
+- `POST /listActions` - Transaction history with filters ✅
+- `POST /internalizeAction` - Accept incoming BEEF transactions ✅
+- `POST /updateConfirmations` - Manual confirmation status update ✅
 
 **Endpoints (BRC-33 Message Relay):**
 - `POST /sendMessage` - Send message to recipient ✅
@@ -688,9 +692,12 @@ Response: {"status": "active", "lastUpdate": "2025-09-27T12:43:16Z"}
 - Confirmed mainnet transactions
 - Memory safe (Rust)
 - **Complete BRC-103/104 authentication** (all 7 breakthroughs)
+- **Complete transaction management** (Groups A & B)
+- **Action storage system** (transaction history)
+- **BEEF Phase 2 parser** (output ownership detection)
 - **BRC-42 signature verification** (correctly derives signer's child public key)
 - **Session management** (concurrent sessions supported)
-- **Real-world tested** (ToolBSV, Thoth backend integration working)
+- **Real-world tested** (ToolBSV working, Thryll ready)
 
 **Shared Storage:**
 Both wallets use the same `wallet.json` file:

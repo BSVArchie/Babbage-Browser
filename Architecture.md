@@ -364,7 +364,11 @@ flowchart TD
 - **React UI Layer**: Complete with transaction forms, balance display, address management
 - **C++ Bridge Layer**: Full message handling and API injection
 - **Go Wallet Daemon**: Complete HD wallet with transaction processing
+- **Rust Wallet**: Groups A & B complete (14/31 BRC-100 methods)
 - **BRC-100 Authentication**: Complete BRC-100 protocol implementation
+- **Transaction Management**: Full lifecycle with history tracking
+- **Action Storage**: JSON-based transaction history
+- **BEEF Parser**: Phase 2 with output ownership detection
 - **BEEF/SPV Integration**: Real blockchain transactions with SPV verification
 - **Process Isolation**: Each overlay runs in dedicated CEF subprocess
 - **Blockchain Integration**: Working with real Bitcoin SV network
