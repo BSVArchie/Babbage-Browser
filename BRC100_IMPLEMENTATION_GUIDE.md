@@ -3,10 +3,10 @@
 > **Official Specification**: [BRC-100 Wallet Interface](https://bsv.brc.dev/wallet/0100)
 > **Full Spec Document**: `reference/BRC100_spec.md`
 
-## 🎯 Current Status: Fixing `createAction` Response Format
+## 🎯 Current Status: BRC-29 Payments Working! 🎉
 
-**Active Task**: Correct the `createAction` response structure to match BRC-100 specification
-**Current Issue**: Response format doesn't match spec - causing JavaScript errors in ToolBSV
+**Latest Achievement**: Successfully completed BRC-29 payment protocol implementation with ToolBSV!
+**Status**: Real-world testing complete - payments working with actual sites
 
 ---
 
@@ -63,215 +63,56 @@ These are foundational - apps need these to identify and authenticate with the w
 
 **Real-World Testing**: ✅ ToolBSV fully functional with identity tokens, image/video history!
 
-#### **Group B: Transaction Operations (Priority 2)** 🔴 **NEEDS FIXING**
+#### **Group B: Transaction Operations (Priority 2)** ✅ **COMPLETE!**
 Once authenticated, apps need these to create and sign transactions.
 
 | Call Code | Method | Status | Internal Test | Real-World Test | Notes |
 |-----------|--------|--------|---------------|-----------------|-------|
-| 1 | `createAction` | 🔴 | ✅ | ❌ | **Response format wrong!** See fix below |
-| 2 | `signAction` | 🟡 | ✅ | ❌ | Field name wrong: `raw_tx` → `tx` |
+| 1 | `createAction` | ✅ | ✅ | ✅ | **BRC-29 payment support added!** |
+| 2 | `signAction` | ✅ | ✅ | ✅ | Atomic BEEF with TSC proofs working |
 | 3 | `abortAction` | ✅ | ✅ | ❌ | Cancel pending/unconfirmed transactions |
 | 4 | `listActions` | ✅ | ✅ | ❌ | List transaction history with filters |
 | 5 | `internalizeAction` | ✅ | ✅ | ❌ | Accept incoming BEEF |
 
-**Status**: 🔴 **Response format issues blocking ToolBSV payments!**
+**Status**: ✅ **BRC-29 payments working with ToolBSV and real sites!**
 
 ---
 
-## 🔴 **DETAILED FIX PLAN: `createAction` Response Format**
+## ✅ **RECENT BREAKTHROUGHS: Transaction System Complete!**
 
-### Problem: What We're Returning (WRONG)
-```json
-{
-  "txid": "adc119ebc7f7dc0d...",
-  "reference": "action-9dbe3597...",
-  "rawTx": "0000020100000001..."  // ❌ Wrong field name!
-}
-```
+### Latest Achievement: BRC-29 Payments Working!
+**Status**: Successfully completing payments with ToolBSV and other real BRC-100 sites!
 
-**ToolBSV JavaScript Error**: `Cannot read properties of undefined (reading 'length')`
-**Root Cause**: Missing `inputs` array that ToolBSV expects
+### Key Implementations:
 
-### What BRC-100 Spec Requires
+1. **Complete Transaction Creation (`createAction`)**
+   - UTXO selection from WhatsOnChain
+   - Fee calculation with dust limit handling
+   - Multiple output support
+   - Automatic change output generation
+   - Action history storage
 
-**`createAction` has TWO different response modes:**
+2. **BRC-29 Payment Protocol**
+   - Automatic detection via `customInstructions`
+   - BRC-42 key derivation for unique addresses
+   - P2PKH script generation from derived public key
+   - Privacy-preserving micropayments
 
-#### Mode 1: Signed & Ready (when `signAndProcess=true` AND wallet can sign)
-```typescript
-{
-  txid: "adc119eb...",       // ✅ Signed transaction ID
-  tx: "01010101..."          // ✅ AtomicBEEF hex (not "rawTx"!)
-}
-```
+3. **Transaction Signing (`signAction`)**
+   - BSV ForkID SIGHASH (0x41)
+   - Multi-input signing with correct private keys
+   - Parent transaction fetching
+   - TSC Merkle proof generation with block height resolution
+   - Atomic BEEF (BRC-95) format
 
-#### Mode 2: Needs Signing (when `signAndProcess=false` OR has external inputs)
-```typescript
-{
-  signableTransaction: {
-    tx: "01010101...",       // ✅ Partial AtomicBEEF
-    reference: "YWN0aW9u..." // ✅ Base64 reference for signAction
-  }
-}
-```
+4. **BEEF & SPV Support**
+   - Standard BEEF V2 format with parent transactions
+   - BUMP (Block Unspent Merkle Proof) conversion
+   - TSC to BUMP format conversion
+   - Atomic BEEF wrapper (BRC-95)
+   - Full SPV validation support
 
-**BRC-100 Spec Quote** (line 668):
-> "If true and all inputs have unlockingScripts, the new transaction will be signed and handed off for processing by the network; result `txid` and `tx` are valid and `signableTransaction` is undefined. If false or an input has an unlockingScriptLength, result `txid` and `tx` are undefined and `signableTransaction` is valid."
-
-### Understanding Atomic BEEF (BRC-95)
-
-**Specification**: https://bsv.brc.dev/transactions/0095
-
-**Format**:
-```
-[4 bytes]  0x01 0x01 0x01 0x01   ← Magic prefix
-[32 bytes] Subject TXID           ← Transaction being validated
-[variable] Standard BEEF          ← Our current BEEF code
-```
-
-**Implementation**:
-```rust
-// In rust-wallet/src/beef.rs
-impl Beef {
-    pub fn to_atomic_beef_hex(&self, subject_txid: &str) -> Result<String, String> {
-        let mut atomic = Vec::new();
-
-        // 1. Magic prefix
-        atomic.extend_from_slice(&[0x01, 0x01, 0x01, 0x01]);
-
-        // 2. Subject TXID (32 bytes, as-is from hex decode)
-        let txid_bytes = hex::decode(subject_txid)?;
-        atomic.extend_from_slice(&txid_bytes);
-
-        // 3. Standard BEEF
-        let beef_bytes = self.to_bytes()?;
-        atomic.extend_from_slice(&beef_bytes);
-
-        Ok(hex::encode(atomic))
-    }
-}
-```
-
-### Implementation Steps
-
-#### Step 1: Add Atomic BEEF Support (30 mins)
-**File**: `rust-wallet/src/beef.rs`
-
-Add the `to_atomic_beef_hex()` method shown above.
-
-#### Step 2: Fix Response Structures (20 mins)
-**File**: `rust-wallet/src/handlers.rs`
-
-```rust
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CreateActionResponse {
-    // Mode 1: Signed transaction
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub txid: Option<String>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tx: Option<String>,  // ← Changed from "rawTx"
-
-    // Mode 2: Signable transaction
-    #[serde(skip_serializing_if = "Option::is_none", rename = "signableTransaction")]
-    pub signable_transaction: Option<SignableTransaction>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SignableTransaction {
-    pub tx: String,         // AtomicBEEF hex
-    pub reference: String,  // Base64 reference
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SignActionResponse {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub txid: Option<String>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tx: Option<String>,  // ← Changed from "raw_tx"
-}
-```
-
-#### Step 3: Fix `createAction` Logic (45 mins)
-**File**: `rust-wallet/src/handlers.rs`
-
-**Current logic (WRONG)**:
-```rust
-// Always returns Mode 1 response with wrong structure
-HttpResponse::Ok().json(CreateActionResponse {
-    txid: Some(final_txid),
-    reference,              // ❌ Should be in signableTransaction
-    raw_tx,                 // ❌ Wrong field name
-})
-```
-
-**Correct logic**:
-```rust
-let sign_and_process = options.sign_and_process.unwrap_or(true);
-
-if sign_and_process {
-    // MODE 1: Sign immediately and return signed transaction
-    log::info!("   🖊️  Signing transaction...");
-
-    // Call signAction internally
-    let sign_req = SignActionRequest { reference: reference.clone(), spends: None };
-    let sign_body = serde_json::to_vec(&sign_req)?;
-    let sign_response = sign_action(state.clone(), web::Bytes::from(sign_body)).await;
-
-    // Extract signed txid and AtomicBEEF
-    let signed_txid = ...; // from sign_response
-    let atomic_beef_hex = ...; // from sign_response
-
-    HttpResponse::Ok().json(CreateActionResponse {
-        txid: Some(signed_txid),
-        tx: Some(atomic_beef_hex),
-        signable_transaction: None,
-    })
-} else {
-    // MODE 2: Return signable transaction
-    log::info!("   📝 Returning signable transaction (signAndProcess=false)");
-
-    // Build partial BEEF
-    let partial_beef = build_partial_beef(&tx)?;
-
-    HttpResponse::Ok().json(CreateActionResponse {
-        txid: None,
-        tx: None,
-        signable_transaction: Some(SignableTransaction {
-            tx: partial_beef,
-            reference: reference,
-        }),
-    })
-}
-```
-
-#### Step 4: Fix `signAction` Response (15 mins)
-**File**: `rust-wallet/src/handlers.rs`
-
-**Change in `sign_action` function**:
-```rust
-// OLD:
-let beef_hex = beef.to_hex()?;
-HttpResponse::Ok().json(SignActionResponse {
-    txid,
-    raw_tx: beef_hex,  // ❌
-})
-
-// NEW:
-let atomic_beef_hex = beef.to_atomic_beef_hex(&txid)?;
-HttpResponse::Ok().json(SignActionResponse {
-    txid: Some(txid),
-    tx: Some(atomic_beef_hex),  // ✅ Correct field name + Atomic BEEF
-})
-```
-
-#### Step 5: Test with ToolBSV (30 mins)
-1. Rebuild wallet: `cargo build`
-2. Start wallet: `cargo run`
-3. Load ToolBSV in browser
-4. Try payment action
-5. Check browser console - should be no JavaScript errors
-6. Verify payment completes successfully
+**See [Developer_notes.md](Developer_notes.md) for complete technical details and code examples.**
 
 ---
 
@@ -334,18 +175,24 @@ Advanced wallet features for specific use cases.
 - ✅ Internal signature verification tests passing
 - ✅ Real-world testing: identity tokens, image/video history working!
 
-### Phase 2: Core Transaction Methods (Week 2)
-**Goal**: Complete transaction lifecycle support.
+### ~~Phase 2: Core Transaction Methods~~ ✅ **COMPLETE!** (Oct 27-30)
+**Goal**: ✅ Complete transaction lifecycle support.
 
-**Methods to Implement**:
-- `abortAction` - Cancel pending transactions
-- `listActions` - Transaction history
-- `internalizeAction` - Accept incoming payments
+**Completed Tasks**:
+1. ✅ **Transaction Creation** - UTXO selection, fee calculation, BRC-29 support
+2. ✅ **Transaction Signing** - BSV ForkID SIGHASH, parent transaction fetching
+3. ✅ **Atomic BEEF Generation** - Standard BEEF + Atomic BEEF (BRC-95) format
+4. ✅ **TSC Merkle Proofs** - Automatic fetching and BUMP conversion
+5. ✅ **BRC-29 Payments** - Automatic detection and script derivation
+6. ✅ **Action History** - Complete transaction tracking with metadata
+7. ✅ **Real-World Testing** - ToolBSV payments working successfully!
 
-**Success Criteria**:
-- ✅ Can cancel in-progress transactions
+**Success Criteria - ALL MET**:
+- ✅ Can create and sign transactions
 - ✅ Full transaction history tracking
-- ✅ Receive and track incoming payments
+- ✅ Atomic BEEF format correct with SPV proofs
+- ✅ BRC-29 payment protocol working
+- ✅ Real-world testing: ToolBSV payments complete successfully!
 
 ### Phase 3: Output & UTXO Management (Week 3)
 **Goal**: Complete UTXO and output tracking.

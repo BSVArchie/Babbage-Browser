@@ -37,7 +37,6 @@ pub struct MerkleProof {
     pub block_height: u32,
     pub tree_height: u8,
     pub levels: Vec<Vec<Vec<u8>>>, // levels[i] = nodes at level i, each node = [offset][flags][hash?]
-    pub tsc_nodes: Option<Vec<String>>, // Original TSC proof nodes (hex strings) for BRC-8 envelope conversion
 }
 
 impl Beef {
@@ -476,7 +475,6 @@ fn read_bump(cursor: &mut Cursor<&[u8]>) -> Result<MerkleProof, String> {
         block_height,
         tree_height,
         levels,
-        tsc_nodes: None, // No TSC nodes available when parsing from BEEF bytes
     })
 }
 
@@ -785,10 +783,6 @@ fn tsc_proof_to_bump(
     tx_index: u64,
     nodes: &[serde_json::Value]
 ) -> Result<MerkleProof, String> {
-    // Store original TSC nodes for BRC-8 envelope conversion
-    let tsc_nodes_vec: Vec<String> = nodes.iter()
-        .filter_map(|n| n.as_str().map(|s| s.to_string()))
-        .collect();
     // Each level in the BUMP contains nodes with offset+hash+flags
     // We need to compute offsets based on tx_index
     let tree_height = nodes.len() as u8;
@@ -873,7 +867,6 @@ fn tsc_proof_to_bump(
         block_height,
         tree_height,
         levels,
-        tsc_nodes: Some(tsc_nodes_vec),
     })
 }
 

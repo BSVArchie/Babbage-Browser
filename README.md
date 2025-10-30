@@ -22,12 +22,16 @@ A custom Web3 browser built on the Chromium Embedded Framework (CEF) with native
    - **Confirmed mainnet transactions!**
    - Location: `rust-wallet/`
 
-**Latest Additions (Oct 27):**
+**Latest Additions (Oct 27-30):**
 - ✅ Action storage system (transaction history)
 - ✅ `abortAction`, `listActions`, `internalizeAction`
 - ✅ BEEF parser with output ownership detection
 - ✅ Confirmation tracking via WhatsOnChain
 - ✅ Labels, addresses, and metadata support
+- ✅ **BRC-29 payment protocol support**
+- ✅ **TSC Merkle proof generation with block height resolution**
+- ✅ **Atomic BEEF (BRC-95) format implementation**
+- ✅ **Real-world testing: ToolBSV payments working!**
 
 **Why Two Implementations?**
 - Testing different languages (Go vs Rust)

@@ -4,7 +4,149 @@
 
 ---
 
-## 🚨🚨 **NEW CRITICAL DISCOVERY: BRC-33 Message Relay Missing!** (2025-10-22 Evening)
+## 🎉 **BRC-29 PAYMENTS WORKING!** Transaction System Complete! (2025-10-30)
+
+### **Latest Achievement: Complete Transaction Lifecycle with Real-World Testing!**
+
+After extensive debugging and implementation, the Rust wallet now successfully completes payments with real BRC-100 sites like ToolBSV!
+
+### **What We Built:**
+
+#### **1. Complete Transaction Creation (`createAction`)** ✅
+**File:** `rust-wallet/src/handlers.rs` (lines 1621-2139)
+
+**Key Features:**
+- **UTXO Selection:** Automatically fetches and selects UTXOs from WhatsOnChain API
+- **Fee Calculation:** Smart fee estimation with dust limit handling
+- **Multiple Output Support:** Handles multiple outputs with different script types
+- **Change Output Generation:** Creates proper change outputs when needed
+- **Action Storage:** Automatically stores transactions in action history
+- **BRC-29 Payment Detection:** Automatically detects and handles BRC-29 payments
+
+#### **2. BRC-29 Payment Protocol Support** ✅
+**File:** `rust-wallet/src/handlers.rs` (lines 1723-1832)
+
+**How It Works:**
+1. **Detection:** Checks for `customInstructions` in output request
+2. **Extraction:** Parses `derivationPrefix`, `derivationSuffix`, and `payee` public key
+3. **BRC-42 Derivation:** Uses wallet's master private key + payee public key to derive unique P2PKH script
+4. **Invoice Number:** Formats as `"2-3241645161d8-<prefix> <suffix>"` (BRC-29 protocol ID)
+5. **Script Generation:** Creates standard P2PKH locking script from derived public key
+
+**Code Example:**
+```rust
+if let (Some(prefix), Some(suffix), Some(payee)) = (
+    instr_json["derivationPrefix"].as_str(),
+    instr_json["derivationSuffix"].as_str(),
+    instr_json["payee"].as_str()
+) {
+    // BRC-29 invoice number format
+    let invoice_number = format!("2-3241645161d8-{} {}", prefix, suffix);
+
+    // Derive child public key using BRC-42
+    let derived_pubkey = derive_child_public_key(&master_key_bytes, &payee_bytes, &invoice_number)?;
+
+    // Create P2PKH script from derived public key
+    let script = create_p2pkh_script_from_pubkey(&derived_pubkey);
+}
+```
+
+**Key Insight:** BRC-29 uses BRC-42 key derivation to create unique, unlinkable payment addresses for each transaction. This enables privacy-preserving micropayments without exposing the wallet's identity.
+
+#### **3. Transaction Signing with BSV ForkID SIGHASH** ✅
+**File:** `rust-wallet/src/handlers.rs` (lines 2367-2757)
+
+**Key Features:**
+- **Multi-Input Signing:** Signs each input with correct private key from its originating address
+- **BSV ForkID SIGHASH:** Uses `SIGHASH_ALL_FORKID (0x41)` for BSV compatibility
+- **Parent Transaction Fetching:** Automatically fetches parent transactions from WhatsOnChain
+- **TSC Merkle Proof Generation:** Fetches and adds SPV proofs for transaction validation
+- **Atomic BEEF Creation:** Wraps standard BEEF with Atomic BEEF (BRC-95) format
+
+**Important Discovery - TSC Proof Parsing:**
+- **Problem:** TSC proofs from WhatsOnChain don't include `block_height`, only `block_hash`
+- **Solution:** Make separate API call to `/block/hash/{hash}` to get block height
+- **Reference:** BSV/SDK does this too! Found in TypeScript reference implementation
+- **Code:** Lines 2598-2641
+
+```rust
+// Fetch block height from block hash (BSV/SDK does this too)
+let block_header_url = format!("https://api.whatsonchain.com/v1/bsv/main/block/hash/{}", target);
+let header_response = client.get(&block_header_url).send().await?;
+let header_json: serde_json::Value = header_response.json().await?;
+let height = header_json["height"].as_u64().unwrap();
+
+// Create enhanced TSC object with height field
+let mut enhanced_tsc = tsc_obj.clone();
+enhanced_tsc["height"] = serde_json::json!(height);
+
+beef.add_tsc_merkle_proof(&utxo.txid, tx_index, &enhanced_tsc)?;
+```
+
+#### **4. Atomic BEEF (BRC-95) Format** ✅
+**File:** `rust-wallet/src/beef.rs`
+
+**Format:**
+```
+[4 bytes]   0x01 0x01 0x01 0x01   ← Magic prefix
+[32 bytes]  Subject TXID           ← Transaction being validated
+[variable]  Standard BEEF          ← Parent transactions + Main transaction
+```
+
+**Why Atomic BEEF:**
+- Enables SPV validation of single transaction
+- Includes full ancestry chain and Merkle proofs
+- Standard format for BSV transaction submission
+- Required by BRC-100 specification
+
+#### **5. BEEF Structure & Merkle Proofs** ✅
+**File:** `rust-wallet/src/beef.rs`
+
+**BEEF V2 Format:**
+- **Parent Transactions:** All inputs' source transactions
+- **Main Transaction:** The signed transaction we're validating
+- **BUMPs (Block Unspent Merkle Proofs):** SPV proofs for each parent transaction
+- **Mapping:** Links transactions to their proofs
+
+**BUMP (Block Unspent Merkle Proof) Format:**
+- **Block Height:** Block containing the transaction
+- **Tree Height:** Height of Merkle tree (number of levels)
+- **Levels:** Vector of nodes at each level
+- **Nodes:** Each node is `[varint offset][flags][32-byte hash]`
+
+**TSC to BUMP Conversion:**
+- TSC format: Simple array of hex hashes
+- BUMP format: Encoded with offsets and flags for efficient serialization
+- Our code converts TSC proofs to BUMP format automatically
+
+#### **6. What We Cleaned Up** ✅
+
+**Removed Unused Code:**
+1. **`beef_to_brc29_message` function** - Was never called after reverting BRC-29 JSON conversion
+2. **`tsc_nodes` field from `MerkleProof`** - Was storing TSC nodes for BRC-29 conversion that we reverted
+3. **Unused BRC-29 JSON conversion logic** - We return Atomic BEEF for all transactions
+
+**Key Decision:** After extensive investigation, we confirmed that BRC-29 payments should return **Atomic BEEF** (binary format), not a BRC-29 JSON envelope. The BRC-29 specific data (`derivationPrefix`, `derivationSuffix`, `senderIdentityKey`) are sent by the **browser** to the **server** in the `x-bsv-payment` header - the wallet just derives the correct locking script!
+
+### **Current Status:**
+- ✅ **Transaction Creation:** Working with UTXO selection and fee calculation
+- ✅ **Transaction Signing:** BSV ForkID SIGHASH working correctly
+- ✅ **Atomic BEEF Generation:** Format correct, includes parent transactions
+- ✅ **TSC Merkle Proofs:** Fetching and converting correctly with block height resolution
+- ✅ **BRC-29 Payments:** Automatic detection and script derivation working
+- ✅ **Real-World Testing:** ToolBSV payments completing successfully!
+- ✅ **Action History:** Transactions stored with full metadata
+- ✅ **BEEF Parsing:** Phase 2 parser for incoming transactions
+
+### **What Still Needs Work:**
+- 🔄 **`inputBEEF` handling:** Parse input BEEF to validate parent transactions
+- 🔄 **Multiple miner broadcasting:** Currently only using WhatsOnChain + GorillaPool
+- 🔄 **`noSend` mode:** Support for creating unsigned transactions for later signing
+- 🔄 **`sendWith` batching:** Support for chained transaction creation
+
+---
+
+## 🚨🚨 **BRC-33 Message Relay Discovery!** (2025-10-22 Evening)
 
 ### **What Happened:**
 After fixing authentication, tested with Coinflip and Thryll apps → still failing!
@@ -640,7 +782,7 @@ All integration tests passing! ✅
 
 ---
 
-**Last Updated:** October 27, 2025
-**Current Focus:** ✅ **GROUP B TRANSACTIONS COMPLETE** - Action storage, history, and BEEF support implemented!
-**Major Achievement:** Complete transaction lifecycle with history tracking, BEEF parsing, and confirmation updates!
-**Next Session:** Real-world testing with ToolBSV and Thryll.online to validate implementation
+**Last Updated:** October 30, 2025
+**Current Focus:** ✅ **BRC-29 PAYMENTS WORKING!** Complete transaction system with real-world testing!
+**Major Achievement:** BRC-29 payment protocol, TSC Merkle proofs, and Atomic BEEF all working with ToolBSV!
+**Next Session:** Additional testing with other sites, then move to Phase 3 (Output/UTXO Management)
