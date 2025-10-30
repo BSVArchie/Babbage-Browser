@@ -1,7 +1,7 @@
 use actix_web::{web, HttpRequest, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
 use crate::AppState;
-use crate::crypto::brc42::derive_child_private_key;
+use crate::crypto::brc42::{derive_child_private_key, derive_child_public_key};
 use crate::crypto::brc43::{InvoiceNumber, SecurityLevel, normalize_protocol_id};
 use crate::crypto::signing::{sha256, hmac_sha256, verify_hmac_sha256};
 
@@ -1499,11 +1499,21 @@ use std::collections::HashMap;
 use std::sync::Mutex as StdMutex;
 use once_cell::sync::Lazy;
 
+// BRC-29 payment metadata (Simple Authenticated BSV P2PKH Payment Protocol)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Brc29PaymentInfo {
+    derivation_prefix: String,
+    derivation_suffix: String,
+    payee: String,
+    output_index: usize,
+}
+
 // Pending transaction with metadata
 #[derive(Debug, Clone)]
 struct PendingTransaction {
     tx: Transaction,
     input_utxos: Vec<UTXO>, // UTXOs being spent (for signing)
+    brc29_info: Option<Brc29PaymentInfo>, // BRC-29 payment metadata if applicable
 }
 
 // In-memory storage for pending transactions
@@ -1524,6 +1534,9 @@ pub struct CreateActionRequest {
 
     #[serde(rename = "options")]
     pub options: Option<CreateActionOptions>,
+
+    #[serde(rename = "inputBEEF")]
+    pub input_beef: Option<String>, // Hex-encoded BEEF with input transaction proofs (BRC-100)
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1531,23 +1544,77 @@ pub struct CreateActionOutput {
     #[serde(rename = "satoshis")]
     pub satoshis: Option<i64>,
 
-    #[serde(rename = "script")]
-    pub script: String, // Hex-encoded locking script
+    #[serde(rename = "script", alias = "lockingScript")]
+    pub script: Option<String>, // Hex-encoded locking script (accepts both "script" and "lockingScript")
+
+    #[serde(rename = "address")]
+    pub address: Option<String>, // Bitcoin address (alternative to script)
+
+    #[serde(rename = "customInstructions")]
+    pub custom_instructions: Option<String>, // BRC-78 payment protocol data (JSON string)
+
+    #[serde(rename = "outputDescription")]
+    pub output_description: Option<String>, // Description of this output
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateActionOptions {
+    #[serde(rename = "signAndProcess")]
+    pub sign_and_process: Option<bool>, // Default: true
+
+    #[serde(rename = "acceptDelayedBroadcast")]
+    pub accept_delayed_broadcast: Option<bool>, // Default: true
+
     #[serde(rename = "returnTXIDOnly")]
-    pub return_txid_only: Option<bool>,
+    pub return_txid_only: Option<bool>, // Default: false
+
+    #[serde(rename = "noSend")]
+    pub no_send: Option<bool>, // Default: false
+
+    #[serde(rename = "randomizeOutputs")]
+    pub randomize_outputs: Option<bool>, // Default: true
 }
 
-// Response structure for /createAction
+// Response structure for /createAction - full BRC-100 spec
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateActionResponse {
-    pub txid: Option<String>,
     pub reference: String,
-    #[serde(rename = "rawTx")]
-    pub raw_tx: Option<String>,
+    pub version: u32,
+    #[serde(rename = "lockTime")]
+    pub lock_time: u32,
+    pub inputs: Vec<CreateActionResponseInput>,
+    pub outputs: Vec<CreateActionResponseOutput>,
+    #[serde(rename = "derivationPrefix", skip_serializing_if = "Option::is_none")]
+    pub derivation_prefix: Option<String>,
+    #[serde(rename = "inputBeef", skip_serializing_if = "Option::is_none")]
+    pub input_beef: Option<Vec<u8>>,
+    #[serde(rename = "txid", skip_serializing_if = "Option::is_none")]
+    pub txid: Option<String>,
+    #[serde(rename = "tx", skip_serializing_if = "Option::is_none")]
+    pub tx: Option<Vec<u8>>, // Atomic BEEF (BRC-95) as byte array per BRC-100 spec
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateActionResponseInput {
+    pub txid: String,
+    pub vout: u32,
+    #[serde(rename = "outputIndex")]
+    pub output_index: u32,
+    #[serde(rename = "scriptLength")]
+    pub script_length: usize,
+    #[serde(rename = "scriptOffset")]
+    pub script_offset: usize,
+    pub sequence: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateActionResponseOutput {
+    pub vout: u32,
+    pub satoshis: i64,
+    #[serde(rename = "scriptLength")]
+    pub script_length: usize,
+    #[serde(rename = "scriptOffset")]
+    pub script_offset: usize,
 }
 
 // /createAction - Build unsigned transaction
@@ -1556,6 +1623,7 @@ pub async fn create_action(
     body: web::Bytes,
 ) -> HttpResponse {
     log::info!("📋 /createAction called");
+    log::info!("📋 Raw request body: {}", String::from_utf8_lossy(&body));
 
     // Parse request
     let req: CreateActionRequest = match serde_json::from_slice(&body) {
@@ -1647,18 +1715,158 @@ pub async fn create_action(
         tx.add_input(TxInput::new(outpoint));
     }
 
+    // Track BRC-29 payment info if present
+    let mut brc29_info: Option<Brc29PaymentInfo> = None;
+
     // Add requested outputs
-    for output in &req.outputs {
-        let script_bytes = match hex::decode(&output.script) {
+    for (i, output) in req.outputs.iter().enumerate() {
+        let script_bytes = if let Some(custom_instr) = &output.custom_instructions {
+            // Check if this is a BRC-29 payment
+            log::info!("   Output {}: Has customInstructions, checking for BRC-29 payment...", i);
+            match serde_json::from_str::<serde_json::Value>(custom_instr) {
+                Ok(instr_json) => {
+                    if let (Some(prefix), Some(suffix), Some(payee)) = (
+                        instr_json["derivationPrefix"].as_str(),
+                        instr_json["derivationSuffix"].as_str(),
+                        instr_json["payee"].as_str()
+                    ) {
+                        log::info!("   ✅ BRC-29 payment detected");
+                        log::info!("   Payee: {}", payee);
+                        log::info!("   Deriving P2PKH script using BRC-42...");
+
+                        // Store BRC-29 metadata for later conversion to BRC-29 format
+                        brc29_info = Some(Brc29PaymentInfo {
+                            derivation_prefix: prefix.to_string(),
+                            derivation_suffix: suffix.to_string(),
+                            payee: payee.to_string(),
+                            output_index: i,
+                        });
+
+                        // Get our master private key for BRC-42 derivation
+                        let storage = state.storage.lock().unwrap();
+                        let master_key_bytes = match storage.get_master_private_key() {
+                            Ok(key) => key,
+                            Err(e) => {
+                                drop(storage);
+                                log::error!("   Failed to get master key: {}", e);
+                                return HttpResponse::InternalServerError().json(serde_json::json!({
+                                    "error": "Failed to get master key"
+                                }));
+                            }
+                        };
+                        drop(storage);
+
+                        // Parse recipient's public key (payee)
+                        let payee_bytes = match hex::decode(payee) {
+                            Ok(bytes) => bytes,
+                            Err(e) => {
+                                log::error!("   Failed to decode payee public key: {}", e);
+                                return HttpResponse::BadRequest().json(serde_json::json!({
+                                    "error": format!("Invalid payee public key: {}", e)
+                                }));
+                            }
+                        };
+
+                        // BRC-29 invoice number format: "2-3241645161d8-<prefix> <suffix>"
+                        let invoice_number = format!("2-3241645161d8-{} {}", prefix, suffix);
+                        log::info!("   Invoice number: {}", invoice_number);
+
+                        // Derive child public key using BRC-42 (correct implementation from brc42.rs)
+                        let derived_pubkey = match derive_child_public_key(&master_key_bytes, &payee_bytes, &invoice_number) {
+                            Ok(pubkey) => pubkey,
+                            Err(e) => {
+                                log::error!("   Failed to derive BRC-42 public key: {}", e);
+                                return HttpResponse::InternalServerError().json(serde_json::json!({
+                                    "error": format!("BRC-42 derivation failed: {}", e)
+                                }));
+                            }
+                        };
+
+                        log::info!("   Derived pubkey: {}", hex::encode(&derived_pubkey));
+
+                        // Create P2PKH script from derived public key
+                        let script = create_p2pkh_script_from_pubkey(&derived_pubkey);
+                        log::info!("   ✅ Created BRC-29 P2PKH script: {}", hex::encode(&script));
+                        script
+                    } else {
+                        // customInstructions exists but not BRC-29 format, fall through to provided script
+                        log::info!("   customInstructions not in BRC-29 format, using provided script");
+                        if let Some(script_hex) = &output.script {
+                            match hex::decode(script_hex) {
+                                Ok(bytes) => bytes,
+                                Err(e) => {
+                                    log::error!("   Invalid output script hex: {}", e);
+                                    return HttpResponse::BadRequest().json(serde_json::json!({
+                                        "error": format!("Invalid output script hex: {}", e)
+                                    }));
+                                }
+                            }
+                        } else {
+                            log::error!("   customInstructions present but no script provided");
+                            return HttpResponse::BadRequest().json(serde_json::json!({
+                                "error": "customInstructions present but no script provided"
+                            }));
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::warn!("   Failed to parse customInstructions: {}", e);
+                    // Fall through to provided script
+                    if let Some(script_hex) = &output.script {
+                        match hex::decode(script_hex) {
+                            Ok(bytes) => bytes,
+                            Err(e) => {
+                                log::error!("   Invalid output script hex: {}", e);
+                                return HttpResponse::BadRequest().json(serde_json::json!({
+                                    "error": format!("Invalid output script hex: {}", e)
+                                }));
+                            }
+                        }
+                    } else {
+                        log::error!("   Failed to parse customInstructions and no script provided");
+                        return HttpResponse::BadRequest().json(serde_json::json!({
+                            "error": "Invalid customInstructions format"
+                        }));
+                    }
+                }
+            }
+        } else if let Some(script_hex) = &output.script {
+            // Use provided script
+            log::info!("   Output {}: Using provided script: {}", i, &script_hex[..script_hex.len().min(40)]);
+            match hex::decode(script_hex) {
             Ok(bytes) => bytes,
             Err(e) => {
+                    log::error!("   Invalid output script hex: {}", e);
                 return HttpResponse::BadRequest().json(serde_json::json!({
                     "error": format!("Invalid output script hex: {}", e)
                 }));
             }
+            }
+        } else if let Some(address) = &output.address {
+            // Convert address to P2PKH script
+            log::info!("   Output {}: Converting address to script: {}", i, address);
+            match address_to_script(address) {
+                Ok(script) => script,
+                Err(e) => {
+                    log::error!("   Failed to convert address '{}': {}", address, e);
+                    return HttpResponse::BadRequest().json(serde_json::json!({
+                        "error": format!("Invalid address: {}", e)
+                    }));
+                }
+            }
+        } else {
+            // No address or script provided - this is a BRC-78 payment that the browser
+            // should have handled but didn't. Reject with helpful error.
+            log::error!("   Output {} missing both 'script' and 'address' fields", i);
+            log::error!("   This usually means the browser didn't handle BRC-78 payment headers");
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "error": "Output must have either 'script' or 'address' field. If you're trying to make a payment, the browser needs to implement BRC-78 payment protocol support first."
+            }));
         };
 
         let satoshis = output.satoshis.unwrap_or(0);
+        log::info!("   Output {}: {} satoshis", i, satoshis);
+        log::info!("   Output {} script (hex): {}", i, hex::encode(&script_bytes));
         tx.add_output(TxOutput::new(satoshis, script_bytes));
     }
 
@@ -1733,7 +1941,13 @@ pub async fn create_action(
         pending.insert(reference.clone(), PendingTransaction {
             tx: tx.clone(),
             input_utxos: selected_utxos.clone(),
+            brc29_info: brc29_info.clone(),
         });
+    }
+
+    // Log if this is a BRC-29 payment
+    if brc29_info.is_some() {
+        log::info!("   💰 BRC-29 payment metadata stored for later envelope conversion");
     }
 
     log::info!("   ✅ Transaction created: {}", txid);
@@ -1781,10 +1995,146 @@ pub async fn create_action(
         }
     }
 
+    // Get options with defaults
+    let options = req.options.as_ref();
+    let sign_and_process = options.and_then(|o| o.sign_and_process).unwrap_or(true);
+    let accept_delayed_broadcast = options.and_then(|o| o.accept_delayed_broadcast).unwrap_or(true);
+    let no_send = options.and_then(|o| o.no_send).unwrap_or(false);
+
+    log::info!("   Options: signAndProcess={}, acceptDelayedBroadcast={}, noSend={}",
+               sign_and_process, accept_delayed_broadcast, no_send);
+
+    // Determine if we should sign and/or broadcast
+    let should_sign = sign_and_process;
+    let should_broadcast = !accept_delayed_broadcast && !no_send;
+
+    let (final_txid, raw_tx) = if should_sign {
+        log::info!("   🖊️  Signing transaction...");
+
+        // Call signAction to sign the transaction
+        let sign_req = SignActionRequest {
+            reference: reference.clone(),
+            spends: None,
+        };
+
+        let sign_body = match serde_json::to_vec(&sign_req) {
+            Ok(b) => b,
+            Err(e) => {
+                log::error!("   Failed to serialize SignActionRequest: {}", e);
+                return HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": format!("Failed to prepare signing request: {}", e)
+                }));
+            }
+        };
+
+        let sign_response = sign_action(state.clone(), web::Bytes::from(sign_body)).await;
+
+        // Extract the signed transaction from the response
+        match sign_response.status().is_success() {
+            true => {
+                // Parse the response body
+                let body_bytes = actix_web::body::to_bytes(sign_response.into_body()).await;
+                match body_bytes {
+                    Ok(bytes) => {
+                        // Parse as generic JSON to handle both regular and BRC-29 responses
+                        match serde_json::from_slice::<serde_json::Value>(&bytes) {
+                            Ok(json_resp) => {
+                                let txid = json_resp["txid"].as_str().unwrap_or("").to_string();
+                                log::info!("   ✅ Transaction signed successfully");
+                                log::info!("   📝 Signed TXID: {}", txid);
+
+                                // Extract rawTx (Atomic BEEF hex string) and convert to bytes
+                                let tx_data = if let Some(raw_tx) = json_resp["rawTx"].as_str() {
+                                    log::info!("   📦 Extracting Atomic BEEF response");
+                                    hex::decode(raw_tx).ok()
+                                } else {
+                                    log::warn!("   ⚠️  Missing rawTx in response");
+                                    None
+                                };
+
+                                (txid, tx_data)
+                            },
+                            Err(e) => {
+                                log::error!("   Failed to parse sign response JSON: {}", e);
+                                return HttpResponse::InternalServerError().json(serde_json::json!({
+                                    "error": format!("Failed to parse signing response: {}", e)
+                                }));
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        log::error!("   Failed to read sign response body: {}", e);
+                        return HttpResponse::InternalServerError().json(serde_json::json!({
+                            "error": format!("Failed to read signing response: {}", e)
+                        }));
+                    }
+                }
+            },
+            false => {
+                log::error!("   Signing failed with status: {}", sign_response.status());
+                return HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": "Transaction signing failed"
+                }));
+            }
+        }
+    } else {
+        log::info!("   ℹ️  Skipping signing (signAndProcess=false)");
+        // Convert unsigned transaction hex to byte array for BRC-100 spec compliance (AtomicBEEF = Byte[])
+        let tx_bytes = tx.to_hex().ok()
+            .and_then(|h| hex::decode(h).ok());
+        (txid, tx_bytes)
+    };
+
+    if should_broadcast {
+        log::info!("   📡 Would broadcast transaction (not yet implemented)");
+        // TODO: Call processAction here to broadcast
+    } else {
+        log::info!("   ℹ️  Skipping broadcast (acceptDelayedBroadcast={}, noSend={})",
+                   accept_delayed_broadcast, no_send);
+    }
+
+    // Build response inputs array
+    let response_inputs: Vec<CreateActionResponseInput> = selected_utxos.iter().map(|utxo| {
+        CreateActionResponseInput {
+            txid: utxo.txid.clone(),
+            vout: utxo.vout,
+            output_index: utxo.vout,
+            script_length: utxo.script.len() / 2, // Hex length to byte length
+            script_offset: 0, // Not used in simplified implementation
+            sequence: 0xffffffff,
+        }
+    }).collect();
+
+    // Build response outputs array
+    let response_outputs: Vec<CreateActionResponseOutput> = tx.outputs.iter().enumerate().map(|(i, output)| {
+        CreateActionResponseOutput {
+            vout: i as u32,
+            satoshis: output.value,
+            script_length: output.script_pubkey.len(),
+            script_offset: 0, // Not used in simplified implementation
+        }
+    }).collect();
+
+    // Log response format
+    if let Some(ref tx_bytes) = raw_tx {
+        log::info!("   📤 Returning tx as byte array ({} bytes)", tx_bytes.len());
+        log::info!("   📤 First 40 bytes (hex): {}", hex::encode(&tx_bytes[..std::cmp::min(40, tx_bytes.len())]));
+
+        // Also log what it looks like in base64 (what ToolBSV will see in JSON)
+        let base64_tx = base64::encode(tx_bytes);
+        log::info!("   📤 Base64 encoded ({} chars): {}...", base64_tx.len(), &base64_tx[..std::cmp::min(80, base64_tx.len())]);
+    }
+
     HttpResponse::Ok().json(CreateActionResponse {
-        txid: Some(txid),
         reference,
-        raw_tx: None,
+        version: tx.version,
+        lock_time: tx.lock_time,
+        inputs: response_inputs,
+        outputs: response_outputs,
+        derivation_prefix: None,
+        input_beef: None,
+        txid: Some(final_txid),
+        tx: raw_tx,
     })
 }
 
@@ -1854,6 +2204,152 @@ pub async fn update_confirmations(state: web::Data<AppState>) -> Result<usize, S
 }
 
 // Parse address from P2PKH script (76a914{20-byte-hash}88ac)
+/// Convert a Bitcoin address to a P2PKH locking script
+fn address_to_script(address: &str) -> Result<Vec<u8>, String> {
+    // Decode base58 address
+    let decoded = match bs58::decode(address).into_vec() {
+        Ok(v) => v,
+        Err(e) => return Err(format!("Base58 decode error: {}", e)),
+    };
+
+    // Address format: [version byte][20-byte pubkey hash][4-byte checksum]
+    if decoded.len() != 25 {
+        return Err(format!("Invalid address length: {}", decoded.len()));
+    }
+
+    // Extract pubkey hash (skip version byte, remove checksum)
+    let pubkey_hash = &decoded[1..21];
+
+    // Create P2PKH script: OP_DUP OP_HASH160 <pubkey_hash> OP_EQUALVERIFY OP_CHECKSIG
+    let mut script = Vec::new();
+    script.push(0x76); // OP_DUP
+    script.push(0xa9); // OP_HASH160
+    script.push(0x14); // Push 20 bytes
+    script.extend_from_slice(pubkey_hash);
+    script.push(0x88); // OP_EQUALVERIFY
+    script.push(0xac); // OP_CHECKSIG
+
+    Ok(script)
+}
+
+// Create P2PKH script from a public key (for BRC-29)
+fn create_p2pkh_script_from_pubkey(pubkey: &[u8]) -> Vec<u8> {
+    use sha2::{Sha256, Digest};
+    use ripemd::Ripemd160;
+
+    // Hash the public key: RIPEMD160(SHA256(pubkey))
+    let sha_hash = Sha256::digest(pubkey);
+    let pubkey_hash = Ripemd160::digest(&sha_hash);
+
+    // Create P2PKH script: OP_DUP OP_HASH160 <pubkey_hash> OP_EQUALVERIFY OP_CHECKSIG
+    let mut script = Vec::new();
+    script.push(0x76); // OP_DUP
+    script.push(0xa9); // OP_HASH160
+    script.push(0x14); // Push 20 bytes
+    script.extend(pubkey_hash.as_slice());
+    script.push(0x88); // OP_EQUALVERIFY
+    script.push(0xac); // OP_CHECKSIG
+
+    script
+}
+
+// Helper: Convert BEEF to BRC-29 payment message format (BRC-8 envelope)
+fn beef_to_brc29_message(
+    beef: &crate::beef::Beef,
+    signed_txid: &str,
+    signed_tx_hex: &str,
+    brc29_info: &Brc29PaymentInfo,
+    sender_identity_key: &str,
+) -> Result<serde_json::Value, String> {
+    use sha2::{Sha256, Digest};
+
+    log::info!("   🔄 Converting BEEF to BRC-29 payment message format...");
+
+    // Collect parent transactions from BEEF
+    let mut inputs_map = serde_json::Map::new();
+
+    // Iterate through transactions (all but last are parents)
+    for (tx_index, parent_tx_bytes) in beef.transactions.iter().enumerate() {
+        // Calculate TXID for this parent transaction
+        let hash1 = Sha256::digest(parent_tx_bytes);
+        let hash2 = Sha256::digest(&hash1);
+        let mut txid_bytes: Vec<u8> = hash2.into_iter().rev().collect();
+        let parent_txid = hex::encode(&txid_bytes);
+
+        // Skip if this is the signed transaction itself
+        if parent_txid == signed_txid {
+            log::info!("   Skipping signed tx {} in parent list", &parent_txid[..8]);
+            continue;
+        }
+
+        let parent_tx_hex = hex::encode(parent_tx_bytes);
+        log::info!("   Including parent tx {} in BRC-8 envelope", &parent_txid[..8]);
+
+        // Check if we have a Merkle proof (BUMP) for this transaction
+        let proof_json = if let Some(Some(bump_index)) = beef.tx_to_bump.get(tx_index) {
+            if let Some(bump) = beef.bumps.get(*bump_index) {
+                log::info!("   ✅ Including full Merkle proof for parent {} (height: {})",
+                    &parent_txid[..8], bump.block_height);
+
+                // Use the original TSC nodes (already in correct BRC-10 format)
+                if let Some(ref tsc_nodes) = bump.tsc_nodes {
+                    log::info!("   📊 Using {} original TSC Merkle nodes (pure hashes)", tsc_nodes.len());
+
+                    // BRC-10 Merkle proof format for BRC-8 envelope
+                    serde_json::json!({
+                        "blockHeight": bump.block_height,
+                        "nodes": tsc_nodes
+                    })
+                } else {
+                    log::warn!("   ⚠️  BUMP has no TSC nodes stored");
+                    serde_json::Value::Null
+                }
+            } else {
+                log::info!("   ⚠️  BUMP index out of range for parent {}", &parent_txid[..8]);
+                serde_json::Value::Null
+            }
+        } else {
+            log::info!("   ⚠️  No Merkle proof for parent {}", &parent_txid[..8]);
+            serde_json::Value::Null
+        };
+
+        let mut parent_obj = serde_json::Map::new();
+        parent_obj.insert("rawTx".to_string(), serde_json::json!(parent_tx_hex));
+        if !proof_json.is_null() {
+            parent_obj.insert("proof".to_string(), proof_json);
+        }
+
+        inputs_map.insert(parent_txid, serde_json::Value::Object(parent_obj));
+    }
+
+    // Create outputs map with derivation suffix
+    let mut outputs_map = serde_json::Map::new();
+    outputs_map.insert(
+        brc29_info.output_index.to_string(),
+        serde_json::json!({
+            "suffix": brc29_info.derivation_suffix
+        })
+    );
+
+    // Build BRC-8 envelope for the signed transaction
+    let tx_envelope = serde_json::json!({
+        "rawTx": signed_tx_hex,
+        "inputs": inputs_map,
+        "outputs": outputs_map
+    });
+
+    // Wrap in BRC-29 payment message
+    let brc29_message = serde_json::json!({
+        "protocol": "3241645161d8",
+        "senderIdentityKey": sender_identity_key,
+        "derivationPrefix": brc29_info.derivation_prefix,
+        "transactions": [tx_envelope]
+    });
+
+    log::info!("   ✅ BRC-29 payment message created with {} parent tx(s)", inputs_map.len());
+    Ok(brc29_message)
+}
+
 fn parse_address_from_script(script_bytes: &[u8]) -> Option<String> {
     // P2PKH: OP_DUP OP_HASH160 <20 bytes> OP_EQUALVERIFY OP_CHECKSIG
     if script_bytes.len() == 25 &&
@@ -2000,6 +2496,7 @@ pub async fn sign_action(
 
     let mut tx = pending_tx.tx;
     let input_utxos = pending_tx.input_utxos;
+    let brc29_info = pending_tx.brc29_info;
 
     log::info!("   Signing {} inputs...", tx.inputs.len());
 
@@ -2098,13 +2595,24 @@ pub async fn sign_action(
         log::info!("   ✅ Input {} signed", i);
     }
 
-    // Serialize signed transaction
-    let raw_tx = match tx.to_hex() {
+    // Serialize signed transaction to hex first
+    let signed_tx_hex = match tx.to_hex() {
         Ok(hex) => hex,
         Err(e) => {
             log::error!("   Failed to serialize transaction: {}", e);
             return HttpResponse::InternalServerError().json(serde_json::json!({
                 "error": format!("Failed to serialize transaction: {}", e)
+            }));
+        }
+    };
+
+    // Decode to bytes for BEEF
+    let signed_tx_bytes = match hex::decode(&signed_tx_hex) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            log::error!("   Failed to decode transaction hex: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": format!("Failed to decode transaction hex: {}", e)
             }));
         }
     };
@@ -2121,14 +2629,201 @@ pub async fn sign_action(
     };
 
     log::info!("   ✅ Transaction signed: {}", txid);
-    log::info!("   Raw TX length: {} bytes", raw_tx.len() / 2);
+    log::info!("   📝 Signed TX hex ({} bytes): {}...", signed_tx_bytes.len(), &signed_tx_hex[..std::cmp::min(80, signed_tx_hex.len())]);
+
+    // Build BEEF (Background Evaluation Extended Format) with parent transactions
+    log::info!("   📦 Building BEEF format with {} parent transactions...", input_utxos.len());
+
+    let mut beef = crate::beef::Beef::new();
+
+    // Fetch parent transactions and their Merkle proofs from WhatsOnChain
+    let client = reqwest::Client::new();
+    for (i, utxo) in input_utxos.iter().enumerate() {
+        log::info!("   📥 Fetching parent tx {}/{}: {}", i + 1, input_utxos.len(), utxo.txid);
+
+        // Fetch transaction hex
+        let tx_url = format!("https://api.whatsonchain.com/v1/bsv/main/tx/{}/hex", utxo.txid);
+        match client.get(&tx_url).send().await {
+            Ok(response) => {
+                if response.status().is_success() {
+                    match response.text().await {
+                        Ok(parent_tx_hex) => {
+                            match hex::decode(&parent_tx_hex) {
+                                Ok(parent_tx_bytes) => {
+                                    // Verify TXID matches what we requested
+                                    use sha2::{Sha256, Digest};
+                                    let hash1 = Sha256::digest(&parent_tx_bytes);
+                                    let hash2 = Sha256::digest(&hash1);
+                                    let calculated_txid: Vec<u8> = hash2.into_iter().rev().collect();
+                                    let calculated_txid_hex = hex::encode(calculated_txid);
+
+                                    log::info!("   ✅ Fetched parent tx {} ({} bytes)", utxo.txid, parent_tx_bytes.len());
+                                    log::info!("   🔍 Calculated TXID from bytes: {}", calculated_txid_hex);
+
+                                    if calculated_txid_hex != utxo.txid {
+                                        log::error!("   ❌ TXID MISMATCH! Requested: {}, Got: {}", utxo.txid, calculated_txid_hex);
+                                        log::error!("   ❌ Transaction hex first 80 chars: {}", &parent_tx_hex[..80.min(parent_tx_hex.len())]);
+                                        continue; // Skip this parent transaction
+                                    }
+
+                                    let tx_index = beef.add_parent_transaction(parent_tx_bytes);
+
+                                    // Fetch TSC Merkle proof (with transaction index)
+                                    log::info!("   🔍 Checking for TSC Merkle proof...");
+                                    let proof_url = format!("https://api.whatsonchain.com/v1/bsv/main/tx/{}/proof/tsc", utxo.txid);
+                                    match client.get(&proof_url).send().await {
+                                        Ok(proof_response) => {
+                                            let status = proof_response.status();
+                                            log::info!("   📡 TSC proof API status: {}", status);
+
+                                            if status.is_success() {
+                                                match proof_response.text().await {
+                                                    Ok(proof_text) => {
+                                                        log::info!("   📄 TSC proof response: {}", &proof_text[..proof_text.len().min(200)]);
+
+                                                        match serde_json::from_str::<serde_json::Value>(&proof_text) {
+                                                            Ok(tsc_json) => {
+                                                                // WhatsOnChain returns array: [{index, txOrId, target, nodes}]
+                                                                let tsc_obj = if tsc_json.is_array() {
+                                                                    tsc_json.get(0)
+                                                                } else {
+                                                                    Some(&tsc_json)
+                                                                };
+
+                                                if let Some(tsc_obj) = tsc_obj {
+                                                    // TSC format has: index, target (block hash), nodes
+                                                    if let (Some(index), Some(target)) = (tsc_obj["index"].as_u64(), tsc_obj["target"].as_str()) {
+                                                        log::info!("   ✅ Parent tx confirmed at tx_index {}, target: {}", index, &target[..16.min(target.len())]);
+                                                        log::info!("   📊 Merkle path length: {}", tsc_obj["nodes"].as_array().map(|a| a.len()).unwrap_or(0));
+
+                                                        // Fetch block height from block hash (BSV/SDK does this too)
+                                                        log::info!("   🔍 Fetching block height for hash: {}...", &target[..16.min(target.len())]);
+                                                        let block_header_url = format!("https://api.whatsonchain.com/v1/bsv/main/block/hash/{}", target);
+
+                                                        match client.get(&block_header_url).send().await {
+                                                            Ok(header_response) if header_response.status().is_success() => {
+                                                                match header_response.json::<serde_json::Value>().await {
+                                                                    Ok(header_json) => {
+                                                                        if let Some(height) = header_json["height"].as_u64() {
+                                                                            log::info!("   ✅ Block height: {}", height);
+
+                                                                            // Create enhanced TSC object with height field
+                                                                            let mut enhanced_tsc = tsc_obj.clone();
+                                                                            enhanced_tsc["height"] = serde_json::json!(height);
+
+                                                                            // Try to add the TSC proof
+                                                                            match beef.add_tsc_merkle_proof(&utxo.txid, tx_index, &enhanced_tsc) {
+                                                                                Ok(_) => {
+                                                                                    log::info!("   ✅ Added TSC Merkle proof (BUMP) to BEEF");
+                                                                                }
+                                                                                Err(e) => {
+                                                                                    log::warn!("   ⚠️  Failed to add TSC Merkle proof: {}", e);
+                                                                                }
+                                                                            }
+                                                                        } else {
+                                                                            log::warn!("   ⚠️  Block header missing height field");
+                                                                        }
+                                                                    }
+                                                                    Err(e) => {
+                                                                        log::warn!("   ⚠️  Failed to parse block header JSON: {}", e);
+                                                                    }
+                                                                }
+                                                            }
+                                                            Ok(header_response) => {
+                                                                log::warn!("   ⚠️  Failed to fetch block header: HTTP {}", header_response.status());
+                                                            }
+                                                            Err(e) => {
+                                                                log::warn!("   ⚠️  Failed to fetch block header: {}", e);
+                                                            }
+                                                        }
+                                                    } else {
+                                                        log::warn!("   ⚠️  TSC proof missing index or target field");
+                                                    }
+                                                } else {
+                                                    log::warn!("   ⚠️  TSC proof array is empty");
+                                                }
+                                                            }
+                                                            Err(e) => {
+                                                                log::warn!("   ⚠️  Failed to parse TSC proof JSON: {}", e);
+                                                            }
+                                                        }
+                                                    }
+                                                    Err(e) => {
+                                                        log::warn!("   ⚠️  Failed to read TSC proof response: {}", e);
+                                                    }
+                                                }
+                                            } else {
+                                                log::info!("   ℹ️  TSC proof not available (HTTP {})", status);
+                                            }
+                                        }
+                                        Err(e) => {
+                                            log::warn!("   ⚠️  Failed to fetch TSC proof: {}", e);
+                                        }
+                                    }
+                                },
+                                Err(e) => {
+                                    log::warn!("   ⚠️  Failed to decode parent tx {}: {}", utxo.txid, e);
+                                }
+                            }
+                        },
+                        Err(e) => {
+                            log::warn!("   ⚠️  Failed to read parent tx {} response: {}", utxo.txid, e);
+                        }
+                    }
+                } else {
+                    log::warn!("   ⚠️  Failed to fetch parent tx {}: HTTP {}", utxo.txid, response.status());
+                }
+            },
+            Err(e) => {
+                log::warn!("   ⚠️  Failed to fetch parent tx {}: {}", utxo.txid, e);
+            }
+        }
+    }
+
+    // Add the signed transaction as the main transaction (must be last)
+    beef.set_main_transaction(signed_tx_bytes.clone());
+
+    log::info!("   📊 BEEF structure before Atomic wrapping:");
+    log::info!("      - Parent transactions: {}", beef.transactions.len() - 1);
+    log::info!("      - Main transaction: 1");
+    log::info!("      - Total transactions: {}", beef.transactions.len());
+    log::info!("      - Merkle proofs (BUMPs): {}", beef.bumps.len());
+
+    // Generate standard BEEF first (for logging)
+    let standard_beef_hex = match beef.to_hex() {
+        Ok(hex) => hex,
+        Err(e) => {
+            log::error!("   Failed to serialize standard BEEF: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": format!("Failed to serialize standard BEEF: {}", e)
+            }));
+        }
+    };
+    log::info!("   📝 Standard BEEF hex ({} bytes): {}...", standard_beef_hex.len() / 2, &standard_beef_hex[..std::cmp::min(120, standard_beef_hex.len())]);
+    log::info!("   📝 FULL Standard BEEF hex: {}", standard_beef_hex);
+
+    // Serialize to Atomic BEEF (BRC-95) format
+    let beef_hex = match beef.to_atomic_beef_hex(&txid) {
+        Ok(hex) => hex,
+        Err(e) => {
+            log::error!("   Failed to serialize Atomic BEEF: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": format!("Failed to serialize Atomic BEEF: {}", e)
+            }));
+        }
+    };
+
+    log::info!("   ✅ Atomic BEEF (BRC-95) created: {} bytes", beef_hex.len() / 2);
+    log::info!("   📦 Includes {} parent tx(s) + 1 signed tx with 36-byte header", input_utxos.len());
+    log::info!("   🔐 Merkle proofs (BUMPs): {} included for SPV validation", beef.bumps.len());
+    log::info!("   🔍 Atomic BEEF starts with: {}...", &beef_hex[..std::cmp::min(120, beef_hex.len())]);
 
     // Update action with new TXID and status
     {
         let mut action_storage = state.action_storage.lock().unwrap();
 
         // Update TXID (signing changes the transaction, so TXID changes)
-        if let Err(e) = action_storage.update_txid(&req.reference, txid.clone(), raw_tx.clone()) {
+        if let Err(e) = action_storage.update_txid(&req.reference, txid.clone(), signed_tx_hex.clone()) {
             log::warn!("   ⚠️  Failed to update TXID: {}", e);
         } else {
             log::info!("   💾 TXID updated after signing");
@@ -2143,9 +2838,18 @@ pub async fn sign_action(
         }
     }
 
+    // Note: BRC-29 payments are detected in create_action and handled there by deriving
+    // the correct locking script using BRC-42. Here in sign_action, we just return
+    // Atomic BEEF as normal for all transactions.
+    if brc29_info.is_some() {
+        log::info!("   💰 BRC-29 payment detected, returning standard Atomic BEEF");
+    }
+
+    // Return regular Atomic BEEF (same for BRC-29 and non-BRC-29)
+    log::info!("   📦 Returning Atomic BEEF (binary format)");
     HttpResponse::Ok().json(SignActionResponse {
         txid,
-        raw_tx,
+        raw_tx: beef_hex,
     })
 }
 
@@ -2201,8 +2905,13 @@ pub async fn process_action(
         description: req.description,
         labels: req.labels,
         options: Some(CreateActionOptions {
+            sign_and_process: None,
+            accept_delayed_broadcast: None,
             return_txid_only: Some(false),
+            no_send: None,
+            randomize_outputs: None,
         }),
+        input_beef: None,
     };
 
     let create_body = serde_json::to_vec(&create_req).unwrap();
@@ -2817,7 +3526,7 @@ pub async fn internalize_action(
     let (main_tx_bytes, has_beef) = match crate::beef::Beef::from_hex(&req.tx) {
         Ok(beef) => {
             log::info!("   ✅ Valid BEEF format detected");
-            log::info!("   BEEF version: {}", beef.version);
+            log::info!("   BEEF version: {}", hex::encode(beef.version));
             log::info!("   Parent transactions: {}", beef.parent_transactions().len());
             log::info!("   Has SPV proofs: {}", beef.has_proofs());
 

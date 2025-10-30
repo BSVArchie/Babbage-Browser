@@ -124,12 +124,7 @@ pub async fn fetch_all_utxos(addresses: &[crate::json_storage::AddressInfo]) -> 
     let mut all_utxos = Vec::new();
 
     for addr in addresses {
-        // Skip addresses with 0 balance (optimization)
-        if addr.balance == 0 {
-            log::debug!("   Skipping address {} (balance: 0)", addr.address);
-            continue;
-        }
-
+        // Always check all addresses - balance cache may be stale
         match fetch_utxos_for_address(&addr.address, addr.index as u32).await {
             Ok(mut utxos) => {
                 all_utxos.append(&mut utxos);

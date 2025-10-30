@@ -1,12 +1,12 @@
 # BRC-100 Implementation Guide
 
 > **Official Specification**: [BRC-100 Wallet Interface](https://bsv.brc.dev/wallet/0100)
+> **Full Spec Document**: `reference/BRC100_spec.md`
 
-## 🎯 Current Status: Rust Wallet Focus
+## 🎯 Current Status: Fixing `createAction` Response Format
 
-**Active Development**: Rust wallet (`rust-wallet/`) - Port 3301
-**On Hold**: Go wallet (`go-wallet/`) - Will sync later
-**Current Issue**: BRC-104 signature verification failing with ToolBSV
+**Active Task**: Correct the `createAction` response structure to match BRC-100 specification
+**Current Issue**: Response format doesn't match spec - causing JavaScript errors in ToolBSV
 
 ---
 
@@ -43,13 +43,13 @@ These are foundational - apps need these to identify and authenticate with the w
 
 | Call Code | Method | Status | Internal Test | Real-World Test | Notes |
 |-----------|--------|--------|---------------|-----------------|-------|
-| 0 | `getVersion` | ✅ | ✅ | ✅ | Returns wallet version info |
-| 1 | `getPublicKey` | ✅ | ✅ | ✅ | Returns master public key |
-| 10 | `isAuthenticated` | ✅ | ✅ | ✅ | Check auth status |
-| 30 | `createHmac` | ✅ | ✅ | ✅ | Base64 keyID encoding + raw key for self |
-| 31 | `verifyHmac` | ✅ | ✅ | ✅ | Base64 keyID encoding + raw key for self |
-| 32 | `createSignature` | ✅ | ✅ | ✅ | Master key + BRC-42 + session validation |
-| 33 | `verifySignature` | ✅ | ✅ | ✅ | **Derives signer's child public key!** |
+| 28 | `getVersion` | ✅ | ✅ | ✅ | Returns wallet version info |
+| 8 | `getPublicKey` | ✅ | ✅ | ✅ | Returns master public key |
+| 23 | `isAuthenticated` | ✅ | ✅ | ✅ | Check auth status |
+| 13 | `createHmac` | ✅ | ✅ | ✅ | Base64 keyID encoding + raw key for self |
+| 14 | `verifyHmac` | ✅ | ✅ | ✅ | Base64 keyID encoding + raw key for self |
+| 15 | `createSignature` | ✅ | ✅ | ✅ | Master key + BRC-42 + session validation |
+| 16 | `verifySignature` | ✅ | ✅ | ✅ | **Derives signer's child public key!** |
 | - | `/.well-known/auth` | ✅ | ✅ | ✅ | BRC-103/104 authentication |
 
 **Status**: 🎉 **AUTHENTICATION COMPLETE!** All 7 Critical Breakthroughs:
@@ -63,55 +63,257 @@ These are foundational - apps need these to identify and authenticate with the w
 
 **Real-World Testing**: ✅ ToolBSV fully functional with identity tokens, image/video history!
 
-#### **Group B: Transaction Operations (Priority 2)** ✅ **COMPLETE!**
+#### **Group B: Transaction Operations (Priority 2)** 🔴 **NEEDS FIXING**
 Once authenticated, apps need these to create and sign transactions.
 
 | Call Code | Method | Status | Internal Test | Real-World Test | Notes |
 |-----------|--------|--------|---------------|-----------------|-------|
-| 2 | `createAction` | ✅ | ✅ | ✅ | Transaction creation working! |
-| 3 | `signAction` | ✅ | ✅ | ✅ | BSV ForkID SIGHASH working! |
-| 4 | `abortAction` | ✅ | ✅ | ⏳ | Cancel pending/unconfirmed transactions |
-| 5 | `listActions` | ✅ | ✅ | ⏳ | List transaction history with filters |
-| 17 | `processAction` | ✅ | ✅ | ✅ | Full transaction flow (create+sign+broadcast) |
-| 18 | `internalizeAction` | ✅ | ✅ | ⏳ | Accept incoming BEEF (moved from Group C) |
+| 1 | `createAction` | 🔴 | ✅ | ❌ | **Response format wrong!** See fix below |
+| 2 | `signAction` | 🟡 | ✅ | ❌ | Field name wrong: `raw_tx` → `tx` |
+| 3 | `abortAction` | ✅ | ✅ | ❌ | Cancel pending/unconfirmed transactions |
+| 4 | `listActions` | ✅ | ✅ | ❌ | List transaction history with filters |
+| 5 | `internalizeAction` | ✅ | ✅ | ❌ | Accept incoming BEEF |
 
-**Status**: ✅ **GROUP B COMPLETE!** All endpoints implemented. Ready for real-world testing!
+**Status**: 🔴 **Response format issues blocking ToolBSV payments!**
 
-#### **Group C: Output/Basket Management (Priority 3)**
-For managing UTXOs and tracking digital assets.
+---
+
+## 🔴 **DETAILED FIX PLAN: `createAction` Response Format**
+
+### Problem: What We're Returning (WRONG)
+```json
+{
+  "txid": "adc119ebc7f7dc0d...",
+  "reference": "action-9dbe3597...",
+  "rawTx": "0000020100000001..."  // ❌ Wrong field name!
+}
+```
+
+**ToolBSV JavaScript Error**: `Cannot read properties of undefined (reading 'length')`
+**Root Cause**: Missing `inputs` array that ToolBSV expects
+
+### What BRC-100 Spec Requires
+
+**`createAction` has TWO different response modes:**
+
+#### Mode 1: Signed & Ready (when `signAndProcess=true` AND wallet can sign)
+```typescript
+{
+  txid: "adc119eb...",       // ✅ Signed transaction ID
+  tx: "01010101..."          // ✅ AtomicBEEF hex (not "rawTx"!)
+}
+```
+
+#### Mode 2: Needs Signing (when `signAndProcess=false` OR has external inputs)
+```typescript
+{
+  signableTransaction: {
+    tx: "01010101...",       // ✅ Partial AtomicBEEF
+    reference: "YWN0aW9u..." // ✅ Base64 reference for signAction
+  }
+}
+```
+
+**BRC-100 Spec Quote** (line 668):
+> "If true and all inputs have unlockingScripts, the new transaction will be signed and handed off for processing by the network; result `txid` and `tx` are valid and `signableTransaction` is undefined. If false or an input has an unlockingScriptLength, result `txid` and `tx` are undefined and `signableTransaction` is valid."
+
+### Understanding Atomic BEEF (BRC-95)
+
+**Specification**: https://bsv.brc.dev/transactions/0095
+
+**Format**:
+```
+[4 bytes]  0x01 0x01 0x01 0x01   ← Magic prefix
+[32 bytes] Subject TXID           ← Transaction being validated
+[variable] Standard BEEF          ← Our current BEEF code
+```
+
+**Implementation**:
+```rust
+// In rust-wallet/src/beef.rs
+impl Beef {
+    pub fn to_atomic_beef_hex(&self, subject_txid: &str) -> Result<String, String> {
+        let mut atomic = Vec::new();
+
+        // 1. Magic prefix
+        atomic.extend_from_slice(&[0x01, 0x01, 0x01, 0x01]);
+
+        // 2. Subject TXID (32 bytes, as-is from hex decode)
+        let txid_bytes = hex::decode(subject_txid)?;
+        atomic.extend_from_slice(&txid_bytes);
+
+        // 3. Standard BEEF
+        let beef_bytes = self.to_bytes()?;
+        atomic.extend_from_slice(&beef_bytes);
+
+        Ok(hex::encode(atomic))
+    }
+}
+```
+
+### Implementation Steps
+
+#### Step 1: Add Atomic BEEF Support (30 mins)
+**File**: `rust-wallet/src/beef.rs`
+
+Add the `to_atomic_beef_hex()` method shown above.
+
+#### Step 2: Fix Response Structures (20 mins)
+**File**: `rust-wallet/src/handlers.rs`
+
+```rust
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateActionResponse {
+    // Mode 1: Signed transaction
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub txid: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tx: Option<String>,  // ← Changed from "rawTx"
+
+    // Mode 2: Signable transaction
+    #[serde(skip_serializing_if = "Option::is_none", rename = "signableTransaction")]
+    pub signable_transaction: Option<SignableTransaction>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SignableTransaction {
+    pub tx: String,         // AtomicBEEF hex
+    pub reference: String,  // Base64 reference
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SignActionResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub txid: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tx: Option<String>,  // ← Changed from "raw_tx"
+}
+```
+
+#### Step 3: Fix `createAction` Logic (45 mins)
+**File**: `rust-wallet/src/handlers.rs`
+
+**Current logic (WRONG)**:
+```rust
+// Always returns Mode 1 response with wrong structure
+HttpResponse::Ok().json(CreateActionResponse {
+    txid: Some(final_txid),
+    reference,              // ❌ Should be in signableTransaction
+    raw_tx,                 // ❌ Wrong field name
+})
+```
+
+**Correct logic**:
+```rust
+let sign_and_process = options.sign_and_process.unwrap_or(true);
+
+if sign_and_process {
+    // MODE 1: Sign immediately and return signed transaction
+    log::info!("   🖊️  Signing transaction...");
+
+    // Call signAction internally
+    let sign_req = SignActionRequest { reference: reference.clone(), spends: None };
+    let sign_body = serde_json::to_vec(&sign_req)?;
+    let sign_response = sign_action(state.clone(), web::Bytes::from(sign_body)).await;
+
+    // Extract signed txid and AtomicBEEF
+    let signed_txid = ...; // from sign_response
+    let atomic_beef_hex = ...; // from sign_response
+
+    HttpResponse::Ok().json(CreateActionResponse {
+        txid: Some(signed_txid),
+        tx: Some(atomic_beef_hex),
+        signable_transaction: None,
+    })
+} else {
+    // MODE 2: Return signable transaction
+    log::info!("   📝 Returning signable transaction (signAndProcess=false)");
+
+    // Build partial BEEF
+    let partial_beef = build_partial_beef(&tx)?;
+
+    HttpResponse::Ok().json(CreateActionResponse {
+        txid: None,
+        tx: None,
+        signable_transaction: Some(SignableTransaction {
+            tx: partial_beef,
+            reference: reference,
+        }),
+    })
+}
+```
+
+#### Step 4: Fix `signAction` Response (15 mins)
+**File**: `rust-wallet/src/handlers.rs`
+
+**Change in `sign_action` function**:
+```rust
+// OLD:
+let beef_hex = beef.to_hex()?;
+HttpResponse::Ok().json(SignActionResponse {
+    txid,
+    raw_tx: beef_hex,  // ❌
+})
+
+// NEW:
+let atomic_beef_hex = beef.to_atomic_beef_hex(&txid)?;
+HttpResponse::Ok().json(SignActionResponse {
+    txid: Some(txid),
+    tx: Some(atomic_beef_hex),  // ✅ Correct field name + Atomic BEEF
+})
+```
+
+#### Step 5: Test with ToolBSV (30 mins)
+1. Rebuild wallet: `cargo build`
+2. Start wallet: `cargo run`
+3. Load ToolBSV in browser
+4. Try payment action
+5. Check browser console - should be no JavaScript errors
+6. Verify payment completes successfully
+
+---
+
+#### **Group C: Output/Basket & Certificate Management (Priority 3)**
+For managing UTXOs, tracking digital assets, and identity certificates.
 
 | Call Code | Method | Status | Internal Test | Real-World Test | Notes |
 |-----------|--------|--------|---------------|-----------------|-------|
 | 6 | `listOutputs` | ❌ | ❌ | ❌ | List available UTXOs |
 | 7 | `relinquishOutput` | ❌ | ❌ | ❌ | Release UTXO control |
-| 8 | `getHeight` | ❌ | ❌ | ❌ | Get blockchain height |
-| 9 | `getHeaderForHeight` | ❌ | ❌ | ❌ | Get block header |
-| 11 | `waitForAuthentication` | ❌ | ❌ | ❌ | Async auth wait |
-| 12 | `getNetwork` | ❌ | ❌ | ❌ | Return "mainnet" or "testnet" |
-| 13 | `acquireCertificate` | ❌ | ❌ | ❌ | BRC-52 certificates |
-| 14 | `listCertificates` | ❌ | ❌ | ❌ | List identity certificates |
-| 15 | `proveCertificate` | ❌ | ❌ | ❌ | Prove certificate ownership |
-| 16 | `relinquishCertificate` | ❌ | ❌ | ❌ | Release certificate |
+| 17 | `acquireCertificate` | ❌ | ❌ | ❌ | BRC-52 certificate acquisition |
+| 18 | `listCertificates` | ❌ | ❌ | ❌ | List identity certificates |
+| 19 | `proveCertificate` | ❌ | ❌ | ❌ | Prove certificate ownership |
+| 20 | `relinquishCertificate` | ❌ | ❌ | ❌ | Release certificate |
+| 21 | `discoverByIdentityKey` | ❌ | ❌ | ❌ | Discover certificates by identity |
+| 22 | `discoverByAttributes` | ❌ | ❌ | ❌ | Discover certificates by attributes |
+| 24 | `waitForAuthentication` | ❌ | ❌ | ❌ | Async auth wait |
+| 25 | `getHeight` | ❌ | ❌ | ❌ | Get blockchain height |
+| 26 | `getHeaderForHeight` | ❌ | ❌ | ❌ | Get block header |
+| 27 | `getNetwork` | ❌ | ❌ | ❌ | Return "mainnet" or "testnet" |
 
 #### **Group D: Encryption & Advanced Crypto (Priority 4)**
 Privacy features and advanced cryptography.
 
 | Call Code | Method | Status | Internal Test | Real-World Test | Notes |
 |-----------|--------|--------|---------------|-----------------|-------|
-| 34 | `encrypt` | ❌ | ❌ | ❌ | BRC-2 encryption |
-| 35 | `decrypt` | ❌ | ❌ | ❌ | BRC-2 decryption |
+| 9 | `revealCounterpartyKeyLinkage` | ❌ | ❌ | ❌ | BRC-69 counterparty key linkage |
+| 10 | `revealSpecificKeyLinkage` | ❌ | ❌ | ❌ | BRC-69 specific key linkage |
+| 11 | `encrypt` | ❌ | ❌ | ❌ | BRC-2 encryption |
+| 12 | `decrypt` | ❌ | ❌ | ❌ | BRC-2 decryption |
 
 #### **Group E: Specialized Features (Priority 5)**
 Advanced wallet features for specific use cases.
 
+*Note: Some of these call codes are not in the standard BRC-100 spec (codes 1-28)*
+
 | Call Code | Method | Status | Internal Test | Real-World Test | Notes |
 |-----------|--------|--------|---------------|-----------------|-------|
-| 19 | `getTransactionWithOutputs` | ❌ | ❌ | ❌ | Get full transaction data |
-| 20 | `revealCounterpartyKeyLinkage` | ❌ | ❌ | ❌ | BRC-69 key linkage |
-| 21 | `revealSpecificKeyLinkage` | ❌ | ❌ | ❌ | BRC-69 specific linkage |
-| 22 | `getSpendingLimits` | ❌ | ❌ | ❌ | Query spending limits |
-| 40 | `getProtocolRestrictions` | ❌ | ❌ | ❌ | Query protocol permissions |
-| 41 | `getBasketRestrictions` | ❌ | ❌ | ❌ | Query basket permissions |
+| ? | `getTransactionWithOutputs` | ❌ | ❌ | ❌ | Get full transaction data (non-standard?) |
+| ? | `getSpendingLimits` | ❌ | ❌ | ❌ | Query spending limits (non-standard?) |
+| ? | `getProtocolRestrictions` | ❌ | ❌ | ❌ | Query protocol permissions (non-standard?) |
+| ? | `getBasketRestrictions` | ❌ | ❌ | ❌ | Query basket permissions (non-standard?) |
 
 ---
 
