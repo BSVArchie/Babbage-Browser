@@ -43,3 +43,7 @@ fn main() {
 Write-Host $testCode
 Write-Host ""
 Write-Host "Run this manually to test BEEF parsing" -ForegroundColor Green
+
+
+
+

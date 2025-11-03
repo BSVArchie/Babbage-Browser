@@ -913,18 +913,38 @@ pub async fn wallet_status(state: web::Data<AppState>) -> HttpResponse {
 
 // Wallet balance endpoint
 pub async fn wallet_balance(state: web::Data<AppState>) -> HttpResponse {
-    let storage = state.storage.lock().unwrap();
+    log::info!("💰 /wallet/balance called");
 
-    match storage.get_all_addresses() {
-        Ok(addresses) => {
-            log::info!("📋 Balance check for {} addresses", addresses.len());
+    // Get all addresses from storage
+    let addresses = {
+        let storage = state.storage.lock().unwrap();
+        match storage.get_all_addresses() {
+            Ok(addrs) => addrs.to_vec(), // Convert to owned Vec for async operation
+            Err(e) => {
+                log::error!("   Failed to get addresses: {}", e);
+                return HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": e
+                }));
+            }
+        }
+    };
+
+    log::info!("   Checking balance for {} addresses", addresses.len());
+
+    // Fetch UTXOs for all addresses
+    match crate::utxo_fetcher::fetch_all_utxos(&addresses).await {
+        Ok(utxos) => {
+            let total_balance: i64 = utxos.iter().map(|u| u.satoshis).sum();
+
+            log::info!("   ✅ Total balance: {} satoshis ({} UTXOs)", total_balance, utxos.len());
+
+            // Return response in Go wallet format: { "balance": number }
             HttpResponse::Ok().json(serde_json::json!({
-                "balance": 0,
-                "addresses": addresses.len()
+                "balance": total_balance
             }))
         }
         Err(e) => {
-            log::error!("   Failed to get addresses: {}", e);
+            log::error!("   Failed to fetch UTXOs: {}", e);
             HttpResponse::InternalServerError().json(serde_json::json!({
                 "error": e
             }))
@@ -3002,12 +3022,394 @@ async fn broadcast_to_whatsonchain(client: &reqwest::Client, raw_tx_hex: &str) -
     }
 }
 
-pub async fn generate_address() -> HttpResponse {
-    HttpResponse::Ok().json(serde_json::json!({"message": "Not implemented"}))
+// Helper function to convert public key to Bitcoin address
+fn pubkey_to_address(pubkey: &[u8]) -> Result<String, String> {
+    use sha2::{Sha256, Digest};
+    use ripemd::Ripemd160;
+
+    // Hash the public key: RIPEMD160(SHA256(pubkey))
+    let sha_hash = Sha256::digest(pubkey);
+    let pubkey_hash = Ripemd160::digest(&sha_hash);
+
+    // Create address: [version byte][20-byte pubkey hash][4-byte checksum]
+    let mut addr_bytes = vec![0x00]; // Mainnet prefix
+    addr_bytes.extend_from_slice(pubkey_hash.as_slice());
+
+    // Double SHA256 checksum
+    let checksum_full = Sha256::digest(&Sha256::digest(&addr_bytes));
+    let checksum = &checksum_full[0..4];
+
+    // Append checksum
+    addr_bytes.extend_from_slice(checksum);
+
+    // Base58 encode
+    Ok(bs58::encode(&addr_bytes).into_string())
 }
 
-pub async fn send_transaction() -> HttpResponse {
-    HttpResponse::Ok().json(serde_json::json!({"message": "Not implemented"}))
+pub async fn generate_address(state: web::Data<AppState>) -> HttpResponse {
+    log::info!("🔑 /wallet/address/generate called");
+
+    // Get current index and master keys (release lock quickly)
+    let (current_index, master_privkey, master_pubkey) = {
+        let storage = state.storage.lock().unwrap();
+
+        let wallet = match storage.get_wallet() {
+            Ok(w) => w,
+            Err(e) => {
+                log::error!("   Failed to get wallet: {}", e);
+                return HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": e
+                }));
+            }
+        };
+
+        let index = wallet.current_index;
+
+        let privkey = match storage.get_master_private_key() {
+            Ok(k) => k,
+            Err(e) => {
+                log::error!("   Failed to get master private key: {}", e);
+                return HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": e
+                }));
+            }
+        };
+
+        let pubkey = match storage.get_master_public_key() {
+            Ok(k) => k,
+            Err(e) => {
+                log::error!("   Failed to get master public key: {}", e);
+                return HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": e
+                }));
+            }
+        };
+
+        (index, privkey, pubkey)
+    };
+
+    // Create BRC-43 invoice number: "2-receive address-{index}"
+    let invoice_number = format!("2-receive address-{}", current_index);
+    log::info!("   Invoice number: {}", invoice_number);
+
+    // Derive child public key using BRC-42 (self-derivation)
+    let derived_pubkey = match derive_child_public_key(&master_privkey, &master_pubkey, &invoice_number) {
+        Ok(pubkey) => {
+            log::info!("   ✅ Derived pubkey: {}", hex::encode(&pubkey));
+            pubkey
+        },
+        Err(e) => {
+            log::error!("   BRC-42 derivation failed: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": format!("BRC-42 derivation failed: {}", e)
+            }));
+        }
+    };
+
+    // Convert derived public key to Bitcoin address
+    let address = match pubkey_to_address(&derived_pubkey) {
+        Ok(addr) => addr,
+        Err(e) => {
+            log::error!("   Failed to create address: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": format!("Failed to create address: {}", e)
+            }));
+        }
+    };
+
+    log::info!("   ✅ Generated address: {}", address);
+
+    // Create AddressInfo
+    let address_info = crate::json_storage::AddressInfo {
+        index: current_index,
+        address: address.clone(),
+        public_key: hex::encode(&derived_pubkey),
+        used: false,
+        balance: 0,
+    };
+
+    // Add address to wallet and save (acquire lock again)
+    {
+        let mut storage = state.storage.lock().unwrap();
+        match storage.add_address(address_info) {
+            Ok(_) => {
+                log::info!("   ✅ Address saved to wallet.json");
+            },
+            Err(e) => {
+                log::error!("   Failed to save address: {}", e);
+                return HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": format!("Failed to save address: {}", e)
+                }));
+            }
+        }
+    }
+
+    // Return response in Go wallet format
+    HttpResponse::Ok().json(serde_json::json!({
+        "address": address,
+        "index": current_index,
+        "publicKey": hex::encode(&derived_pubkey)
+    }))
+}
+
+// Request structure for /transaction/send (frontend wallet)
+#[derive(Debug, Deserialize)]
+pub struct SendTransactionRequest {
+    #[serde(rename = "toAddress")]
+    pub to_address: String,
+    pub amount: i64,      // Satoshis
+    #[serde(rename = "feeRate")]
+    pub fee_rate: Option<i64>, // Satoshis per byte (currently ignored - deferred)
+}
+
+pub async fn send_transaction(
+    state: web::Data<AppState>,
+    body: web::Bytes,
+) -> HttpResponse {
+    log::info!("💸 /transaction/send called");
+
+    // Parse request
+    let req: SendTransactionRequest = match serde_json::from_slice(&body) {
+        Ok(r) => r,
+        Err(e) => {
+            log::error!("   Failed to parse request: {}", e);
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "success": false,
+                "error": format!("Invalid request: {}", e)
+            }));
+        }
+    };
+
+    log::info!("   To address: {}", req.to_address);
+    log::info!("   Amount: {} satoshis", req.amount);
+    if let Some(fee_rate) = req.fee_rate {
+        log::info!("   Fee rate: {} sat/byte (⚠️ currently ignored)", fee_rate);
+    }
+
+    // Validate address format (basic check)
+    if !req.to_address.starts_with('1') && !req.to_address.starts_with('3') {
+        log::error!("   Invalid address format");
+        return HttpResponse::BadRequest().json(serde_json::json!({
+            "success": false,
+            "error": "Invalid Bitcoin address format"
+        }));
+    }
+
+    // Validate amount
+    if req.amount <= 0 {
+        log::error!("   Invalid amount: {}", req.amount);
+        return HttpResponse::BadRequest().json(serde_json::json!({
+            "success": false,
+            "error": "Amount must be greater than 0"
+        }));
+    }
+
+    // Convert to CreateActionRequest format
+    let create_req = CreateActionRequest {
+        outputs: vec![CreateActionOutput {
+            satoshis: Some(req.amount),
+            script: None,
+            address: Some(req.to_address.clone()),
+            custom_instructions: None,
+            output_description: None,
+        }],
+        description: Some(format!("Send {} satoshis to {}", req.amount, req.to_address)),
+        labels: Some(vec!["send".to_string(), "wallet".to_string()]),
+        options: Some(CreateActionOptions {
+            sign_and_process: Some(true),
+            accept_delayed_broadcast: Some(false), // Don't delay - we want to broadcast immediately
+            return_txid_only: Some(false),
+            no_send: Some(true), // Don't let createAction broadcast - we'll do it ourselves
+            randomize_outputs: Some(true), // Default behavior
+        }),
+        input_beef: None,
+    };
+
+    log::info!("   📝 Creating transaction...");
+
+    // Call createAction to create and sign the transaction
+    let create_body = match serde_json::to_vec(&create_req) {
+        Ok(b) => b,
+        Err(e) => {
+            log::error!("   Failed to serialize CreateActionRequest: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "success": false,
+                "error": format!("Failed to prepare transaction: {}", e)
+            }));
+        }
+    };
+
+    let create_response = create_action(state.clone(), web::Bytes::from(create_body)).await;
+
+    // Extract the signed transaction from the response
+    let (txid, atomic_beef_hex) = match create_response.status().is_success() {
+        true => {
+            let body_bytes = match actix_web::body::to_bytes(create_response.into_body()).await {
+                Ok(bytes) => bytes,
+                Err(e) => {
+                    log::error!("   Failed to read createAction response body: {}", e);
+                    return HttpResponse::InternalServerError().json(serde_json::json!({
+                        "success": false,
+                        "error": format!("Failed to read transaction response: {}", e)
+                    }));
+                }
+            };
+
+            match serde_json::from_slice::<serde_json::Value>(&body_bytes) {
+                Ok(json_resp) => {
+                    let txid = match json_resp["txid"].as_str() {
+                        Some(s) => s.to_string(),
+                        None => {
+                            log::error!("   Missing txid in response");
+                            return HttpResponse::InternalServerError().json(serde_json::json!({
+                                "success": false,
+                                "error": "Transaction created but missing TXID"
+                            }));
+                        }
+                    };
+
+                    log::info!("   ✅ Transaction created and signed: {}", txid);
+
+                    // Extract rawTx (Atomic BEEF) - can be hex string or byte array
+                    let atomic_beef_hex = if let Some(hex_str) = json_resp["tx"].as_str() {
+                        // If it's a hex string, use it directly
+                        log::info!("   📦 TX field is hex string ({} chars)", hex_str.len());
+                        hex_str.to_string()
+                    } else if let Some(byte_array) = json_resp["tx"].as_array() {
+                        // If it's a byte array (Vec<u8> serialized as JSON array), convert to hex
+                        log::info!("   📦 TX field is byte array ({} bytes)", byte_array.len());
+                        let bytes: Result<Vec<u8>, String> = byte_array
+                            .iter()
+                            .enumerate()
+                            .map(|(i, v)| {
+                                v.as_u64()
+                                    .ok_or_else(|| format!("Invalid byte value at index {}", i))
+                                    .and_then(|n| {
+                                        if n > 255 {
+                                            Err(format!("Byte value out of range at index {}: {}", i, n))
+                                        } else {
+                                            Ok(n as u8)
+                                        }
+                                    })
+                            })
+                            .collect();
+
+                        match bytes {
+                            Ok(b) => {
+                                log::info!("   ✅ Converted byte array to hex ({} bytes)", b.len());
+                                hex::encode(b)
+                            },
+                            Err(e) => {
+                                log::error!("   Failed to parse tx as byte array: {}", e);
+                                return HttpResponse::InternalServerError().json(serde_json::json!({
+                                    "success": false,
+                                    "error": format!("Failed to parse transaction bytes: {}", e)
+                                }));
+                            }
+                        }
+                    } else {
+                        log::error!("   Missing or invalid tx in response (type: {:?})", json_resp["tx"]);
+                        return HttpResponse::InternalServerError().json(serde_json::json!({
+                            "success": false,
+                            "error": "Transaction created but missing rawTx"
+                        }));
+                    };
+
+                    (txid, atomic_beef_hex)
+                },
+                Err(e) => {
+                    log::error!("   Failed to parse createAction response JSON: {}", e);
+                    return HttpResponse::InternalServerError().json(serde_json::json!({
+                        "success": false,
+                        "error": format!("Failed to parse transaction response: {}", e)
+                    }));
+                }
+            }
+        },
+        false => {
+            // Try to extract error message from response
+            let body_bytes = actix_web::body::to_bytes(create_response.into_body()).await.ok();
+            let error_msg = if let Some(bytes) = body_bytes {
+                if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&bytes) {
+                    json["error"].as_str().unwrap_or("Transaction creation failed").to_string()
+                } else {
+                    "Transaction creation failed".to_string()
+                }
+            } else {
+                "Transaction creation failed".to_string()
+            };
+
+            log::error!("   Transaction creation failed: {}", error_msg);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "success": false,
+                "error": error_msg
+            }));
+        }
+    };
+
+    log::info!("   📦 Extracting raw transaction from Atomic BEEF...");
+
+    // Extract raw transaction hex from Atomic BEEF
+    let raw_tx_hex = match extract_raw_tx_from_atomic_beef(&atomic_beef_hex) {
+        Ok(hex) => {
+            log::info!("   ✅ Raw transaction extracted: {} bytes", hex.len() / 2);
+            hex
+        },
+        Err(e) => {
+            log::error!("   Failed to extract raw transaction from BEEF: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "success": false,
+                "error": format!("Failed to extract transaction: {}", e)
+            }));
+        }
+    };
+
+    log::info!("   📡 Broadcasting transaction...");
+
+    // Broadcast the raw transaction
+    match broadcast_transaction(&raw_tx_hex).await {
+        Ok(message) => {
+            log::info!("   ✅ Transaction broadcast successful: {}", message);
+
+            let whats_on_chain_url = format!("https://whatsonchain.com/tx/{}", txid);
+
+            HttpResponse::Ok().json(serde_json::json!({
+                "success": true,
+                "txid": txid,
+                "whatsOnChainUrl": whats_on_chain_url,
+                "message": "Transaction sent successfully"
+            }))
+        },
+        Err(e) => {
+            log::error!("   ❌ Transaction broadcast failed: {}", e);
+            // Even if broadcast fails, we still have a valid transaction
+            // Return success but note the broadcast issue
+            HttpResponse::Ok().json(serde_json::json!({
+                "success": true,
+                "txid": txid,
+                "whatsOnChainUrl": format!("https://whatsonchain.com/tx/{}", txid),
+                "message": format!("Transaction created but broadcast may have failed: {}", e)
+            }))
+        }
+    }
+}
+
+// Helper function to extract raw transaction hex from Atomic BEEF
+fn extract_raw_tx_from_atomic_beef(atomic_beef_hex: &str) -> Result<String, String> {
+    // Decode hex to bytes
+    let beef_bytes = hex::decode(atomic_beef_hex)
+        .map_err(|e| format!("Invalid BEEF hex: {}", e))?;
+
+    // Parse Atomic BEEF
+    let (_txid, beef) = crate::beef::Beef::from_atomic_beef_bytes(&beef_bytes)
+        .map_err(|e| format!("Failed to parse Atomic BEEF: {}", e))?;
+
+    // Main transaction is the LAST one in the transactions array
+    let main_tx = beef.main_transaction()
+        .ok_or("No main transaction in BEEF")?;
+
+    // Convert to hex
+    Ok(hex::encode(main_tx))
 }
 
 // Request structure for adding domain to whitelist

@@ -23,3 +23,7 @@ Write-Host '  "📝 Standard BEEF hex"'
 Write-Host '  "🔍 Atomic BEEF starts with"'
 Write-Host ""
 Write-Host "Compare the structure to see if it matches!" -ForegroundColor Yellow
+
+
+
+

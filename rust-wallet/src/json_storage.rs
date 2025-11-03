@@ -67,6 +67,33 @@ impl JsonStorage {
         Ok(&wallet.addresses)
     }
 
+    /// Add a new address to the wallet and save
+    pub fn add_address(&mut self, address: AddressInfo) -> Result<(), String> {
+        let wallet = self.get_wallet_mut()?;
+        wallet.addresses.push(address);
+        wallet.current_index += 1;
+        self.save()?;
+        Ok(())
+    }
+
+    /// Get mutable reference to wallet (for modifications)
+    fn get_wallet_mut(&mut self) -> Result<&mut Wallet, String> {
+        self.wallet.as_mut().ok_or("No wallet loaded".to_string())
+    }
+
+    /// Save wallet to file
+    pub fn save(&self) -> Result<(), String> {
+        let wallet = self.wallet.as_ref().ok_or("No wallet loaded".to_string())?;
+
+        let data = serde_json::to_string_pretty(wallet)
+            .map_err(|e| format!("Failed to serialize wallet: {}", e))?;
+
+        fs::write(&self.wallet_path, data)
+            .map_err(|e| format!("Failed to write wallet file: {}", e))?;
+
+        Ok(())
+    }
+
     /// Get the master private key (m) from mnemonic
     /// This is the root key before any derivation
     /// Used for BRC-42/BRC-84 key derivation
