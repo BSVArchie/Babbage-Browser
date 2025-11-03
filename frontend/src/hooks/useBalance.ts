@@ -1,14 +1,23 @@
 import { useState, useCallback, useEffect } from 'react';
 // Removed useWallet import - using HD wallet system directly
 
+// Helper function to calculate USD value from balance and price (reusable)
+export const calculateUsdValue = (balanceSatoshis: number, bsvPriceUsd: number): number => {
+  if (balanceSatoshis <= 0 || bsvPriceUsd <= 0) {
+    return 0;
+  }
+  return (balanceSatoshis / 100000000) * bsvPriceUsd;
+};
+
 export const useBalance = () => {
   const [balance, setBalance] = useState(0);
   const [usdValue, setUsdValue] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
+  const [bsvPrice, setBsvPrice] = useState<number>(0); // BSV price in USD (separate from balance)
+  const [isLoading, setIsLoading] = useState(true); // Start as true since we'll fetch on mount
   const [error, setError] = useState<string | null>(null);
 
   const fetchBalance = useCallback(async (): Promise<number> => {
-    setIsLoading(true);
+    // Loading state managed by refreshBalance
     setError(null);
 
     try {
@@ -26,8 +35,6 @@ export const useBalance = () => {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch balance';
       setError(errorMessage);
       throw new Error(errorMessage);
-    } finally {
-      setIsLoading(false);
     }
   }, []);
 
@@ -57,24 +64,47 @@ export const useBalance = () => {
         throw new Error('Invalid price data received from CryptoCompare API');
       }
 
-      const usdValue = (balance / 100000000) * price; // Convert satoshis to BSV, then to USD
-      setUsdValue(usdValue);
-
-      console.log(`💰 BSV Price: $${price}, Balance: ${balance} satoshis, USD Value: $${usdValue.toFixed(2)}`);
-      return usdValue;
+      // Store price separately - USD value will be calculated when balance is available
+      setBsvPrice(price);
+      console.log(`💰 BSV Price: $${price}`);
+      return price;
 
     } catch (err) {
       console.error('❌ Failed to fetch BSV price:', err);
       console.error('🔍 This indicates a problem with the CryptoCompare API - investigate network connectivity and API status');
-      setUsdValue(0);
+      setBsvPrice(0);
       throw new Error(`Price fetch failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
-  }, [balance]);
-
+  }, []); // Remove balance dependency - now independent
 
   const refreshBalance = useCallback(async () => {
-    await fetchBalance();
-    await fetchUsdPrice();
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // Run both in parallel for better performance
+      const [balanceResult, priceResult] = await Promise.all([
+        fetchBalance(),
+        fetchUsdPrice()
+      ]);
+
+      // Calculate USD value immediately with both results
+      // This reduces state updates and eliminates the separate useEffect
+      const calculatedUsdValue = calculateUsdValue(balanceResult, priceResult);
+      setUsdValue(calculatedUsdValue);
+
+      console.log(`💰 Balance: ${balanceResult} satoshis, Price: $${priceResult}, USD Value: $${calculatedUsdValue.toFixed(2)}`);
+    } catch (err) {
+      // Error handling already done in individual functions
+      // But we should log if both fail
+      const errorMessage = err instanceof Error ? err.message : 'Failed to refresh balance';
+      setError(errorMessage);
+      console.error('❌ Error in refreshBalance:', errorMessage);
+      // Reset USD value on error
+      setUsdValue(0);
+    } finally {
+      setIsLoading(false);
+    }
   }, [fetchBalance, fetchUsdPrice]);
 
   // Auto-refresh balance every 30 seconds - DISABLED FOR DEBUGGING
@@ -86,9 +116,15 @@ export const useBalance = () => {
   //   return () => clearInterval(interval);
   // }, [refreshBalance]);
 
-  // Initial load
+  // Initial load - deferred to allow component to render first
   useEffect(() => {
-    refreshBalance();
+    // Small timeout to allow panel to render before fetching
+    // 100ms delay is imperceptible to user but allows render
+    const timeoutId = setTimeout(() => {
+      refreshBalance();
+    }, 100);
+
+    return () => clearTimeout(timeoutId);
   }, [refreshBalance]);
 
   return {

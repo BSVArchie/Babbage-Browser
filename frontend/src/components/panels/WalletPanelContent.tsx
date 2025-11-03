@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { TransactionForm } from '../TransactionForm';
 import { useBalance } from '../../hooks/useBalance';
 import { useAddress } from '../../hooks/useAddress';
@@ -17,7 +17,38 @@ const WalletPanel = () => {
   const [showReceiveAddress, setShowReceiveAddress] = useState(false);
   const [addressCopiedMessage, setAddressCopiedMessage] = useState<string | null>(null);
 
+  // State for button click animations
+  const [clickedButtons, setClickedButtons] = useState<Set<string>>(new Set());
+  const [copyAgainClicked, setCopyAgainClicked] = useState(false);
+  const [copyLinkClicked, setCopyLinkClicked] = useState(false);
+
+  // Refs for animation timeouts
+  const animationTimeouts = useRef<Map<string, NodeJS.Timeout>>(new Map());
+
   // No wallet initialization needed - using hardcoded test address
+
+  // Helper function to trigger button click animation
+  const triggerButtonAnimation = (buttonId: string, duration: number = 300) => {
+    setClickedButtons(prev => new Set(prev).add(buttonId));
+
+    // Clear existing timeout if any
+    const existingTimeout = animationTimeouts.current.get(buttonId);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+    }
+
+    // Remove animation class after duration
+    const timeout = setTimeout(() => {
+      setClickedButtons(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(buttonId);
+        return newSet;
+      });
+      animationTimeouts.current.delete(buttonId);
+    }, duration);
+
+    animationTimeouts.current.set(buttonId, timeout);
+  };
 
   const handleSendClick = () => {
     // Clear all other display states first
@@ -31,6 +62,9 @@ const WalletPanel = () => {
 
   const handleReceiveClick = async () => {
     console.log('🔄 Receive button clicked');
+
+    // Immediately show visual feedback - keep clicked state until operation completes
+    setClickedButtons(prev => new Set(prev).add('receive'));
 
     // Clear all other display states first
     setShowSendForm(false);
@@ -53,6 +87,15 @@ const WalletPanel = () => {
     } catch (error) {
       console.error('❌ Failed to generate address:', error);
       setAddressCopiedMessage(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      // Remove clicked state after operation completes (with small delay for visual feedback)
+      setTimeout(() => {
+        setClickedButtons(prev => {
+          const newSet = new Set(prev);
+          newSet.delete('receive');
+          return newSet;
+        });
+      }, 200); // Small delay to show completion feedback
     }
   };
 
@@ -70,11 +113,40 @@ const WalletPanel = () => {
   };
 
 
+  const handleNavButtonClick = (buttonId: string) => {
+    // Trigger animation
+    triggerButtonAnimation(buttonId, 300);
+    // Clear all states
+    clearAllStates();
+  };
+
   const clearAllStates = () => {
     setShowSendForm(false);
     setShowReceiveAddress(false);
     setAddressCopiedMessage(null);
     setTransactionResult(null);
+  };
+
+  const handleCopyAgain = async () => {
+    try {
+      await navigator.clipboard.writeText(currentAddress || '');
+      setCopyAgainClicked(true);
+      setTimeout(() => setCopyAgainClicked(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy address:', error);
+    }
+  };
+
+  const handleCopyLink = async () => {
+    if (transactionResult?.whatsOnChainUrl) {
+      try {
+        await navigator.clipboard.writeText(transactionResult.whatsOnChainUrl);
+        setCopyLinkClicked(true);
+        setTimeout(() => setCopyLinkClicked(false), 2000);
+      } catch (error) {
+        console.error('Failed to copy link:', error);
+      }
+    }
   };
 
   return (
@@ -116,28 +188,58 @@ const WalletPanel = () => {
         {/* Action Buttons */}
         <div className="wallet-actions">
           <button
-            className="wallet-button receive-button"
+            className={`wallet-button receive-button ${clickedButtons.has('receive') || isGenerating ? 'clicked' : ''}`}
             onClick={handleReceiveClick}
             disabled={isGenerating}
           >
             {isGenerating ? 'Generating...' : 'Receive'}
           </button>
           <button
-            className="wallet-button send-button"
+            className={`wallet-button send-button ${showSendForm ? 'active' : ''}`}
             onClick={handleSendClick}
           >
-            Send
+            {showSendForm ? 'Close Send' : 'Send'}
           </button>
         </div>
 
         {/* Navigation Grid */}
         <div className="navigation-grid">
-          <button className="nav-grid-button" onClick={clearAllStates}>Certificates</button>
-          <button className="nav-grid-button" onClick={clearAllStates}>History</button>
-          <button className="nav-grid-button" onClick={clearAllStates}>Settings</button>
-          <button className="nav-grid-button" onClick={clearAllStates}>Tokens</button>
-          <button className="nav-grid-button" onClick={clearAllStates}>Baskets</button>
-          <button className="nav-grid-button" onClick={clearAllStates}>Exchange</button>
+          <button
+            className={`nav-grid-button ${clickedButtons.has('certificates') ? 'clicked' : ''}`}
+            onClick={() => handleNavButtonClick('certificates')}
+          >
+            Certificates
+          </button>
+          <button
+            className={`nav-grid-button ${clickedButtons.has('history') ? 'clicked' : ''}`}
+            onClick={() => handleNavButtonClick('history')}
+          >
+            History
+          </button>
+          <button
+            className={`nav-grid-button ${clickedButtons.has('settings') ? 'clicked' : ''}`}
+            onClick={() => handleNavButtonClick('settings')}
+          >
+            Settings
+          </button>
+          <button
+            className={`nav-grid-button ${clickedButtons.has('tokens') ? 'clicked' : ''}`}
+            onClick={() => handleNavButtonClick('tokens')}
+          >
+            Tokens
+          </button>
+          <button
+            className={`nav-grid-button ${clickedButtons.has('baskets') ? 'clicked' : ''}`}
+            onClick={() => handleNavButtonClick('baskets')}
+          >
+            Baskets
+          </button>
+          <button
+            className={`nav-grid-button ${clickedButtons.has('exchange') ? 'clicked' : ''}`}
+            onClick={() => handleNavButtonClick('exchange')}
+          >
+            Exchange
+          </button>
         </div>
 
         {/* Dynamic Content Area */}
@@ -158,10 +260,10 @@ const WalletPanel = () => {
               <div className="address-display">
                 <code>{currentAddress || 'Generating...'}</code>
                 <button
-                  className="copy-button"
-                  onClick={() => navigator.clipboard.writeText(currentAddress || '')}
+                  className={`copy-button ${copyAgainClicked ? 'clicked' : ''}`}
+                  onClick={handleCopyAgain}
                 >
-                  Copy Again
+                  {copyAgainClicked ? '✓ Copied!' : 'Copy Again'}
                 </button>
               </div>
               <button
@@ -194,25 +296,21 @@ const WalletPanel = () => {
                     View on WhatsOnChain
                   </a>
                   <button
-                    onClick={() => {
-                      if (transactionResult.whatsOnChainUrl) {
-                        navigator.clipboard.writeText(transactionResult.whatsOnChainUrl);
-                        // You could add a temporary "Copied!" message here if desired
-                      }
-                    }}
+                    onClick={handleCopyLink}
                     className="copy-link-button"
                     style={{
                       marginLeft: '10px',
                       padding: '4px 8px',
-                      backgroundColor: 'var(--wallet-gold-accent)',
-                      color: 'var(--wallet-text-dark)',
+                      backgroundColor: copyLinkClicked ? 'var(--wallet-dark-green)' : 'var(--wallet-gold-accent)',
+                      color: copyLinkClicked ? 'var(--wallet-text-light)' : 'var(--wallet-text-dark)',
                       border: '1px solid var(--wallet-text-light)',
                       borderRadius: '4px',
                       cursor: 'pointer',
-                      fontSize: '12px'
+                      fontSize: '12px',
+                      transition: 'all 0.2s ease'
                     }}
                   >
-                    Copy Link
+                    {copyLinkClicked ? '✓ Copied!' : 'Copy Link'}
                   </button>
                 </div>
               )}

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useTransaction } from '../hooks/useTransaction';
 import type { TransactionData, TransactionResponse } from '../types/transaction';
 
@@ -8,6 +8,8 @@ interface TransactionFormProps {
   isLoading?: boolean;
   error?: string | null;
 }
+
+type AmountInputMode = 'bsv' | 'usd';
 
 export const TransactionForm: React.FC<TransactionFormProps> = ({
   onTransactionCreated,
@@ -26,6 +28,74 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
   const [errors, setErrors] = useState<Partial<TransactionData>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // USD conversion state
+  const [amountInputMode, setAmountInputMode] = useState<AmountInputMode>('bsv');
+  const [bsvPrice, setBsvPrice] = useState<number>(0);
+  const [isFetchingPrice, setIsFetchingPrice] = useState(false);
+
+  // Fetch BSV price when switching to USD mode
+  const fetchBsvPrice = useCallback(async (): Promise<number> => {
+    if (bsvPrice > 0) {
+      return bsvPrice; // Use cached price if available
+    }
+
+    setIsFetchingPrice(true);
+    try {
+      console.log('🔍 Fetching BSV price for USD conversion...');
+      const response = await fetch('https://min-api.cryptocompare.com/data/price?fsym=BSV&tsyms=USD', {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        },
+        mode: 'cors'
+      });
+
+      if (!response.ok) {
+        throw new Error(`Price API failed with status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const price = parseFloat(data.USD);
+
+      if (!price || price <= 0) {
+        throw new Error('Invalid price data received');
+      }
+
+      setBsvPrice(price);
+      console.log(`💰 BSV Price: $${price}`);
+      return price;
+    } catch (err) {
+      console.error('❌ Failed to fetch BSV price:', err);
+      throw err;
+    } finally {
+      setIsFetchingPrice(false);
+    }
+  }, [bsvPrice]);
+
+  // Fetch price when switching to USD mode
+  useEffect(() => {
+    if (amountInputMode === 'usd' && bsvPrice === 0) {
+      fetchBsvPrice().catch(err => {
+        console.error('Failed to fetch price:', err);
+      });
+    }
+  }, [amountInputMode, bsvPrice, fetchBsvPrice]);
+
+  // Convert USD to satoshis
+  const convertUsdToSatoshis = useCallback((usdAmount: number, price: number): number => {
+    if (price <= 0) return 0;
+    const bsvAmount = usdAmount / price;
+    return Math.floor(bsvAmount * 100000000); // Convert to satoshis
+  }, []);
+
+  // Convert satoshis to USD
+  const convertSatoshisToUsd = useCallback((satoshis: number, price: number): number => {
+    if (price <= 0) return 0;
+    const bsvAmount = satoshis / 100000000;
+    return bsvAmount * price;
+  }, []);
+
   const validateForm = useCallback((): boolean => {
     const newErrors: Partial<TransactionData> = {};
 
@@ -36,16 +106,34 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
       newErrors.recipient = 'Invalid Bitcoin address format';
     }
 
-    // Validate amount
+    // Validate amount (handle both BSV and USD modes)
     const amount = parseFloat(formData.amount);
     if (!formData.amount.trim()) {
       newErrors.amount = 'Amount is required';
     } else if (isNaN(amount) || amount <= 0) {
       newErrors.amount = 'Amount must be a positive number';
-    } else if (amount < 0.00000546) { // Minimum 546 satoshis
-      newErrors.amount = 'Amount must be at least 546 satoshis (0.00000546 BSV)';
-    } else if (amount * 100000000 > balance) { // balance is already in satoshis
-      newErrors.amount = 'Insufficient balance';
+    } else {
+      let satoshis: number;
+
+      if (amountInputMode === 'usd') {
+        if (bsvPrice <= 0) {
+          newErrors.amount = 'Price not available. Please switch to BSV mode or try again.';
+        } else {
+          satoshis = convertUsdToSatoshis(amount, bsvPrice);
+          if (satoshis < 546) {
+            newErrors.amount = 'Amount too small (minimum ~$0.01 USD)';
+          } else if (satoshis > balance) {
+            newErrors.amount = 'Insufficient balance';
+          }
+        }
+      } else {
+        // BSV mode
+        if (amount < 0.00000546) { // Minimum 546 satoshis
+          newErrors.amount = 'Amount must be at least 546 satoshis (0.00000546 BSV)';
+        } else if (amount * 100000000 > balance) {
+          newErrors.amount = 'Insufficient balance';
+        }
+      }
     }
 
     // Validate fee rate
@@ -56,7 +144,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  }, [formData, balance]);
+  }, [formData, balance, amountInputMode, bsvPrice, convertUsdToSatoshis]);
 
   const handleInputChange = useCallback((field: keyof TransactionData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -66,6 +154,39 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
       setErrors(prev => ({ ...prev, [field]: undefined }));
     }
   }, [errors]);
+
+  const handleAmountModeToggle = useCallback(async () => {
+    const newMode = amountInputMode === 'bsv' ? 'usd' : 'bsv';
+
+    // If switching to USD, fetch price if needed
+    if (newMode === 'usd' && bsvPrice === 0) {
+      try {
+        await fetchBsvPrice();
+      } catch (err) {
+        console.error('Failed to fetch price:', err);
+        // Still allow switching, but validation will fail
+      }
+    }
+
+    // Convert current amount when switching modes
+    if (formData.amount) {
+      const currentAmount = parseFloat(formData.amount);
+      if (!isNaN(currentAmount) && currentAmount > 0) {
+        if (amountInputMode === 'bsv' && bsvPrice > 0) {
+          // Converting from BSV to USD
+          const usdAmount = convertSatoshisToUsd(currentAmount * 100000000, bsvPrice);
+          setFormData(prev => ({ ...prev, amount: usdAmount.toFixed(2) }));
+        } else if (amountInputMode === 'usd' && bsvPrice > 0) {
+          // Converting from USD to BSV
+          const satoshis = convertUsdToSatoshis(currentAmount, bsvPrice);
+          const bsvAmount = satoshis / 100000000;
+          setFormData(prev => ({ ...prev, amount: bsvAmount.toFixed(8) }));
+        }
+      }
+    }
+
+    setAmountInputMode(newMode);
+  }, [amountInputMode, bsvPrice, formData.amount, fetchBsvPrice, convertSatoshisToUsd, convertUsdToSatoshis]);
 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,9 +200,22 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
     try {
       console.log('🚀 Form: Starting transaction send with:', formData);
 
+      // Convert amount to satoshis if in USD mode
+      let transactionData = { ...formData };
+      if (amountInputMode === 'usd') {
+        const usdAmount = parseFloat(formData.amount);
+        const satoshis = convertUsdToSatoshis(usdAmount, bsvPrice);
+        const bsvAmount = satoshis / 100000000;
+        transactionData = {
+          ...formData,
+          amount: bsvAmount.toFixed(8) // Convert to BSV format for backend
+        };
+        console.log(`💰 Converted $${usdAmount.toFixed(2)} USD to ${bsvAmount.toFixed(8)} BSV (${satoshis} satoshis)`);
+      }
+
       // Send transaction (create + sign + broadcast in one call)
       console.log('📝 Sending transaction...');
-      const result = await sendTransaction(formData);
+      const result = await sendTransaction(transactionData);
       console.log('✅ Transaction sent successfully:', result);
 
       console.log('🎉 Transaction send successful:', result);
@@ -110,7 +244,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
       console.log('🏁 Form: Setting isSubmitting to false');
       setIsSubmitting(false);
     }
-  }, [formData, validateForm, sendTransaction, onTransactionCreated]);
+  }, [formData, validateForm, sendTransaction, onTransactionCreated, amountInputMode, bsvPrice, convertUsdToSatoshis]);
 
   const formatBalance = useCallback((satoshis: number): string => {
     const bsv = satoshis / 100000000;
@@ -150,29 +284,62 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
         </div>
 
         <div className="form-group">
-          <label htmlFor="amount">Amount (BSV)</label>
+          <div className="amount-label-container">
+            <label htmlFor="amount">
+              Amount ({amountInputMode === 'usd' ? 'USD' : 'BSV'})
+            </label>
+            <button
+              type="button"
+              className={`amount-mode-toggle ${amountInputMode === 'usd' ? 'usd-active' : ''}`}
+              onClick={handleAmountModeToggle}
+              disabled={isSubmitting || isLoading || isFetchingPrice}
+              title={`Switch to ${amountInputMode === 'bsv' ? 'USD' : 'BSV'} input`}
+            >
+              {isFetchingPrice ? '⏳' : amountInputMode === 'bsv' ? '💵 USD' : '₿ BSV'}
+            </button>
+          </div>
           <div className="amount-input-container">
             <input
               id="amount"
               type="number"
-              step="0.00000001"
-              min="0.00000546"
-              max={formatBalance(balance)}
+              step={amountInputMode === 'usd' ? '0.01' : '0.00000001'}
+              min={amountInputMode === 'usd' ? '0.01' : '0.00000546'}
+              max={amountInputMode === 'usd'
+                ? (bsvPrice > 0 ? convertSatoshisToUsd(balance, bsvPrice).toFixed(2) : undefined)
+                : formatBalance(balance)}
               value={formData.amount}
               onChange={(e) => handleInputChange('amount', e.target.value)}
-              placeholder="0.00000000"
+              placeholder={amountInputMode === 'usd' ? '0.00' : '0.00000000'}
               className={errors.amount ? 'error' : ''}
               disabled={isSubmitting || isLoading}
             />
             <button
               type="button"
               className="max-button"
-              onClick={() => handleInputChange('amount', formatBalance(balance))}
-              disabled={isSubmitting || isLoading}
+              onClick={() => {
+                if (amountInputMode === 'usd' && bsvPrice > 0) {
+                  const maxUsd = convertSatoshisToUsd(balance, bsvPrice);
+                  handleInputChange('amount', maxUsd.toFixed(2));
+                } else {
+                  handleInputChange('amount', formatBalance(balance));
+                }
+              }}
+              disabled={isSubmitting || isLoading || (amountInputMode === 'usd' && bsvPrice === 0)}
             >
               MAX
             </button>
           </div>
+          {amountInputMode === 'usd' && bsvPrice > 0 && formData.amount && !isNaN(parseFloat(formData.amount)) && parseFloat(formData.amount) > 0 && (
+            <div className="amount-conversion-hint">
+              ≈ {convertUsdToSatoshis(parseFloat(formData.amount), bsvPrice).toLocaleString()} satoshis
+              {' '}({(convertUsdToSatoshis(parseFloat(formData.amount), bsvPrice) / 100000000).toFixed(8)} BSV)
+            </div>
+          )}
+          {amountInputMode === 'bsv' && formData.amount && !isNaN(parseFloat(formData.amount)) && parseFloat(formData.amount) > 0 && bsvPrice > 0 && (
+            <div className="amount-conversion-hint">
+              ≈ ${convertSatoshisToUsd(parseFloat(formData.amount) * 100000000, bsvPrice).toFixed(2)} USD
+            </div>
+          )}
           {errors.amount && <span className="field-error">{errors.amount}</span>}
         </div>
 
