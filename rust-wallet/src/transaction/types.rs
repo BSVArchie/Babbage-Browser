@@ -11,14 +11,8 @@ pub enum TransactionError {
     #[error("invalid transaction format: {0}")]
     InvalidFormat(String),
 
-    #[error("serialization error: {0}")]
-    Serialization(String),
-
     #[error("invalid script: {0}")]
     InvalidScript(String),
-
-    #[error("signing error: {0}")]
-    Signing(String),
 
     #[error("hex decode error: {0}")]
     HexDecode(#[from] hex::FromHexError),

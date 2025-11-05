@@ -6,7 +6,7 @@
 //! **Reference**: BRC-42 specification
 //! https://github.com/bitcoin-sv/BRCs/blob/master/key-derivation/0042.md
 
-use secp256k1::{Secp256k1, SecretKey, PublicKey, Scalar};
+use secp256k1::{Secp256k1, SecretKey, PublicKey};
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 

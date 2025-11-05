@@ -57,7 +57,8 @@ impl Beef {
     /// Returns (subject_txid, Beef)
     pub fn from_atomic_beef_base64(base64_str: &str) -> Result<(String, Self), String> {
         // Decode from base64
-        let bytes = base64::decode(base64_str)
+        use base64::{Engine as _, engine::general_purpose};
+        let bytes = general_purpose::STANDARD.decode(base64_str)
             .map_err(|e| format!("Invalid base64: {}", e))?;
 
         Self::from_atomic_beef_bytes(&bytes)
@@ -271,7 +272,7 @@ impl Beef {
             .as_array()
             .ok_or("Missing nodes array in TSC proof")?;
 
-        let tree_height = nodes.len() as u8;
+        let _tree_height = nodes.len() as u8;
 
         // Convert TSC proof to BUMP format
         // This matches the TypeScript SDK's convertProofToMerklePath function
@@ -291,12 +292,6 @@ impl Beef {
         Ok(())
     }
 
-    /// Legacy method - DEPRECATED! Use add_tsc_merkle_proof instead!
-    /// This method cannot create proper BUMP format without transaction index
-    #[deprecated(note = "Use add_tsc_merkle_proof with TSC proof format instead")]
-    pub fn add_merkle_proof_from_woc(&mut self, _tx_index: usize, _proof_json: &serde_json::Value) -> Result<(), String> {
-        Err("add_merkle_proof_from_woc is deprecated - use add_tsc_merkle_proof with TSC proof format".to_string())
-    }
 
     /// Serialize BEEF to bytes
     pub fn to_bytes(&self) -> Result<Vec<u8>, String> {
@@ -700,15 +695,22 @@ mod tests {
         // Add parent transaction
         let tx_index = beef.add_parent_transaction(parent_tx.clone());
 
-        // Add BUMP for parent
-        let bump_json = serde_json::json!({
-            "block_height": 918980,
-            "merkle": [
+        // Calculate parent TXID for TSC proof
+        use sha2::{Sha256, Digest};
+        let first_hash = Sha256::digest(&parent_tx);
+        let second_hash = Sha256::digest(&first_hash);
+        let parent_txid = hex::encode(second_hash.iter().rev().copied().collect::<Vec<u8>>());
+
+        // Add BUMP for parent using TSC format (converted from old WOC format)
+        let tsc_proof = serde_json::json!({
+            "height": 918980,
+            "index": 0,  // Transaction index in block (using 0 for test)
+            "nodes": [
                 "9b18d77b48fde9b46d54b75d372e30a74cba0114cad4796f8f1d91946866a8bd",
                 "45b8d1a256e4de964d2a70408e3ae4265b43544425ea40f370cd76d367575b0e"
             ]
         });
-        beef.add_merkle_proof_from_woc(tx_index, &bump_json).unwrap();
+        beef.add_tsc_merkle_proof(&parent_txid, tx_index, &tsc_proof).unwrap();
 
         // Add main transaction
         beef.set_main_transaction(main_tx.clone());
@@ -738,13 +740,21 @@ mod tests {
 
         // Add parent with BUMP
         let parent_tx = vec![0xAA; 10];
-        let tx_idx = beef.add_parent_transaction(parent_tx);
+        let tx_idx = beef.add_parent_transaction(parent_tx.clone());
 
-        let bump_json = serde_json::json!({
-            "block_height": 100,
-            "merkle": ["9b18d77b48fde9b46d54b75d372e30a74cba0114cad4796f8f1d91946866a8bd"]
+        // Calculate parent TXID for TSC proof
+        use sha2::{Sha256, Digest};
+        let first_hash = Sha256::digest(&parent_tx);
+        let second_hash = Sha256::digest(&first_hash);
+        let parent_txid = hex::encode(second_hash.iter().rev().copied().collect::<Vec<u8>>());
+
+        // Add BUMP using TSC format
+        let tsc_proof = serde_json::json!({
+            "height": 100,
+            "index": 0,  // Transaction index in block (using 0 for test)
+            "nodes": ["9b18d77b48fde9b46d54b75d372e30a74cba0114cad4796f8f1d91946866a8bd"]
         });
-        beef.add_merkle_proof_from_woc(tx_idx, &bump_json).unwrap();
+        beef.add_tsc_merkle_proof(&parent_txid, tx_idx, &tsc_proof).unwrap();
 
         // Add main tx (no BUMP)
         let main_tx = vec![0xBB; 10];
