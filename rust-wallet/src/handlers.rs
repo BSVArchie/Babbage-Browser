@@ -2607,14 +2607,90 @@ pub async fn sign_action(
 
                                                         match serde_json::from_str::<serde_json::Value>(&proof_text) {
                                                             Ok(tsc_json) => {
-                                                                // WhatsOnChain returns array: [{index, txOrId, target, nodes}]
-                                                                let tsc_obj = if tsc_json.is_array() {
-                                                                    tsc_json.get(0)
-                                                                } else {
-                                                                    Some(&tsc_json)
-                                                                };
+                                                                // Check if response is null (transaction not yet in a block)
+                                                                if tsc_json.is_null() {
+                                                                    log::warn!("   ⚠️  TSC proof is null - transaction {} not yet confirmed in a block", utxo.txid);
+                                                                    log::warn!("   ⚠️  Retrying TSC proof fetch after 2 seconds...");
 
-                                                if let Some(tsc_obj) = tsc_obj {
+                                                                    // Retry once after a short delay (transaction might be confirming)
+                                                                    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+                                                                    match client.get(&proof_url).send().await {
+                                                                        Ok(retry_response) if retry_response.status().is_success() => {
+                                                                            match retry_response.text().await {
+                                                                                Ok(retry_text) => {
+                                                                                    match serde_json::from_str::<serde_json::Value>(&retry_text) {
+                                                                                        Ok(retry_json) => {
+                                                                                            if retry_json.is_null() {
+                                                                                                log::error!("   ❌ TSC proof still null after retry - transaction {} is not confirmed. Cannot create valid Atomic BEEF without BUMP.", utxo.txid);
+                                                                                                log::error!("   ❌ Thoth requires Atomic BEEF with valid BUMPs. Please wait for the transaction to be confirmed before spending it.");
+                                                                                                // Continue without BUMP - this will cause Thoth to reject it
+                                                                                            } else {
+                                                                                                log::info!("   ✅ TSC proof available on retry!");
+                                                                                                // Process the retry_json the same way as below
+                                                                                                let tsc_obj = if retry_json.is_array() {
+                                                                                                    retry_json.get(0)
+                                                                                                } else {
+                                                                                                    Some(&retry_json)
+                                                                                                };
+
+                                                                                                if let Some(tsc_obj) = tsc_obj {
+                                                                                                    // Continue with tsc_obj processing below...
+                                                                                                    // (we'll handle this with a helper function to avoid duplication)
+                                                                                                    if let (Some(index), Some(target)) = (tsc_obj["index"].as_u64(), tsc_obj["target"].as_str()) {
+                                                                                                        log::info!("   ✅ Parent tx confirmed at tx_index {}, target: {}", index, &target[..16.min(target.len())]);
+                                                                                                        log::info!("   📊 Merkle path length: {}", tsc_obj["nodes"].as_array().map(|a| a.len()).unwrap_or(0));
+
+                                                                                                        let block_header_url = format!("https://api.whatsonchain.com/v1/bsv/main/block/hash/{}", target);
+                                                                                                        match client.get(&block_header_url).send().await {
+                                                                                                            Ok(header_response) if header_response.status().is_success() => {
+                                                                                                                match header_response.json::<serde_json::Value>().await {
+                                                                                                                    Ok(header_json) => {
+                                                                                                                        if let Some(height) = header_json["height"].as_u64() {
+                                                                                                                            log::info!("   ✅ Block height: {}", height);
+                                                                                                                            let mut enhanced_tsc = tsc_obj.clone();
+                                                                                                                            enhanced_tsc["height"] = serde_json::json!(height);
+                                                                                                                            match beef.add_tsc_merkle_proof(&utxo.txid, tx_index, &enhanced_tsc) {
+                                                                                                                                Ok(_) => {
+                                                                                                                                    log::info!("   ✅ Added TSC Merkle proof (BUMP) to BEEF");
+                                                                                                                                }
+                                                                                                                                Err(e) => {
+                                                                                                                                    log::warn!("   ⚠️  Failed to add TSC Merkle proof: {}", e);
+                                                                                                                                }
+                                                                                                                            }
+                                                                                                                        }
+                                                                                                                    }
+                                                                                                                    Err(_) => {}
+                                                                                                                }
+                                                                                                            }
+                                                                                                            _ => {}
+                                                                                                        }
+                                                                                                    }
+                                                                                                }
+                                                                                            }
+                                                                                        }
+                                                                                        Err(_) => {
+                                                                                            log::warn!("   ⚠️  Failed to parse retry TSC proof JSON");
+                                                                                        }
+                                                                                    }
+                                                                                }
+                                                                                Err(_) => {}
+                                                                            }
+                                                                        }
+                                                                        _ => {
+                                                                            log::warn!("   ⚠️  Retry TSC proof fetch failed");
+                                                                        }
+                                                                    }
+                                                                } else {
+                                                                    // Normal case: TSC proof is not null
+                                                                    // WhatsOnChain returns array: [{index, txOrId, target, nodes}]
+                                                                    let tsc_obj = if tsc_json.is_array() {
+                                                                        tsc_json.get(0)
+                                                                    } else {
+                                                                        Some(&tsc_json)
+                                                                    };
+
+                                                    if let Some(tsc_obj) = tsc_obj {
                                                     // TSC format has: index, target (block hash), nodes
                                                     if let (Some(index), Some(target)) = (tsc_obj["index"].as_u64(), tsc_obj["target"].as_str()) {
                                                         log::info!("   ✅ Parent tx confirmed at tx_index {}, target: {}", index, &target[..16.min(target.len())]);
@@ -2666,6 +2742,7 @@ pub async fn sign_action(
                                                 } else {
                                                     log::warn!("   ⚠️  TSC proof array is empty");
                                                 }
+                                                                } // end else (tsc_json not null)
                                                             }
                                                             Err(e) => {
                                                                 log::warn!("   ⚠️  Failed to parse TSC proof JSON: {}", e);
